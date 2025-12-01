@@ -481,6 +481,12 @@ async def get_available_formats(job_id: str):
 async def download_audio(
     job_id: str,
     format: str = Query(default="wav", description="Formato de áudio: wav, mp3, ogg, flac, m4a, opus"),
+    timeout: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=600,
+        description="Tempo máximo de espera em segundos (1-600s). Se fornecido, aguarda job completar antes de retornar arquivo."
+    ),
     background_tasks: BackgroundTasks = None
 ):
     """
@@ -489,29 +495,103 @@ async def download_audio(
     Args:
         job_id: ID do job
         format: Formato de áudio desejado (padrão: wav)
+        timeout: Tempo máximo de espera em segundos (opcional, 1-600s)
+            - Se None: retorna imediatamente se job não estiver pronto (HTTP 425)
+            - Se fornecido: aguarda até job completar ou timeout expirar
         background_tasks: Background tasks for cleanup
     
     Returns:
         Arquivo de áudio no formato solicitado
     
+    Raises:
+        404: Job não encontrado ou arquivo não existe
+        408: Timeout expirado aguardando job completar
+        425: Job não está pronto (apenas quando timeout=None)
+        500: Erro ao processar download
+    
     Note:
         Arquivos convertidos são criados temporariamente e deletados após envio
+    
+    Examples:
+        - Download imediato (se pronto): GET /jobs/{id}/download
+        - Aguardar até 60s: GET /jobs/{id}/download?timeout=60
+        - Download MP3 com espera: GET /jobs/{id}/download?format=mp3&timeout=120
     """
+    import time
+    
+    # Verifica se job existe
     job = job_store.get_job(job_id)
     if not job:
+        logger.error(f"Download failed: Job not found - {job_id}")
         raise HTTPException(status_code=404, detail="Job not found")
-    if job.status != JobStatus.COMPLETED:
-        raise HTTPException(status_code=425, detail=f"Job not ready: {job.status}")
     
+    # Se timeout fornecido, aguarda job completar
+    if timeout is not None:
+        logger.info(f"Download with timeout: job_id={job_id}, timeout={timeout}s, current_status={job.status}")
+        
+        start_time = time.time()
+        poll_interval = 0.5  # Polling a cada 500ms
+        max_iterations = int(timeout / poll_interval)
+        
+        for iteration in range(max_iterations):
+            # Recarrega job do Redis
+            job = job_store.get_job(job_id)
+            
+            if not job:
+                logger.error(f"Download timeout polling: Job disappeared - {job_id}")
+                raise HTTPException(status_code=404, detail="Job not found during polling")
+            
+            # Verifica status
+            if job.status == JobStatus.COMPLETED:
+                elapsed = time.time() - start_time
+                logger.info(f"Download timeout: Job completed after {elapsed:.2f}s (iteration {iteration + 1}/{max_iterations})")
+                break
+            
+            if job.status == JobStatus.FAILED:
+                logger.error(f"Download timeout: Job failed - {job_id}, error: {job.error_message}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Job processing failed: {job.error_message or 'Unknown error'}"
+                )
+            
+            # Aguarda próximo poll
+            await asyncio.sleep(poll_interval)
+        else:
+            # Timeout expirado
+            elapsed = time.time() - start_time
+            logger.warning(
+                f"Download timeout expired: job_id={job_id}, "
+                f"timeout={timeout}s, elapsed={elapsed:.2f}s, "
+                f"final_status={job.status}, progress={job.progress}%"
+            )
+            raise HTTPException(
+                status_code=408,
+                detail=f"Timeout expired waiting for job completion. Current status: {job.status}, progress: {job.progress}%"
+            )
+    
+    # Validação de status (sem timeout ou após timeout bem-sucedido)
+    if job.status != JobStatus.COMPLETED:
+        logger.warning(f"Download failed: Job not ready - {job_id}, status={job.status}")
+        raise HTTPException(
+            status_code=425,
+            detail=f"Job not ready: {job.status}. Use timeout parameter to wait for completion."
+        )
+    
+    # Validação de arquivo
     original_file = Path(job.output_file) if job.output_file else None
     if not original_file or not original_file.exists():
-        raise HTTPException(status_code=404, detail="File not found")
+        logger.error(
+            f"Download failed: File not found - job_id={job_id}, "
+            f"output_file={job.output_file}, exists={original_file.exists() if original_file else False}"
+        )
+        raise HTTPException(status_code=404, detail="Output file not found")
     
     # Normaliza formato
     format = format.lower().strip()
     
     try:
         # Converte para formato solicitado (ou retorna original se WAV)
+        logger.info(f"Converting audio: job_id={job_id}, format={format}, original={original_file.name}")
         converted_file = convert_audio_format(original_file, format)
         
         # Prepara response
@@ -531,6 +611,11 @@ async def download_audio(
             
             background_tasks.add_task(cleanup_file)
         
+        logger.info(
+            f"Download successful: job_id={job_id}, format={format}, "
+            f"filename={filename}, size={converted_file.stat().st_size} bytes"
+        )
+        
         # FileResponse
         return FileResponse(
             path=converted_file,
@@ -541,7 +626,11 @@ async def download_audio(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Download error: {e}")
+        logger.error(
+            f"Download error: job_id={job_id}, format={format}, "
+            f"error_type={type(e).__name__}, error={str(e)}",
+            exc_info=True
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Erro ao preparar download: {str(e)}"

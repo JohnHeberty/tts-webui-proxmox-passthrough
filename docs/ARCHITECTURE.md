@@ -1,68 +1,114 @@
-# Audio Voice Service - Arquitetura e Relatório
+# Audio Voice Service - Arquitetura
 
-**Serviço:** audio-voice  
-**Versão:** 1.0.0  
-**Data:** 2025-11-24  
-**Engenheiro:** GitHub Copilot
+**Serviço:** Audio Voice Service  
+**Versão:** 2.0.1  
+**Data:** Dezembro 2025  
+**Stack:** FastAPI + Celery + Redis + XTTS v2 + F5-TTS + RVC
 
 ---
 
 ## 🎯 OBJETIVO
 
-Microserviço para **dublagem de texto em áudio** e **clonagem de vozes** usando OpenVoice, integrado nativamente ao orchestrator do monorepo YTCaption-Easy-Youtube-API.
+Microserviço de **Text-to-Speech (TTS)** e **Voice Cloning** com suporte a múltiplos engines de IA e conversão de voz avançada.
 
 ### Capacidades Principais
 
-1. **Dublagem de Texto (Text-to-Speech com OpenVoice)**
-   - Converter texto em áudio dublado
-   - Suporte a múltiplos idiomas
-   - Vozes genéricas pré-configuradas
-   - Vozes clonadas customizadas
+1. **Text-to-Speech Multi-Engine**
+   - **XTTS v2** (Coqui TTS): Motor principal, multilingual (16 idiomas)
+   - **F5-TTS**: Motor especializado em português brasileiro
+   - Sistema de Quality Profiles (8 perfis configuráveis)
+   - Vozes genéricas pré-configuradas (8 presets)
+   - Vozes clonadas customizadas via zero-shot cloning
 
-2. **Clonagem de Voz (Voice Cloning)**
-   - Criar perfis de voz a partir de amostras de áudio
-   - Armazenar e gerenciar perfis de voz
-   - Usar vozes clonadas na dublagem
+2. **Voice Cloning**
+   - Clonagem zero-shot com 5-300s de áudio de referência
+   - Suporte WAV, MP3, OGG
+   - Armazenamento persistente em Redis
+   - Gerenciamento completo via API REST
+
+3. **RVC Voice Conversion**
+   - Upload de modelos RVC (.pth + .index)
+   - 7 parâmetros configuráveis (pitch, index_rate, protect, etc.)
+   - 6 métodos F0 (rmvpe, fcpe, pm, harvest, dio, crepe)
+   - Integração opcional no pipeline TTS
+   - Fallback automático em caso de erro
 
 ---
 
 ## 📐 ARQUITETURA
 
-### Padrão Arquitetural
-
-O serviço segue **EXATAMENTE** o mesmo padrão dos serviços existentes (`audio-normalization`, `audio-transcriber`, `video-downloader`):
+### Estrutura do Projeto
 
 ```
-audio-voice/
+tts-webui-proxmox-passthrough/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI app + endpoints
-│   ├── models.py            # Pydantic models (Job, VoiceProfile)
-│   ├── config.py            # Configurações do .env
-│   ├── processor.py         # Lógica de processamento
-│   ├── openvoice_client.py  # Adapter para OpenVoice
-│   ├── redis_store.py       # Store Redis para jobs
-│   ├── celery_config.py     # Configuração Celery
-│   ├── celery_tasks.py      # Tarefas assíncronas
-│   ├── logging_config.py    # Setup de logging
-│   └── exceptions.py        # Exceções customizadas
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── constraints.txt
-├── .env.example
-├── README.md
-└── run.py                   # Entry point
+│   ├── main.py                    # FastAPI app (42 endpoints REST)
+│   ├── models.py                  # Pydantic models (Job, VoiceProfile, RvcModel)
+│   ├── config.py                  # Configurações via .env
+│   ├── processor.py               # VoiceProcessor (orquestração TTS + RVC)
+│   ├── redis_store.py             # RedisJobStore (cache de jobs/voices)
+│   ├── celery_config.py           # Configuração Celery
+│   ├── celery_tasks.py            # Tasks assíncronas (dubbing, cloning)
+│   ├── quality_profiles.py        # Sistema de Quality Profiles
+│   ├── quality_profile_manager.py # Manager de perfis (Redis)
+│   ├── rvc_client.py              # RVC Voice Conversion client
+│   ├── rvc_model_manager.py       # Gerenciador de modelos RVC
+│   ├── xtts_client.py             # XTTS v2 client (Coqui TTS)
+│   ├── logging_config.py          # Setup de logging
+│   ├── exceptions.py              # Exceções customizadas
+│   ├── validators.py              # Validadores de entrada
+│   ├── vram_manager.py            # Gerenciador de VRAM (LOW_VRAM mode)
+│   ├── resilience.py              # Circuit breaker
+│   ├── engines/                   # Factory pattern para TTS engines
+│   │   ├── __init__.py
+│   │   ├── base.py                # TTSEngine (interface)
+│   │   ├── factory.py             # create_engine() com caching
+│   │   ├── xtts_engine.py         # XTTS v2 implementation
+│   │   ├── f5tts_engine.py        # F5-TTS implementation
+│   │   └── f5tts_ptbr_engine.py   # F5-TTS PT-BR otimizado
+│   └── webui/                     # Interface web Bootstrap 5
+│       ├── index.html             # SPA (2100+ linhas JS)
+│       └── assets/
+│           ├── js/app.js
+│           └── css/styles.css
+├── scripts/
+│   ├── create_default_speaker.py
+│   ├── create_voice_presets.py
+│   ├── download_models.py
+│   └── validate-*.sh              # Scripts de validação
+├── tests/                         # Suite de testes (pytest)
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+├── models/                        # Modelos ML (XTTS, F5-TTS, RVC)
+├── voice_profiles/                # Perfis de voz clonados
+├── uploads/                       # Uploads temporários
+├── processed/                     # Áudios processados
+├── temp/                          # Arquivos temporários
+├── logs/                          # Logs da aplicação
+├── Dockerfile                     # CUDA 11.8 + PyTorch 2.4
+├── docker-compose.yml             # API + Celery Worker
+├── requirements.txt               # Dependências Python
+├── constraints.txt                # Versões fixadas
+├── run.py                         # Entry point
+└── Makefile                       # Comandos úteis (rebuild, logs, etc.)
 ```
 
 ### Stack Tecnológica
 
-- **Framework:** FastAPI 0.120.0
-- **Job Queue:** Celery 5.3.4 + Redis
-- **Storage:** Redis (jobs, profiles)
-- **IA:** OpenVoice (MyShell AI)
-- **Audio:** pydub, soundfile, librosa
-- **Container:** Docker + Docker Compose
+- **Backend:** FastAPI 0.120.0 + Uvicorn
+- **Job Queue:** Celery 5.3.4 + Redis 5.0.1
+- **Storage:** Redis (jobs, voice profiles, quality profiles, RVC models)
+- **TTS Engines:**
+  - **XTTS v2** (Coqui TTS 0.27.0+): Multilingual, 16 idiomas
+  - **F5-TTS** (1.1.9): Especializado em PT-BR
+- **Voice Conversion:** RVC (tts-with-rvc)
+- **Audio Processing:** soundfile, numpy, torch, torchaudio
+- **ML/DL:** PyTorch 2.4.0+cu118, CUDA 11.8
+- **Frontend:** Vanilla JS + Bootstrap 5
+- **Container:** Docker + Docker Compose + NVIDIA Runtime
+- **Testing:** pytest + httpx
 
 ---
 
