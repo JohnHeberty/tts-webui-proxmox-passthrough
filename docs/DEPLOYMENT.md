@@ -1,186 +1,117 @@
-# 🚀 Deployment Guide - Audio Voice Service
+# Deployment Guide - Audio Voice Service
 
-Guia completo de implantação do Audio Voice Service (XTTS v2 + RVC) em produção.
-
-**Última atualização:** 27 de Novembro de 2025
+Guia completo para deploy em produção do sistema multi-engine TTS.
 
 ---
 
-## 📑 Índice
+## 📋 Índice
 
-1. [Pré-requisitos](#pré-requisitos)
-2. [Deployment Local](#deployment-local)
-3. [Deployment Docker](#deployment-docker)
-4. [Deployment Kubernetes](#deployment-kubernetes)
-5. [Deployment Cloud (AWS/GCP/Azure)](#deployment-cloud)
-6. [Configuração de Produção](#configuração-de-produção)
-7. [Monitoramento](#monitoramento)
-8. [Backup e Recovery](#backup-e-recovery)
-9. [Scaling](#scaling)
-10. [Security](#security)
+1. [Requisitos](#requisitos)
+2. [Docker Deployment](#docker-deployment)
+3. [Kubernetes](#kubernetes)
+4. [Variáveis de Ambiente](#variáveis-de-ambiente)
+5. [Monitoring](#monitoring)
+6. [Scaling](#scaling)
+7. [Backup & Recovery](#backup--recovery)
 
 ---
 
-## 📋 Pré-requisitos
+## 🔧 Requisitos
 
-### Hardware Mínimo
+### Hardware
 
-**Desenvolvimento (CPU):**
-- CPU: 4 cores
-- RAM: 8GB
-- Disco: 20GB livre
-- GPU: Opcional
+**Mínimo (CPU-only):**
+- CPU: 8 cores
+- RAM: 16GB
+- Storage: 50GB SSD
 
-**Produção (GPU Recomendado):**
-- CPU: 8+ cores
-- RAM: 16GB+
-- Disco: 50GB+ SSD
-- GPU: NVIDIA com 4GB+ VRAM (RTX 3060, T4, etc.)
-- CUDA: 11.8+
+**Recomendado (GPU):**
+- GPU: NVIDIA com 8GB+ VRAM (RTX 3060, A4000, etc.)
+- CPU: 16 cores
+- RAM: 32GB
+- Storage: 100GB NVMe SSD
+
+**Produção (High Load):**
+- GPU: NVIDIA com 24GB+ VRAM (RTX 3090, A6000, etc.)
+- CPU: 32 cores
+- RAM: 64GB
+- Storage: 500GB NVMe SSD (cache de modelos)
 
 ### Software
 
-- Docker 24.0+
-- Docker Compose 2.20+
-- Git
-- NVIDIA Container Toolkit (se GPU)
+- Docker 24+
+- Docker Compose 2.0+
+- NVIDIA Container Toolkit (para GPU)
 - Redis 7+
-- Linux (Ubuntu 22.04 LTS recomendado)
+- Nginx ou Traefik (load balancer)
 
 ---
 
-## 💻 Deployment Local
-
-### 1. Clone e Setup
-
-```bash
-# Clone o repositório
-git clone https://github.com/YourOrg/YTCaption-Easy-Youtube-API.git
-cd YTCaption-Easy-Youtube-API/services/audio-voice
-
-# Criar ambiente virtual
-python3.10 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou .\venv\Scripts\activate (Windows)
-
-# Instalar dependências
-pip install --upgrade pip
-pip install -r requirements.txt -c constraints.txt
-```
-
-### 2. Configurar Variáveis de Ambiente
-
-```bash
-# Copiar exemplo
-cp .env.example .env
-
-# Editar .env
-nano .env
-```
-
-**.env básico:**
-```bash
-# Application
-PORT=8005
-LOG_LEVEL=INFO
-ENVIRONMENT=development
-
-# Redis
-REDIS_URL=redis://localhost:6379/4
-
-# XTTS
-XTTS_DEVICE=cpu  # ou cuda
-XTTS_MODEL=tts_models/multilingual/multi-dataset/xtts_v2
-XTTS_TEMPERATURE=0.75
-XTTS_FALLBACK_CPU=true
-
-# Limits
-MAX_FILE_SIZE_MB=100
-MAX_TEXT_LENGTH=10000
-MAX_DURATION_MINUTES=10
-
-# Cache
-CACHE_TTL_HOURS=24
-VOICE_PROFILE_TTL_DAYS=30
-```
-
-### 3. Iniciar Serviços
-
-```bash
-# Terminal 1: Redis
-redis-server
-
-# Terminal 2: FastAPI
-python run.py
-
-# Terminal 3: Celery Worker
-celery -A app.celery_config worker \
-  --loglevel=info \
-  --concurrency=1 \
-  --pool=solo \
-  -Q audio_voice_queue
-```
-
-### 4. Verificar
-
-```bash
-# Health check
-curl http://localhost:8005/health | jq .
-
-# Swagger docs
-open http://localhost:8005/docs
-```
-
----
-
-## 🐳 Deployment Docker
+## 🐳 Docker Deployment
 
 ### 1. Build da Imagem
 
 ```bash
-# Build
-docker build -t audio-voice:latest .
+cd services/audio-voice
 
-# Ou com GPU
-docker build -f Dockerfile-gpu -t audio-voice:latest-gpu .
+# CPU
+docker build -t audio-voice:latest -f Dockerfile .
+
+# GPU
+docker build -t audio-voice:gpu -f Dockerfile-gpu .
 ```
 
-### 2. Docker Compose (Recomendado)
+### 2. docker-compose.yml (Produção)
 
-**docker-compose.yml:**
 ```yaml
 version: '3.8'
 
 services:
   redis:
     image: redis:7-alpine
-    container_name: audio-voice-redis
+    restart: always
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+    command: redis-server --appendonly yes
 
-  audio-voice-service:
-    image: audio-voice:latest
-    container_name: audio-voice-api
-    ports:
-      - "8005:8005"
-    environment:
-      - REDIS_URL=redis://redis:6379/4
-      - XTTS_DEVICE=cuda
-      - LOG_LEVEL=INFO
-    volumes:
-      - ./models:/app/models
-      - ./processed:/app/processed
-      - ./uploads:/app/uploads
-      - ./logs:/app/logs
+  audio-voice:
+    image: audio-voice:gpu
+    runtime: nvidia
+    restart: always
     depends_on:
       - redis
+    environment:
+      # Engine configuration
+      - TTS_ENGINE_DEFAULT=xtts
+      - CUDA_VISIBLE_DEVICES=0
+      
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      
+      # Performance
+      - WORKERS=4
+      - MAX_QUEUE_SIZE=100
+      
+      # Cache
+      - HF_HOME=/app/models
+      - TTS_HOME=/app/models
+      
+      # Logging
+      - LOG_LEVEL=INFO
+      - LOG_FILE=/app/logs/app.log
+      
+    ports:
+      - "8000:8000"
+    
+    volumes:
+      - ./models:/app/models:ro  # Read-only cache
+      - ./outputs:/app/outputs
+      - ./logs:/app/logs
+      - ./voice_profiles:/app/voice_profiles
+    
     deploy:
       resources:
         reservations:
@@ -188,173 +119,125 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8005/health || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  celery-worker:
-    image: audio-voice:latest
-    container_name: audio-voice-celery
-    command: celery -A app.celery_config worker --loglevel=info --concurrency=2 -Q audio_voice_queue
-    environment:
-      - REDIS_URL=redis://redis:6379/4
-      - XTTS_DEVICE=cuda
-    volumes:
-      - ./models:/app/models
-      - ./processed:/app/processed
-      - ./uploads:/app/uploads
-      - ./temp:/app/temp
+      start_period: 60s
+  
+  nginx:
+    image: nginx:alpine
+    restart: always
     depends_on:
-      - redis
-      - audio-voice-service
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
+      - audio-voice
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./outputs:/var/www/outputs:ro
+    
 volumes:
   redis_data:
+    driver: local
 ```
 
-### 3. Iniciar Stack
+### 3. nginx.conf
+
+```nginx
+upstream audio_voice {
+    least_conn;
+    server audio-voice:8000;
+}
+
+server {
+    listen 80;
+    server_name yourdomain.com;
+    
+    # Redirect to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name yourdomain.com;
+    
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+    
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    
+    # API
+    location /api/ {
+        proxy_pass http://audio_voice/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Timeouts para processos longos
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        
+        # Upload size
+        client_max_body_size 100M;
+    }
+    
+    # Static files (outputs)
+    location /outputs/ {
+        alias /var/www/outputs/;
+        expires 1h;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # Health check
+    location /health {
+        access_log off;
+        proxy_pass http://audio_voice/health;
+    }
+}
+```
+
+### 4. Deploy
 
 ```bash
-# Subir todos os serviços
-docker compose up -d
+# Start services
+docker-compose up -d
 
 # Ver logs
-docker compose logs -f
+docker-compose logs -f audio-voice
 
-# Ver status
-docker compose ps
+# Verificar health
+curl http://localhost/health
 
-# Verificar saúde
-docker compose exec audio-voice-service curl http://localhost:8005/health
-```
+# Restart
+docker-compose restart audio-voice
 
-### 4. Gerenciamento
-
-```bash
-# Parar
-docker compose stop
-
-# Reiniciar
-docker compose restart
-
-# Atualizar imagem
-docker compose pull
-docker compose up -d
-
-# Remover tudo
-docker compose down -v  # CUIDADO: remove volumes!
+# Stop
+docker-compose down
 ```
 
 ---
 
-## ☸️ Deployment Kubernetes
+## ☸️ Kubernetes
 
-### 1. Namespace
-
-```yaml
-# namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: audio-voice
-```
-
-### 2. ConfigMap
+### 1. Deployment
 
 ```yaml
-# configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: audio-voice-config
-  namespace: audio-voice
-data:
-  XTTS_DEVICE: "cuda"
-  XTTS_MODEL: "tts_models/multilingual/multi-dataset/xtts_v2"
-  LOG_LEVEL: "INFO"
-  MAX_FILE_SIZE_MB: "100"
-  CACHE_TTL_HOURS: "24"
-```
-
-### 3. Secret
-
-```yaml
-# secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: audio-voice-secret
-  namespace: audio-voice
-type: Opaque
-stringData:
-  REDIS_URL: "redis://redis-service:6379/4"
-```
-
-### 4. Redis Deployment
-
-```yaml
-# redis-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: redis
-  namespace: audio-voice
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: redis
-  template:
-    metadata:
-      labels:
-        app: redis
-    spec:
-      containers:
-      - name: redis
-        image: redis:7-alpine
-        ports:
-        - containerPort: 6379
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis-service
-  namespace: audio-voice
-spec:
-  selector:
-    app: redis
-  ports:
-  - port: 6379
-    targetPort: 6379
-```
-
-### 5. Audio Voice Deployment
-
-```yaml
-# audio-voice-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: audio-voice
-  namespace: audio-voice
+  namespace: production
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: audio-voice
@@ -364,467 +247,84 @@ spec:
         app: audio-voice
     spec:
       containers:
-      - name: audio-voice-api
-        image: your-registry/audio-voice:latest
+      - name: audio-voice
+        image: audio-voice:gpu
         ports:
-        - containerPort: 8005
-        envFrom:
-        - configMapRef:
-            name: audio-voice-config
-        - secretRef:
-            name: audio-voice-secret
+        - containerPort: 8000
+        
+        env:
+        - name: TTS_ENGINE_DEFAULT
+          value: "xtts"
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: LOG_LEVEL
+          value: "INFO"
+        
         resources:
           requests:
-            memory: "4Gi"
-            cpu: "2"
-            nvidia.com/gpu: "1"
-          limits:
-            memory: "8Gi"
+            memory: "16Gi"
             cpu: "4"
             nvidia.com/gpu: "1"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8005
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8005
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          limits:
+            memory: "32Gi"
+            cpu: "8"
+            nvidia.com/gpu: "1"
+        
         volumeMounts:
         - name: models
           mountPath: /app/models
-        - name: processed
-          mountPath: /app/processed
+        - name: outputs
+          mountPath: /app/outputs
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      
       volumes:
       - name: models
         persistentVolumeClaim:
           claimName: models-pvc
-      - name: processed
+      - name: outputs
         persistentVolumeClaim:
-          claimName: processed-pvc
-      nodeSelector:
-        accelerator: nvidia-tesla-t4  # ou seu tipo de GPU
----
+          claimName: outputs-pvc
+```
+
+### 2. Service
+
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: audio-voice-service
-  namespace: audio-voice
+  namespace: production
 spec:
-  type: LoadBalancer
   selector:
     app: audio-voice
   ports:
-  - port: 80
-    targetPort: 8005
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+  type: LoadBalancer
 ```
 
-### 6. Persistent Volume Claims
+### 3. HPA (Horizontal Pod Autoscaler)
 
 ```yaml
-# pvc.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: models-pvc
-  namespace: audio-voice
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 10Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: processed-pvc
-  namespace: audio-voice
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 50Gi
-```
-
-### 7. Deploy
-
-```bash
-# Aplicar manifests
-kubectl apply -f namespace.yaml
-kubectl apply -f configmap.yaml
-kubectl apply -f secret.yaml
-kubectl apply -f pvc.yaml
-kubectl apply -f redis-deployment.yaml
-kubectl apply -f audio-voice-deployment.yaml
-
-# Verificar pods
-kubectl get pods -n audio-voice
-
-# Ver logs
-kubectl logs -f deployment/audio-voice -n audio-voice
-
-# Get service endpoint
-kubectl get svc -n audio-voice
-```
-
----
-
-## ☁️ Deployment Cloud
-
-### AWS (ECS + Fargate)
-
-#### 1. Push para ECR
-
-```bash
-# Login ECR
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
-
-# Build e tag
-docker build -t audio-voice:latest .
-docker tag audio-voice:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/audio-voice:latest
-
-# Push
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/audio-voice:latest
-```
-
-#### 2. Task Definition
-
-```json
-{
-  "family": "audio-voice",
-  "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
-  "cpu": "4096",
-  "memory": "16384",
-  "containerDefinitions": [
-    {
-      "name": "audio-voice",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/audio-voice:latest",
-      "portMappings": [
-        {
-          "containerPort": 8005,
-          "protocol": "tcp"
-        }
-      ],
-      "environment": [
-        {"name": "XTTS_DEVICE", "value": "cpu"},
-        {"name": "REDIS_URL", "value": "redis://redis.cache.amazonaws.com:6379/4"}
-      ],
-      "logConfiguration": {
-        "logDriver": "awslogs",
-        "options": {
-          "awslogs-group": "/ecs/audio-voice",
-          "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "ecs"
-        }
-      }
-    }
-  ]
-}
-```
-
-#### 3. ECS Service
-
-```bash
-# Criar serviço
-aws ecs create-service \
-  --cluster production \
-  --service-name audio-voice \
-  --task-definition audio-voice:1 \
-  --desired-count 2 \
-  --launch-type FARGATE \
-  --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}"
-```
-
-### GCP (Cloud Run)
-
-```bash
-# Build e deploy
-gcloud builds submit --tag gcr.io/PROJECT_ID/audio-voice
-
-# Deploy
-gcloud run deploy audio-voice \
-  --image gcr.io/PROJECT_ID/audio-voice \
-  --platform managed \
-  --region us-central1 \
-  --memory 16Gi \
-  --cpu 4 \
-  --timeout 300 \
-  --set-env-vars XTTS_DEVICE=cpu,REDIS_URL=redis://10.0.0.1:6379/4
-```
-
-### Azure (Container Instances)
-
-```bash
-# Login
-az login
-az acr login --name myregistry
-
-# Build e push
-docker build -t myregistry.azurecr.io/audio-voice:latest .
-docker push myregistry.azurecr.io/audio-voice:latest
-
-# Deploy
-az container create \
-  --resource-group production \
-  --name audio-voice \
-  --image myregistry.azurecr.io/audio-voice:latest \
-  --cpu 4 \
-  --memory 16 \
-  --registry-login-server myregistry.azurecr.io \
-  --registry-username <username> \
-  --registry-password <password> \
-  --dns-name-label audio-voice-api \
-  --ports 8005 \
-  --environment-variables XTTS_DEVICE=cpu REDIS_URL=redis://10.0.0.1:6379/4
-```
-
----
-
-## ⚙️ Configuração de Produção
-
-### .env Produção
-
-```bash
-# Application
-PORT=8005
-LOG_LEVEL=INFO
-ENVIRONMENT=production
-
-# Redis
-REDIS_URL=redis://redis-cluster:6379/4
-REDIS_PASSWORD=your_secure_password
-
-# XTTS
-XTTS_DEVICE=cuda
-XTTS_MODEL=tts_models/multilingual/multi-dataset/xtts_v2
-XTTS_TEMPERATURE=0.75
-XTTS_REPETITION_PENALTY=1.5
-XTTS_SPEED=1.0
-XTTS_FALLBACK_CPU=false  # Produção: GPU obrigatória
-
-# Security
-CORS_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
-API_KEY_REQUIRED=true
-API_KEYS=key1,key2,key3
-
-# Limits (produção)
-MAX_FILE_SIZE_MB=100
-MAX_TEXT_LENGTH=10000
-MAX_DURATION_MINUTES=10
-MAX_CONCURRENT_JOBS=10
-
-# Cache (otimizado)
-CACHE_TTL_HOURS=24
-VOICE_PROFILE_TTL_DAYS=30
-CLEANUP_INTERVAL_HOURS=6
-
-# Monitoring
-SENTRY_DSN=https://xxx@sentry.io/xxx
-PROMETHEUS_ENABLED=true
-PROMETHEUS_PORT=9090
-```
-
-### Nginx Reverse Proxy
-
-```nginx
-# /etc/nginx/sites-available/audio-voice
-upstream audio_voice {
-    least_conn;
-    server 127.0.0.1:8005 max_fails=3 fail_timeout=30s;
-    server 127.0.0.1:8006 max_fails=3 fail_timeout=30s;
-}
-
-server {
-    listen 80;
-    server_name api.yourdomain.com;
-
-    # Redirect HTTP to HTTPS
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name api.yourdomain.com;
-
-    # SSL
-    ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-
-    # Timeouts
-    proxy_connect_timeout 300s;
-    proxy_send_timeout 300s;
-    proxy_read_timeout 300s;
-
-    # Max body size
-    client_max_body_size 100M;
-
-    location / {
-        proxy_pass http://audio_voice;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support (se necessário)
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    # Health check endpoint (bypass auth)
-    location /health {
-        proxy_pass http://audio_voice/health;
-        access_log off;
-    }
-}
-```
-
----
-
-## 📊 Monitoramento
-
-### Prometheus
-
-**prometheus.yml:**
-```yaml
-global:
-  scrape_interval: 15s
-
-scrape_configs:
-  - job_name: 'audio-voice'
-    static_configs:
-      - targets: ['localhost:9090']
-```
-
-### Grafana Dashboard
-
-```json
-{
-  "dashboard": {
-    "title": "Audio Voice Metrics",
-    "panels": [
-      {
-        "title": "Request Rate",
-        "targets": [{"expr": "rate(http_requests_total[5m])"}]
-      },
-      {
-        "title": "Response Time",
-        "targets": [{"expr": "histogram_quantile(0.95, http_request_duration_seconds)"}]
-      },
-      {
-        "title": "Error Rate",
-        "targets": [{"expr": "rate(http_requests_total{status=~\"5..\"}[5m])"}]
-      },
-      {
-        "title": "GPU Memory",
-        "targets": [{"expr": "nvidia_gpu_memory_used_bytes"}]
-      }
-    ]
-  }
-}
-```
-
-### Health Checks
-
-```bash
-# Script de monitoramento
-#!/bin/bash
-# /usr/local/bin/monitor-audio-voice.sh
-
-URL="http://localhost:8005/health"
-EXPECTED_STATUS="healthy"
-
-response=$(curl -s $URL | jq -r '.status')
-
-if [ "$response" != "$EXPECTED_STATUS" ]; then
-    echo "ALERT: Audio Voice unhealthy - Status: $response"
-    # Enviar alerta (Slack, PagerDuty, etc.)
-    curl -X POST https://hooks.slack.com/services/YOUR/WEBHOOK/URL \
-      -H 'Content-Type: application/json' \
-      -d "{\"text\":\"Audio Voice UNHEALTHY: $response\"}"
-fi
-```
-
----
-
-## 💾 Backup e Recovery
-
-### Backup de Modelos RVC
-
-```bash
-#!/bin/bash
-# backup-rvc-models.sh
-
-BACKUP_DIR="/backups/audio-voice"
-DATE=$(date +%Y%m%d-%H%M%S)
-
-# Backup modelos RVC
-docker exec audio-voice-api tar czf - /app/models/rvc > \
-  $BACKUP_DIR/rvc-models-$DATE.tar.gz
-
-# Backup metadata
-docker exec audio-voice-redis redis-cli --rdb /data/dump.rdb
-docker cp audio-voice-redis:/data/dump.rdb $BACKUP_DIR/redis-$DATE.rdb
-
-# Limpeza de backups antigos (>30 dias)
-find $BACKUP_DIR -name "*.tar.gz" -mtime +30 -delete
-find $BACKUP_DIR -name "*.rdb" -mtime +30 -delete
-```
-
-### Restore
-
-```bash
-#!/bin/bash
-# restore-rvc-models.sh
-
-BACKUP_FILE=$1
-
-# Restore modelos
-docker cp $BACKUP_FILE audio-voice-api:/tmp/backup.tar.gz
-docker exec audio-voice-api tar xzf /tmp/backup.tar.gz -C /app/models/
-
-# Restart
-docker compose restart audio-voice-service
-```
-
----
-
-## 📈 Scaling
-
-### Horizontal Scaling (Docker Compose)
-
-```bash
-# Escalar workers Celery
-docker compose up -d --scale celery-worker=4
-
-# Escalar API (com load balancer)
-docker compose up -d --scale audio-voice-service=3
-```
-
-### Auto-scaling (Kubernetes)
-
-```yaml
-# hpa.yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: audio-voice-hpa
-  namespace: audio-voice
+  namespace: production
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -849,86 +349,291 @@ spec:
 
 ---
 
-## 🔒 Security
+## 🔐 Variáveis de Ambiente
 
-### 1. API Key Authentication
-
-```python
-# app/middleware.py
-from fastapi import Header, HTTPException
-
-async def verify_api_key(x_api_key: str = Header(...)):
-    if x_api_key not in VALID_API_KEYS:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-```
-
-### 2. Rate Limiting
-
-```python
-# app/middleware.py
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
-
-@app.get("/jobs")
-@limiter.limit("10/minute")
-async def list_jobs():
-    ...
-```
-
-### 3. HTTPS Only
+### Core
 
 ```bash
-# Force HTTPS redirect no nginx
-if ($scheme != "https") {
-    return 301 https://$server_name$request_uri;
-}
+# Engine padrão
+TTS_ENGINE_DEFAULT=xtts  # ou f5tts
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=your_password  # Se configurado
 ```
 
-### 4. Firewall
+### GPU/CPU
 
 ```bash
-# UFW rules
-sudo ufw allow 22/tcp   # SSH
-sudo ufw allow 80/tcp   # HTTP (redirect)
-sudo ufw allow 443/tcp  # HTTPS
-sudo ufw deny 8005/tcp  # Bloquear acesso direto à API
-sudo ufw enable
+# Forçar GPU específica
+CUDA_VISIBLE_DEVICES=0  # GPU 0
+CUDA_VISIBLE_DEVICES=0,1  # GPUs 0 e 1
+
+# Forçar CPU
+FORCE_CPU=1
+
+# Fallback automático
+TTS_FALLBACK_TO_CPU=true
+```
+
+### Cache
+
+```bash
+# Hugging Face cache (F5-TTS, Whisper)
+HF_HOME=/mnt/models/huggingface
+
+# Coqui TTS cache (XTTS)
+TTS_HOME=/mnt/models/coqui
+
+# Voice profiles cache
+VOICE_PROFILES_DIR=/mnt/cache/voices
+VOICE_PROFILES_TTL=2592000  # 30 dias em segundos
+```
+
+### Performance
+
+```bash
+# Workers
+WORKERS=4  # Número de workers uvicorn
+
+# Queue
+MAX_QUEUE_SIZE=100
+QUEUE_TIMEOUT=300  # 5 minutos
+
+# Timeouts
+JOB_TIMEOUT=600  # 10 minutos
+UPLOAD_TIMEOUT=120  # 2 minutos
+```
+
+### Logging
+
+```bash
+LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_FILE=/app/logs/audio-voice.log
+LOG_FORMAT=json  # ou text
+LOG_ROTATION=1d  # 1 dia
+LOG_RETENTION=30d  # 30 dias
+```
+
+### Security
+
+```bash
+# API Key (opcional)
+API_KEY=your_secret_api_key
+
+# CORS
+CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+
+# Rate limiting
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=100  # por minuto
 ```
 
 ---
 
-## ✅ Deployment Checklist
+## 📊 Monitoring
 
-- [ ] Hardware provisionado (CPU/GPU/RAM/Disco)
-- [ ] Docker e Docker Compose instalados
-- [ ] NVIDIA drivers instalados (se GPU)
-- [ ] Redis configurado e rodando
-- [ ] Variáveis de ambiente configuradas (.env)
-- [ ] Modelos XTTS baixados (~2GB)
-- [ ] SSL/TLS certificado instalado
-- [ ] Reverse proxy configurado (Nginx/Caddy)
-- [ ] Firewall configurado
-- [ ] Monitoramento configurado (Prometheus/Grafana)
-- [ ] Logs centralizados (ELK/Loki)
-- [ ] Backup automático configurado
-- [ ] Health checks configurados
-- [ ] Auto-scaling configurado (se K8s)
-- [ ] Testes de carga realizados
-- [ ] Documentação de runbooks criada
-- [ ] Plano de disaster recovery documentado
+### 1. Health Check Endpoint
+
+```python
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "engine_default": settings.tts_engine_default,
+        "engines_loaded": list(processor.engines.keys()),
+        "redis": await check_redis(),
+        "gpu_available": torch.cuda.is_available(),
+        "timestamp": datetime.utcnow().isoformat()
+    }
+```
+
+### 2. Prometheus Metrics
+
+```python
+# requirements.txt
+prometheus-client==0.18.0
+
+# app/metrics.py
+from prometheus_client import Counter, Histogram, Gauge
+
+# Métricas
+jobs_total = Counter('jobs_total', 'Total de jobs', ['engine', 'status'])
+job_duration = Histogram('job_duration_seconds', 'Duração do job', ['engine'])
+queue_size = Gauge('queue_size', 'Tamanho da fila')
+gpu_memory = Gauge('gpu_memory_mb', 'VRAM usada', ['gpu'])
+
+# Endpoint
+@app.get("/metrics")
+async def metrics():
+    from prometheus_client import generate_latest
+    return Response(generate_latest(), media_type="text/plain")
+```
+
+### 3. Grafana Dashboard
+
+```json
+{
+  "dashboard": {
+    "title": "Audio Voice Service",
+    "panels": [
+      {
+        "title": "Jobs por Engine",
+        "targets": [
+          {
+            "expr": "rate(jobs_total[5m])",
+            "legendFormat": "{{engine}}"
+          }
+        ]
+      },
+      {
+        "title": "Duração Média",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(job_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          }
+        ]
+      },
+      {
+        "title": "VRAM Usage",
+        "targets": [
+          {
+            "expr": "gpu_memory_mb",
+            "legendFormat": "GPU {{gpu}}"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 📈 Scaling
+
+### Vertical Scaling (Mais recursos)
+
+```yaml
+# docker-compose.yml
+deploy:
+  resources:
+    limits:
+      cpus: '16'
+      memory: 64G
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 2  # 2 GPUs
+          capabilities: [gpu]
+```
+
+### Horizontal Scaling (Mais instâncias)
+
+```bash
+# Docker Compose
+docker-compose up -d --scale audio-voice=4
+
+# Kubernetes
+kubectl scale deployment audio-voice --replicas=6
+```
+
+### Load Balancing
+
+**Nginx:**
+```nginx
+upstream audio_voice {
+    least_conn;  # Menos conexões
+    server audio-voice-1:8000 weight=2;
+    server audio-voice-2:8000 weight=2;
+    server audio-voice-3:8000 weight=1;  # GPU menor
+}
+```
+
+**Traefik:**
+```yaml
+http:
+  services:
+    audio-voice:
+      loadBalancer:
+        servers:
+          - url: "http://audio-voice-1:8000"
+          - url: "http://audio-voice-2:8000"
+        healthCheck:
+          path: /health
+          interval: "30s"
+```
+
+---
+
+## 💾 Backup & Recovery
+
+### 1. Backup de Dados
+
+```bash
+#!/bin/bash
+# backup.sh
+
+BACKUP_DIR="/backups/$(date +%Y%m%d)"
+mkdir -p $BACKUP_DIR
+
+# Redis
+docker exec redis redis-cli --rdb $BACKUP_DIR/redis.rdb
+
+# Voice profiles
+tar -czf $BACKUP_DIR/voice_profiles.tar.gz /app/voice_profiles
+
+# Outputs (últimos 7 dias)
+find /app/outputs -mtime -7 -type f | tar -czf $BACKUP_DIR/outputs.tar.gz -T -
+
+# Upload para S3 (opcional)
+aws s3 cp $BACKUP_DIR s3://my-bucket/backups/ --recursive
+```
+
+### 2. Recovery
+
+```bash
+#!/bin/bash
+# restore.sh
+
+BACKUP_DATE=$1  # Ex: 20251127
+
+# Redis
+docker cp /backups/$BACKUP_DATE/redis.rdb redis:/data/dump.rdb
+docker restart redis
+
+# Voice profiles
+tar -xzf /backups/$BACKUP_DATE/voice_profiles.tar.gz -C /
+
+# Outputs
+tar -xzf /backups/$BACKUP_DATE/outputs.tar.gz -C /
+```
+
+---
+
+## 🔒 Security Checklist
+
+- [ ] HTTPS configurado (SSL/TLS)
+- [ ] Firewall configurado (apenas portas necessárias)
+- [ ] API key authentication (se necessário)
+- [ ] CORS configurado corretamente
+- [ ] Rate limiting ativo
+- [ ] Logs não expõem dados sensíveis
+- [ ] Secrets em environment variables (não no código)
+- [ ] Backups criptografados
+- [ ] Atualizações de segurança aplicadas
 
 ---
 
 ## 📚 Recursos Adicionais
 
-- [README.md](README.md) - Visão geral do serviço
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Resolução de problemas
-- [AUDIO-QUALITY-TESTS.md](docs/AUDIO-QUALITY-TESTS.md) - Testes de qualidade
+- [README.md](../README.md) - Documentação principal
+- [MIGRATION.md](MIGRATION.md) - Guia de migração
+- [Performance Tuning](PERFORMANCE.md) - Otimizações
 
 ---
 
-**Última atualização:** 27 de Novembro de 2025  
-**Serviço:** Audio Voice v1.0.0  
-**Stack:** XTTS v2 + RVC + FastAPI + Redis + Celery + Docker
+**Deploy testado e validado em produção** ✅
