@@ -18,7 +18,8 @@ from .models import (
     Job, JobStatus, JobMode, TTSJobMode, VoiceProfile, QualityProfile, VoicePreset,
     DubbingRequest, VoiceCloneRequest,
     VoiceListResponse, JobListResponse, RvcModelResponse, RvcModelListResponse,
-    RvcF0Method  # TTSEngine já vem de quality_profiles
+    RvcF0Method,  # TTSEngine já vem de quality_profiles
+    JobDownloadRequest
 )
 from .quality_profiles import (
     TTSEngine,  # Import principal
@@ -509,6 +510,14 @@ async def download_audio(
         425: Job não está pronto (apenas quando timeout=None)
         500: Erro ao processar download
     
+    Behavior:
+        - Se timeout=None: Retorna erro 425 se job não estiver completo
+        - Se timeout>0: Aguarda até timeout segundos pela conclusão do job
+          - Polling a cada 0.5s verificando status
+          - Retorna arquivo se completar no timeout
+          - Retorna erro 408 (Request Timeout) se exceder timeout
+          - Retorna erro 500 se job falhar durante espera
+    
     Note:
         Arquivos convertidos são criados temporariamente e deletados após envio
     
@@ -517,6 +526,7 @@ async def download_audio(
         - Aguardar até 60s: GET /jobs/{id}/download?timeout=60
         - Download MP3 com espera: GET /jobs/{id}/download?format=mp3&timeout=120
     """
+    import asyncio
     import time
     
     # Verifica se job existe
@@ -524,6 +534,9 @@ async def download_audio(
     if not job:
         logger.error(f"Download failed: Job not found - {job_id}")
         raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Log para debug
+    logger.info(f"Download request for {job_id}: status={job.status}, timeout={timeout}")
     
     # Se timeout fornecido, aguarda job completar
     if timeout is not None:

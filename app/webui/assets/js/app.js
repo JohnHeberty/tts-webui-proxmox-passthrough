@@ -612,9 +612,9 @@ const app = {
         try {
             const data = await this.fetchJson(`${API_BASE}/admin/stats`);
             const stats = [
-                { icon: 'file-earmark-music', label: 'Total Jobs', value: data.total_jobs || 0, color: 'primary' },
-                { icon: 'check-circle', label: 'Completados', value: data.completed_jobs || 0, color: 'success' },
-                { icon: 'person-voice', label: 'Vozes', value: data.total_voices || 0, color: 'info' },
+                { icon: 'file-earmark-music', label: 'Total Jobs', value: (data.jobs && data.jobs.total) || 0, color: 'primary' },
+                { icon: 'check-circle', label: 'Completados', value: (data.jobs && data.jobs.completed) || 0, color: 'success' },
+                { icon: 'person-voice', label: 'Vozes', value: (data.voice_profiles && data.voice_profiles.total) || 0, color: 'info' },
                 { icon: 'cpu', label: 'Modelos RVC', value: data.total_rvc_models || 0, color: 'warning' }
             ];
             
@@ -1776,7 +1776,7 @@ const app = {
         
         try {
             await this.fetchJson(`${API_BASE}/voices/${voiceId}`, { method: 'DELETE' });
-            this.showToast('Sucesso', 'Voz excluída com sucesso', 'success');
+            this.showToast('Sucesso', 'Voz excluida com sucesso', 'success');
             this.loadVoices();
         } catch (error) {
             this.showToast('Erro', `Falha ao excluir voz: ${error.message}`, 'error');
