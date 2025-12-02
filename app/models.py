@@ -55,6 +55,20 @@ class RvcF0Method(str, Enum):
     CREPE = "crepe"
 
 
+class JobDownloadRequest(BaseModel):
+    """Request model para download de job com timeout opcional"""
+    format: str = Field(
+        default="wav",
+        description="Formato de áudio: wav, mp3, ogg, flac, m4a, opus"
+    )
+    timeout: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=600,
+        description="Timeout em segundos para aguardar conclusão do job (1-600s). Se None, retorna erro se job não completo."
+    )
+
+
 class QualityProfile(str, Enum):
     """
     Perfis de qualidade para geração XTTS.

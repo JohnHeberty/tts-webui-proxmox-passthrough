@@ -18,7 +18,8 @@ from .models import (
     Job, JobStatus, JobMode, TTSJobMode, VoiceProfile, QualityProfile, VoicePreset,
     DubbingRequest, VoiceCloneRequest,
     VoiceListResponse, JobListResponse, RvcModelResponse, RvcModelListResponse,
-    RvcF0Method  # TTSEngine já vem de quality_profiles
+    RvcF0Method,  # TTSEngine já vem de quality_profiles
+    JobDownloadRequest
 )
 from .quality_profiles import (
     TTSEngine,  # Import principal
@@ -481,6 +482,12 @@ async def get_available_formats(job_id: str):
 async def download_audio(
     job_id: str,
     format: str = Query(default="wav", description="Formato de áudio: wav, mp3, ogg, flac, m4a, opus"),
+    timeout: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=600,
+        description="Timeout em segundos para aguardar conclusão do job (1-600s). Se None, retorna erro se job não completo."
+    ),
     background_tasks: BackgroundTasks = None
 ):
     """
@@ -489,17 +496,64 @@ async def download_audio(
     Args:
         job_id: ID do job
         format: Formato de áudio desejado (padrão: wav)
+        timeout: Timeout em segundos para aguardar conclusão (1-600s, opcional)
         background_tasks: Background tasks for cleanup
     
     Returns:
         Arquivo de áudio no formato solicitado
     
+    Behavior:
+        - Se timeout=None: Retorna erro 425 se job não estiver completo
+        - Se timeout>0: Aguarda até timeout segundos pela conclusão do job
+          - Polling a cada 0.5s verificando status
+          - Retorna arquivo se completar no timeout
+          - Retorna erro 408 (Request Timeout) se exceder timeout
+          - Retorna erro 500 se job falhar durante espera
+    
     Note:
         Arquivos convertidos são criados temporariamente e deletados após envio
     """
+    import asyncio
+    
     job = job_store.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Log para debug
+    logger.info(f"Download request for {job_id}: status={job.status}, timeout={timeout}")
+    
+    # Se timeout fornecido, aguarda conclusão do job
+    if timeout is not None:
+        start_time = datetime.now()
+        poll_interval = 0.5  # 500ms entre checks
+        
+        while (datetime.now() - start_time).total_seconds() < timeout:
+            job = job_store.get_job(job_id)
+            
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job.status == JobStatus.COMPLETED:
+                break  # Job completo, prossegue para download
+            
+            if job.status == JobStatus.FAILED:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Job failed during wait: {job.error_message or 'Unknown error'}"
+                )
+            
+            # Aguarda antes de próximo check
+            await asyncio.sleep(poll_interval)
+        else:
+            # Timeout excedido
+            job = job_store.get_job(job_id)  # Último check
+            if job and job.status != JobStatus.COMPLETED:
+                raise HTTPException(
+                    status_code=408,
+                    detail=f"Job not completed within {timeout}s timeout. Current status: {job.status}"
+                )
+    
+    # Verifica se job está completo (após timeout ou se não houve timeout)
     if job.status != JobStatus.COMPLETED:
         raise HTTPException(status_code=425, detail=f"Job not ready: {job.status}")
     
