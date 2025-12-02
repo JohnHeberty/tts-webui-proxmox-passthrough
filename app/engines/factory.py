@@ -90,7 +90,7 @@ def create_engine(
             engine = engine_class(
                 device=f5tts_config.get('device'),
                 fallback_to_cpu=f5tts_config.get('fallback_to_cpu', True),
-                model_name=f5tts_config.get('model_name', 'SWivid/F5-TTS')
+                model_name=f5tts_config.get('model_name')
             )
         elif engine_type == 'f5tts-ptbr':
             if _ENGINE_REGISTRY['f5tts-ptbr'] is None:

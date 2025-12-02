@@ -7,7 +7,7 @@ services:
   audio-voice-service:
     build:
       context: .
-      dockerfile: docker/Dockerfile-gpu
+      dockerfile: Dockerfile
     container_name: audio-voice-api-gpu
     ports:
       - "${PORT:-8005}:8005"
@@ -20,6 +20,8 @@ services:
       - ./models:/app/models
       - ./logs:/app/logs
       - ./tests:/app/tests  # Para rodar testes dentro do container
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
     env_file:
       - .env
     environment:
@@ -57,7 +59,7 @@ services:
   celery-worker:
     build:
       context: .
-      dockerfile: docker/Dockerfile-gpu
+      dockerfile: Dockerfile
     container_name: audio-voice-celery-gpu
     command: python -m celery -A app.celery_config worker --loglevel=info --concurrency=1 --pool=solo --queues=audio_voice_queue
     volumes:
@@ -68,6 +70,8 @@ services:
       - ./voice_profiles:/app/voice_profiles
       - ./models:/app/models
       - ./logs:/app/logs
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
     env_file:
       - .env
     environment:
