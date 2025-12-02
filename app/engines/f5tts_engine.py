@@ -381,6 +381,15 @@ class F5TtsEngine(TTSEngine):
             if voice_profile:
                 ref_audio_path = voice_profile.source_audio_path
                 
+                # Validate that reference audio file exists
+                import os
+                if not os.path.exists(ref_audio_path):
+                    raise FileNotFoundError(
+                        f"Voice profile audio file not found: {ref_audio_path}. "
+                        f"The voice profile may have expired or the file was deleted. "
+                        f"Please re-upload the voice sample."
+                    )
+                
                 # F5-TTS requires ref_text for best quality
                 if voice_profile.ref_text:
                     ref_text = voice_profile.ref_text
