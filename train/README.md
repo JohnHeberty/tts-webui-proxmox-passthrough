@@ -1,8 +1,6 @@
 # 🎙️ Pipeline de Treinamento F5-TTS Português Brasileiro
 
-**Pipeline completo e reprodutível para fine-tuning do modelo `firstpixel/F5-TTS-pt-br` usando vídeos do YouTube**
-
-Este diretório contém toda a infraestrutura necessária para treinar modelos customizados de TTS em português brasileiro, desde o download de vídeos do YouTube até o modelo final pronto para uso.
+**Pipeline completo e otimizado para fine-tuning do modelo `firstpixel/F5-TTS-pt-br` usando vídeos do YouTube**
 
 ---
 
@@ -10,46 +8,34 @@ Este diretório contém toda a infraestrutura necessária para treinar modelos c
 
 - [Visão Geral](#-visão-geral)
 - [Pré-requisitos](#-pré-requisitos)
-- [Instalação](#-instalação)
-- [Fluxo Completo](#-fluxo-completo)
-  - [1. Preparar Lista de Vídeos](#1-preparar-lista-de-vídeos)
-  - [2. Download de Áudio](#2-download-de-áudio)
-  - [3. Segmentação](#3-segmentação)
-  - [4. Transcrição](#4-transcrição)
-  - [5. Construir Metadata](#5-construir-metadata)
-  - [6. Preparar Dataset](#6-preparar-dataset)
-  - [7. Treinar Modelo](#7-treinar-modelo)
-- [Configuração](#-configuração)
+- [Instalação Rápida](#-instalação-rápida)
+- [Pipeline Completo](#-pipeline-completo)
+- [Scripts Disponíveis](#-scripts-disponíveis)
 - [Estrutura de Diretórios](#-estrutura-de-diretórios)
+- [Otimizações e Melhorias](#-otimizações-e-melhorias)
 - [Solução de Problemas](#-solução-de-problemas)
-- [Próximos Passos](#-próximos-passos)
 
 ---
 
 ## 🎯 Visão Geral
 
-Este pipeline automatiza todo o processo de fine-tuning do F5-TTS:
+Pipeline automatizado para treinar modelos F5-TTS em português brasileiro a partir de vídeos do YouTube.
 
-```mermaid
-graph LR
-    A[Vídeos YouTube] --> B[Download Áudio]
-    B --> C[Segmentação 3-12s]
-    C --> D[Transcrição/Legendas]
-    D --> E[Dataset F5-TTS]
-    E --> F[Fine-tuning]
-    F --> G[Modelo Treinado]
+**Fluxo do Pipeline:**
+
+```
+Vídeos YouTube → Download Áudio → Segmentação → Transcrição → Normalização → 
+Validação QA → Dataset F5-TTS → Treinamento → Modelo Treinado
 ```
 
-**Principais características:**
+**Características:**
 
-- ✅ **Zero configuração manual**: Lista de vídeos → Modelo treinado
-- ✅ **Suporta legendas do YouTube**: Preferência por legendas oficiais (melhor qualidade)
-- ✅ **Fallback para Whisper**: Transcrição automática quando não há legendas
-- ✅ **Processamento otimizado**: VAD, normalização de loudness, segmentação inteligente
-- ✅ **Preprocessamento pt-br**: Lowercase, num2words, normalização de pontuação
-- ✅ **Compatível com F5-TTS oficial**: Usa mesmas ferramentas e formato de dataset
-- ✅ **Checkpoints periódicos**: Não perde progresso em caso de falha
-- ✅ **TensorBoard/W&B**: Monitoramento em tempo real
+- ✅ **Otimizado para Baixa Memória**: Processamento em streaming (<500MB RAM)
+- ✅ **Transcrição Multi-Modelo**: Whisper Base (rápido) + Medium (qualidade)
+- ✅ **Normalização Inteligente**: Números, %, moedas → forma falada
+- ✅ **Validação Automática**: Detecta e re-processa transcrições problemáticas
+- ✅ **Retomada de Progresso**: Suporta interrupção e continuação
+- ✅ **Formato F5-TTS Nativo**: Dataset em Arrow format compatível
 
 ---
 
@@ -57,461 +43,368 @@ graph LR
 
 ### Sistema
 
-- **Python**: 3.8 ou superior
-- **CUDA**: Recomendado para GPU (opcional para CPU)
-- **ffmpeg**: Para processamento de áudio
-  ```bash
-  # Ubuntu/Debian
-  sudo apt install ffmpeg
-  
-  # macOS
-  brew install ffmpeg
-  
-  # Windows
-  choco install ffmpeg
-  ```
-
-### GPU (Recomendado)
-
-- **VRAM mínima**: 6GB (para batch_size=4)
-- **VRAM recomendada**: 8-12GB
-- **Para GPUs menores**: Ajustar `batch_size_per_gpu` e `grad_accumulation_steps` em `train_config.yaml`
-
----
-
-## 📦 Instalação
-
-### 1. Instalar Dependências Python
-
 ```bash
-# Navegar até o diretório do projeto
-cd /path/to/tts-webui-proxmox-passthrough
+# Ubuntu/Debian
+sudo apt install ffmpeg python3.11 python3-pip
 
-# Criar ambiente virtual (recomendado)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou
-.\venv\Scripts\activate  # Windows
-
-# Instalar dependências
-pip install -r train/requirements_train.txt
-```
-
-### 2. Verificar Instalação
-
-```bash
-# Verificar ffmpeg
+# Verificar instalação
 ffmpeg -version
+python3 --version  # >= 3.8
+```
 
-# Verificar CUDA (se disponível)
-python -c "import torch; print(f'CUDA disponível: {torch.cuda.is_available()}')"
+### Hardware
 
-# Verificar F5-TTS
-python -c "from f5_tts.model import CFM; print('F5-TTS OK!')"
+- **CPU**: Qualquer (GPU recomendada para treinamento)
+- **RAM**: 8GB+ (segmentação otimizada usa <500MB)
+- **GPU**: NVIDIA com 8GB+ VRAM (opcional, mas recomendado)
+- **Disco**: ~10GB para 2-3h de áudio
+
+---
+
+## 📦 Instalação Rápida
+
+```bash
+# 1. Clonar repositório (se ainda não tiver)
+cd /home/tts-webui-proxmox-passthrough
+
+# 2. Instalar dependências
+pip3 install -r train/requirements_train.txt
+
+# 3. Verificar instalação
+python3 -c "import whisper, torch; print('✅ Tudo instalado!')"
 ```
 
 ---
 
-## 🚀 Fluxo Completo
+## 🚀 Pipeline Completo
 
-### 1. Preparar Lista de Vídeos
+### Etapa 1: Preparar Lista de Vídeos
 
-Edite o arquivo `train/data/videos.csv` com os links dos vídeos do YouTube:
+Edite `train/data/videos.csv` com URLs do YouTube:
 
 ```csv
-id,youtube_url,speaker,emotion,language,split,notes
-1,https://www.youtube.com/watch?v=XXXXXXXXXXX,narrator1,neutral,pt-br,train,Documentário sobre história
-2,https://www.youtube.com/watch?v=YYYYYYYYYYY,narrator1,happy,pt-br,train,Vídeo educativo
-3,https://www.youtube.com/watch?v=ZZZZZZZZZZZ,speaker_male,neutral,pt-br,val,Podcast
+# Comentários começam com #
+# Formato: id,youtube_url,speaker,emotion,language,split,notes
+
+1,https://www.youtube.com/watch?v=XXXXXXXXXXX,narrator1,neutral,pt-br,train,Finanças
+2,https://www.youtube.com/watch?v=YYYYYYYYYYY,narrator1,neutral,pt-br,train,Empreendedorismo
+3,https://www.youtube.com/watch?v=ZZZZZZZZZZZ,narrator2,neutral,pt-br,val,Marketing
 ```
 
-**Dicas para selecionar vídeos:**
+**Dicas:**
+- ✅ Áudio limpo, sem música de fundo forte
+- ✅ Um falante principal por vídeo
+- ✅ Fala clara e natural
+- ⚠️ Evite: múltiplos falantes, música alta, ruído
 
-- ✅ Áudio limpo, sem música de fundo
-- ✅ Fala clara e pausada
-- ✅ Legendas disponíveis (preferencialmente manuais)
-- ✅ Variedade de tópicos para generalização
-- ⚠️ Evitar: vídeos com múltiplos falantes, música alta, ruído excessivo
-
-**Quanto áudio você precisa?**
-
-- **Mínimo**: 30 minutos (~10 vídeos curtos)
-- **Recomendado**: 2-5 horas (~20-50 vídeos)
-- **Ideal**: 10+ horas (100+ vídeos)
+**Quantidade recomendada:**
+- Mínimo: 30 min (~10 vídeos)
+- Ideal: 2-5 horas (~20-50 vídeos)
 
 ---
 
-### 2. Download de Áudio
-
-Baixa áudio dos vídeos e converte para WAV mono 24kHz:
+### Etapa 2: Download de Áudio
 
 ```bash
-python -m train.scripts.download_youtube
+python3 -m train.scripts.simple_download
 ```
 
-**O que acontece:**
-
-- Baixa apenas áudio (não vídeo completo)
-- Converte para WAV mono 24kHz
-- Aplica retry automático em caso de falhas
-- Skip de arquivos já baixados
+**O que faz:**
+- Baixa apenas áudio (economia de banda)
+- Converte para WAV mono 24kHz 16-bit
+- Ignora comentários (#) no CSV
+- Retry automático em falhas
 - Salva em `train/data/raw/`
 
 **Saída esperada:**
-
 ```
-📥 Iniciando download de 10 vídeos...
-
-[1/10] Processando vídeo 1...
-⬇️  Baixando [1]: https://www.youtube.com/watch?v=... (tentativa 1/3)
-✅ video_00001.wav baixado com sucesso!
-   Título: Como funciona a IA
-   Duração: 625.3s
-
+📥 Iniciando download de 11 vídeos...
+[1/11] video_00001.wav - ✅ Sucesso (625s)
+[2/11] video_00002.wav - ✅ Sucesso (842s)
 ...
-
-✅ Sucessos: 10
-⏭️  Pulados: 0
-❌ Falhas: 0
-📁 Arquivos salvos em: train/data/raw
+✅ 11/11 vídeos baixados com sucesso
 ```
 
 ---
 
-### 3. Segmentação
-
-Processa áudios, aplicando VAD e segmentando em trechos de 3-12 segundos:
+### Etapa 3: Segmentação Otimizada
 
 ```bash
-python -m train.scripts.prepare_segments
+python3 -m train.scripts.prepare_segments_optimized
 ```
 
-**O que acontece:**
-
-- Voice Activity Detection (VAD) para encontrar segmentos com fala
-- Segmentação em trechos de 3-12s
-- Normalização de loudness (LUFS)
-- Conversão para mono 24kHz 16-bit
-- Salva em `train/data/processed/wavs/`
+**O que faz:**
+- **Processamento em streaming**: Carrega áudio em chunks de 30s
+- **VAD simples**: Detecção de voz por RMS threshold
+- **Segmentação 3-12s**: Trechos ideais para F5-TTS
+- **Baixíssimo uso de RAM**: <500MB (vs 27GB do script antigo!)
+- **Garbage collection agressivo**: Libera memória continuamente
 
 **Saída esperada:**
-
 ```
-📄 Processando: video_00001.wav
-   Duração total: 625.32s
-   Segmentos com voz detectados: 45
-   Segmentos finais: 52
-   ✅ 52 segmentos salvos
-
-...
-
-📁 Arquivos originais processados: 10
-✂️  Segmentos gerados: 487
-⏱️  Duração média: 7.32s
-⏱️  Duração total: 0.99h
-📁 Segmentos salvos em: train/data/processed/wavs
+🎧 Processando: video_00001.wav
+   ✂️  1197 segmentos criados
+   💾 Salvos em: train/data/processed/wavs/
+   🧠 RAM: ~450MB
 ```
+
+**Arquivos gerados:**
+- `train/data/processed/wavs/video_XXXXX_segXXXX.wav` (áudio)
+- `train/data/processed/segments_mapping.json` (metadados)
 
 ---
 
-### 4. Transcrição
-
-Transcreve áudio usando legendas do YouTube (preferencial) ou Whisper:
+### Etapa 4: Transcrição com Whisper
 
 ```bash
-python -m train.scripts.transcribe_or_subtitles
+python3 -m train.scripts.transcribe_segments
 ```
 
-**O que acontece:**
+**O que faz:**
+- **Modelo Base**: Transcrição rápida em lote
+- **Batch processing**: 10 segmentos por vez
+- **Gestão de memória**: Libera GPU entre batches
+- **Retomada automática**: Continua de onde parou
+- **Pós-processamento**: Lowercase, limpeza de espaços
 
-1. **Tenta baixar legendas do YouTube** (mais rápido e preciso)
-   - Legendas manuais (melhor)
-   - Legendas automáticas (fallback)
-2. **Se não houver legendas, usa Whisper** (mais lento)
-   - Transcrição automática de alta qualidade
-3. **Preprocessamento de texto**:
-   - Lowercase
-   - Números → palavras (`num2words`)
-   - Normalização de pontuação
-   - Remoção de caracteres especiais
-4. **Salva em** `train/data/processed/transcriptions.json`
-
-**Saída esperada:**
-
-```
-ETAPA 1: DOWNLOAD DE LEGENDAS DO YOUTUBE
-==========================================
-
-🔍 Buscando legendas para video_1...
-   ✅ Legendas encontradas: video_00001.pt.vtt
-   ✅ 12543 caracteres extraídos
-
-...
-
-ETAPA 2: TRANSCRIÇÃO DE SEGMENTOS
-==========================================
-
-[1/487] processed/wavs/video_00001_seg0000.wav
-   📝 Usando legendas do YouTube
-   ✅ 89 caracteres: a inteligência artificial está revolucionando o mundo moderno...
-
-[50/487] processed/wavs/video_00003_seg0012.wav
-   🎤 Transcrevendo com Whisper (openai/whisper-base)...
-   ✅ 76 caracteres: neste vídeo vamos explorar como a tecnologia mudou...
-
-...
-
-📝 Segmentos transcritos: 487
-📊 Legendas do YouTube: 8 vídeos
-📄 Transcrições salvas em: train/data/processed/transcriptions.json
-```
-
----
-
-### 5. Construir Metadata
-
-Gera `metadata.csv` no formato F5-TTS:
-
-```bash
-python -m train.scripts.build_metadata_csv
-```
-
-**O que acontece:**
-
-- Lê transcrições de `transcriptions.json`
-- Copia/organiza WAVs para `f5_dataset/wavs/`
-- Gera `metadata.csv` no formato: `wavs/audio_00001.wav|texto aqui`
-- Salva `duration.json` com durações
-
-**Saída esperada:**
-
-```
-📁 Organizando arquivos WAV...
-   Processados 100/487...
-   Processados 200/487...
-   ...
-   ✅ 487 arquivos organizados
-
-✅ metadata.csv salvo: train/data/f5_dataset/metadata.csv
-   487 linhas
-
-✅ duration.json salvo: train/data/f5_dataset/duration.json
-
-📊 Total de amostras: 487
-⏱️  Duração total: 0.99h
-⏱️  Duração média: 7.32s
-📁 Dataset em: train/data/f5_dataset
-```
-
----
-
-### 6. Preparar Dataset
-
-Converte para formato Arrow (usado pelo F5-TTS):
-
-```bash
-python -m train.scripts.prepare_f5_dataset
-```
-
-**O que acontece:**
-
-- Lê `metadata.csv`
-- Valida arquivos e durações
-- Gera `raw.arrow` (formato Arrow)
-- Copia `vocab.txt` do modelo base pt-br
-- Atualiza `duration.json`
-
-**Saída esperada:**
-
-```
-📄 Lendo metadata.csv...
-   487 linhas encontradas
-
-✅ 487 amostras válidas (0 ignoradas)
-
-💾 Salvando dataset em formato Arrow...
-✅ raw.arrow salvo: train/data/f5_dataset/raw.arrow
-
-💾 Atualizando duration.json...
-✅ duration.json atualizado
-
-📝 Configurando vocab.txt...
-✅ vocab.txt copiado de: models/f5tts/pt-br/vocab.txt
-
-==========================================
-DATASET F5-TTS PRONTO!
-==========================================
-📊 Total de amostras: 487
-⏱️  Duração total: 0.99h
-⏱️  Duração média: 7.32s
-📝 Vocab size: 245 caracteres
-📁 Dataset salvo em: train/data/f5_dataset
-   - raw.arrow
-   - duration.json
-   - vocab.txt
-   - wavs/
-==========================================
-```
-
----
-
-### 7. Treinar Modelo
-
-Inicia o fine-tuning do F5-TTS pt-br:
-
-```bash
-python -m train.run_training
-```
-
-**Opções:**
-
-```bash
-# Usar config customizada
-python -m train.run_training --config train/config/my_config.yaml
-
-# Retomar treino de checkpoint
-python -m train.run_training --resume train/output/ptbr_finetuned/last.pt
-
-# Override dataset path
-python -m train.run_training --dataset-path /caminho/custom/dataset
-```
-
-**O que acontece:**
-
-1. Carrega configuração de `train_config.yaml`
-2. Inicializa modelo F5-TTS (DiT ou UNetT)
-3. Carrega checkpoint base `firstpixel/F5-TTS-pt-br`
-4. Configura Trainer (optimizer, scheduler, EMA, etc.)
-5. Carrega dataset do Arrow
-6. Inicia treinamento:
-   - Salva checkpoints a cada N updates
-   - Loga métricas (TensorBoard/W&B)
-   - Gera samples de áudio (se `log_samples: true`)
-
-**Saída esperada:**
-
-```
-==========================================
-F5-TTS FINE-TUNING - PORTUGUÊS BRASILEIRO
-==========================================
-Modelo base: firstpixel/F5-TTS-pt-br
-Config: train/config/train_config.yaml
-
-📁 Dataset: train/data/f5_dataset
-
-==========================================
-INICIALIZAÇÃO DO MODELO
-==========================================
-📝 Usando tokenizer: pinyin
-🏗️  Inicializando modelo DiT...
-✅ Modelo criado: 450.2M parâmetros
-📥 Carregando checkpoint base: ./models/f5tts/pt-br/model_last.safetensors
-✅ Checkpoint EMA carregado
-
-==========================================
-CONFIGURAÇÃO DO TREINAMENTO
-==========================================
-💻 Device: cuda
-🏋️  Configurando Trainer...
-✅ Trainer configurado
-
-==========================================
-CARREGAMENTO DO DATASET
-==========================================
-📚 Carregando dataset: ptbr_youtube_custom
-✅ Dataset carregado: 487 amostras
-
-==========================================
-INICIANDO TREINAMENTO
-==========================================
-Epochs: 10
-Batch size: 4
-Grad accumulation: 4
-Learning rate: 0.0001
-Output dir: train/output/ptbr_finetuned
-==========================================
-
-Epoch 1/10: 100%|████████████| 30/30 [03:42<00:00, 7.41s/update]
-loss: 0.4532, lr: 0.000100
-
-Checkpoint saved: train/output/ptbr_finetuned/checkpoint_500.pt
-Audio samples saved: train/output/ptbr_finetuned/samples/sample_500_*.wav
-
-...
-
-==========================================
-✅ TREINAMENTO CONCLUÍDO!
-==========================================
-Checkpoints salvos em: train/output/ptbr_finetuned
-
-Para usar o modelo treinado:
-  1. Encontre o checkpoint em train/output/ptbr_finetuned/
-  2. Teste com o script de inferência
-  3. Integre na API (próxima tarefa)
-==========================================
-```
-
----
-
-## ⚙️ Configuração
-
-### `train_config.yaml` (Treinamento)
-
-Principais parâmetros:
-
+**Configuração** (`train/config/dataset_config.yaml`):
 ```yaml
-# Modelo base
+asr:
+  model: "openai/whisper-base"  # Rápido
+  language: "pt"
+  batch_size: 10
+```
+
+**Saída esperada:**
+```
+🎤 Transcrevendo 1197 segmentos...
+[1/1197] video_00001_seg0000.wav
+   ✅ "novecentos reais por semana de dentro da sua casa..."
+[2/1197] video_00001_seg0001.wav
+   ✅ "usando o mercado livre sem trânsito sem..."
+...
+✅ 1197/1197 transcritos
+💾 Salvo em: train/data/processed/transcriptions.json
+```
+
+**Tempo estimado:**
+- Base model: ~2-4 horas para 1200 segmentos (RTX 3090)
+- Medium model: ~5-8 horas
+
+---
+
+### Etapa 5: Normalização de Texto
+
+```bash
+python3 -m train.scripts.normalize_transcriptions
+```
+
+**O que faz:**
+- **Números → Palavras**: `2025` → `"dois mil e vinte e cinco"`
+- **Percentuais**: `3%` → `"três porcento"`
+- **Moeda**: `R$ 100` → `"cem reais"`
+- **Símbolos**: `&` → `"e"`, `/` → `"barra"`
+- **Ordinais**: `1º` → `"primeiro"`
+- **Preserva original**: Cria backup antes de modificar
+
+**Biblioteca utilizada**: `num2words` com suporte pt_BR
+
+**Saída esperada:**
+```
+📝 Normalizando 1196 transcrições...
+
+Exemplo 1:
+   Original:    "Em 2025 tivemos 3% de crescimento"
+   Normalizado: "em dois mil e vinte e cinco tivemos três porcento de crescimento"
+
+Exemplo 2:
+   Original:    "Custa R$ 1.500,00"
+   Normalizado: "custa mil e quinhentos reais"
+
+✅ 79/1196 normalizadas (6.6%)
+💾 Backup salvo: transcriptions_backup_XXXXXXXX.json
+```
+
+---
+
+### Etapa 6: Validação e Re-processamento
+
+```bash
+python3 -m train.scripts.validate_and_reprocess
+```
+
+**O que detecta:**
+- ❌ Caracteres inválidos (%, /, \, etc)
+- ❌ Palavras repetidas excessivamente (>5x)
+- ❌ Letras isoladas com pontuação
+- ❌ Textos muito curtos (<3 palavras)
+- ❌ Muitas palavras não-portuguesas (>70%)
+- ❌ Sequências repetidas suspeitas
+
+**O que faz:**
+- Re-transcreve áudios problemáticos com **Whisper Medium** (mais preciso)
+- Valida novo texto
+- Atualiza JSON se aprovado
+- Gera relatório de problemas
+
+**Saída esperada:**
+```
+🔍 Validando 1196 transcrições...
+
+📈 Resultados:
+   ✅ Válidas: 1092 (91.3%)
+   ❌ Inválidas: 104 (8.7%)
+
+⚠️  Problemas encontrados:
+   - Caracteres inválidos: 17
+   - Palavras repetidas: 6
+   - Letras isoladas: 12
+
+❓ Re-processar 104 áudios com modelo 'medium'? [s/N]: s
+
+🔄 Re-processando...
+[1/104] video_00001_seg0000.wav
+   ✅ Novo texto válido!
+...
+✅ 98/104 re-processados com sucesso
+```
+
+---
+
+### Etapa 7: Construir Metadata
+
+```bash
+python3 -m train.scripts.build_metadata_csv
+```
+
+**O que faz:**
+- Combina transcrições + metadados de áudio
+- Cria `metadata.csv` no formato F5-TTS
+- Filtra segmentos inválidos
+- Valida duração, texto, caminhos
+
+**Formato do metadata.csv:**
+```csv
+audio_path|text|duration|speaker
+wavs/video_00001_seg0000.wav|novecentos reais por semana...|12.0|narrator1
+wavs/video_00001_seg0001.wav|usando o mercado livre sem...|8.5|narrator1
+```
+
+**Saída esperada:**
+```
+📊 Construindo metadata...
+   Transcrições: 1196
+   Áudios válidos: 1196
+   Metadata gerado: 1196 linhas
+
+💾 Salvo em: train/data/processed/metadata.csv
+```
+
+---
+
+### Etapa 8: Preparar Dataset F5-TTS
+
+```bash
+python3 -m train.scripts.prepare_f5_dataset
+```
+
+**O que faz:**
+- Converte `metadata.csv` → formato Arrow
+- Cria splits train/val
+- Calcula estatísticas do dataset
+- Prepara para F5-TTS trainer
+
+**Saída esperada:**
+```
+🎯 Preparando dataset F5-TTS...
+
+📊 Estatísticas:
+   Total de amostras: 1196
+   Duração total: 2.8h
+   Train: 1076 (90%)
+   Val: 120 (10%)
+
+💾 Dataset salvo em: train/output/dataset/
+   ├── train.arrow
+   ├── val.arrow
+   └── metadata.json
+```
+
+---
+
+### Etapa 9: Treinar Modelo
+
+```bash
+python3 -m train.run_training
+```
+
+**Configuração** (`train/config/train_config.yaml`):
+```yaml
 model:
   base_model: "firstpixel/F5-TTS-pt-br"
-  checkpoint_path: "./models/f5tts/pt-br/model_last.safetensors"
-
-# Hiperparâmetros
-training:
-  learning_rate: 1.0e-4
-  batch_size_per_gpu: 4  # Ajuste conforme sua VRAM
-  grad_accumulation_steps: 4
-  epochs: 10
-
-# Checkpoints
-checkpoints:
-  output_dir: "./train/output/ptbr_finetuned"
-  save_per_updates: 500
-  keep_last_n_checkpoints: 5
-```
-
-**Para GPUs com pouca VRAM (4-6GB):**
-
-```yaml
-training:
-  batch_size_per_gpu: 2  # Reduzir batch size
-  grad_accumulation_steps: 8  # Aumentar accumulation
   
-advanced:
-  gradient_checkpointing: true  # Economiza VRAM
+training:
+  epochs: 10
+  batch_size_per_gpu: 4
+  learning_rate: 1e-5
+  gradient_accumulation_steps: 4
+  
+hardware:
+  mixed_precision: "fp16"  # RTX 3090
+  num_gpus: 1
 ```
 
-### `dataset_config.yaml` (Preparação de Dados)
-
-Principais parâmetros:
-
-```yaml
-# Segmentação
-segmentation:
-  min_duration: 3.0  # Mínimo 3s
-  max_duration: 12.0  # Máximo 12s
-  use_vad: true  # Voice Activity Detection
-
-# Transcrição
-transcription:
-  prefer_youtube_subtitles: true  # Tentar legendas primeiro
-  asr:
-    model: "openai/whisper-base"  # tiny, base, small, medium, large
-
-# Preprocessamento
-text_preprocessing:
-  lowercase: true
-  convert_numbers_to_words: true
+**Saída esperada:**
 ```
+🚀 Iniciando treinamento F5-TTS...
+   Base: firstpixel/F5-TTS-pt-br
+   GPU: NVIDIA RTX 3090 (24GB)
+   Samples: 1076 train, 120 val
+
+Epoch 1/10
+[████████████████████████] 269/269 - loss: 0.245
+Validação: loss=0.198
+
+...
+
+✅ Treinamento concluído!
+💾 Modelo salvo em: train/output/checkpoints/final/
+```
+
+**Tempo estimado:**
+- RTX 3090: ~2-4 horas (10 epochs, 1200 samples)
+- RTX 3060: ~4-8 horas
+
+---
+
+## 📜 Scripts Disponíveis
+
+### Scripts de Processamento
+
+| Script | Função | Uso |
+|--------|--------|-----|
+| `simple_download.py` | Download de áudio do YouTube | `python -m train.scripts.simple_download` |
+| `prepare_segments_optimized.py` | Segmentação otimizada (streaming) | `python -m train.scripts.prepare_segments_optimized` |
+| `transcribe_segments.py` | Transcrição com Whisper Base | `python -m train.scripts.transcribe_segments` |
+| `normalize_transcriptions.py` | Normalização de texto (números, %, etc) | `python -m train.scripts.normalize_transcriptions` |
+| `validate_and_reprocess.py` | Validação QA + re-processamento | `python -m train.scripts.validate_and_reprocess` |
+| `build_metadata_csv.py` | Gerar metadata.csv | `python -m train.scripts.build_metadata_csv` |
+| `prepare_f5_dataset.py` | Converter para formato F5-TTS | `python -m train.scripts.prepare_f5_dataset` |
+| `run_training.py` | Treinar modelo F5-TTS | `python -m train.run_training` |
+
+### Scripts Legados (não usar)
+
+| Script | Status | Motivo |
+|--------|--------|--------|
+| `prepare_segments.py` | ⚠️ Obsoleto | Consumia 27GB RAM, use `prepare_segments_optimized.py` |
+| `transcribe_or_subtitles.py` | ⚠️ Obsoleto | Legendas do YouTube não funcionaram bem |
+| `download_youtube.py` | ⚠️ Obsoleto | Problemas com CSV, use `simple_download.py` |
+
+### Utilitários
+
+| Módulo | Função |
+|--------|--------|
+| `train/utils/text_normalizer.py` | Normalização de texto (classe `TextNormalizer`) |
 
 ---
 
@@ -519,204 +412,216 @@ text_preprocessing:
 
 ```
 train/
-├── README.md                      # Esta documentação
-├── __init__.py
-├── run_training.py                # Script principal de treinamento
-│
 ├── config/
-│   ├── train_config.yaml          # Configuração de treinamento
-│   └── dataset_config.yaml        # Configuração de preparação
-│
-├── scripts/
-│   ├── __init__.py
-│   ├── download_youtube.py        # 1. Download de áudio
-│   ├── prepare_segments.py        # 2. Segmentação
-│   ├── transcribe_or_subtitles.py # 3. Transcrição
-│   ├── build_metadata_csv.py      # 4. Construir metadata
-│   └── prepare_f5_dataset.py      # 5. Preparar dataset Arrow
-│
+│   ├── dataset_config.yaml      # Config de processamento
+│   └── train_config.yaml         # Config de treinamento
 ├── data/
-│   ├── videos.csv                 # Lista de vídeos do YouTube
-│   ├── raw/                       # Áudio baixado (WAV 24kHz)
-│   ├── subtitles/                 # Legendas do YouTube
-│   ├── processed/
-│   │   ├── wavs/                  # Segmentos processados
-│   │   ├── segments_mapping.json  # Mapping segmentos → vídeos
-│   │   └── transcriptions.json    # Transcrições
-│   └── f5_dataset/                # Dataset final F5-TTS
-│       ├── raw.arrow              # Dataset Arrow
-│       ├── duration.json          # Durações
-│       ├── vocab.txt              # Vocabulário
-│       ├── metadata.csv           # Metadata (path|text)
-│       └── wavs/                  # WAVs organizados
-│
+│   ├── videos.csv                # Lista de vídeos (INPUT)
+│   ├── raw/                      # Áudios baixados
+│   │   ├── video_00001.wav
+│   │   └── ...
+│   └── processed/
+│       ├── wavs/                 # Segmentos (3-12s)
+│       │   ├── video_00001_seg0000.wav
+│       │   └── ...
+│       ├── segments_mapping.json # Metadados dos segmentos
+│       ├── transcriptions.json   # Transcrições normalizadas
+│       └── metadata.csv          # Dataset final
+├── scripts/
+│   ├── simple_download.py
+│   ├── prepare_segments_optimized.py
+│   ├── transcribe_segments.py
+│   ├── normalize_transcriptions.py
+│   ├── validate_and_reprocess.py
+│   ├── build_metadata_csv.py
+│   ├── prepare_f5_dataset.py
+│   └── ...
+├── utils/
+│   ├── text_normalizer.py        # Normalização de texto
+│   └── ...
+├── logs/                          # Logs de execução
 ├── output/
-│   └── ptbr_finetuned/            # Checkpoints do modelo treinado
-│       ├── checkpoint_500.pt
-│       ├── checkpoint_1000.pt
-│       ├── last.pt
-│       └── samples/               # Samples de áudio (se log_samples=true)
-│
-└── logs/
-    ├── download_youtube.log
-    ├── prepare_segments.log
-    ├── transcribe.log
-    ├── build_metadata.log
-    ├── prepare_f5_dataset.log
-    ├── training.log
-    └── tensorboard/               # TensorBoard logs
+│   ├── dataset/                   # Dataset Arrow
+│   └── checkpoints/               # Modelos treinados
+├── requirements_train.txt
+└── README.md
 ```
 
 ---
 
-## 🔍 Solução de Problemas
+## ⚡ Otimizações e Melhorias
 
-### Erro: `ffmpeg não encontrado`
+### 1. Segmentação Otimizada
 
-```bash
-# Ubuntu/Debian
-sudo apt install ffmpeg
+**Problema Original:**
+- Script `prepare_segments.py` consumia **27GB de RAM**
+- Carregava áudio completo na memória
+- Usava `librosa.effects.split()` (pesado)
 
-# macOS
-brew install ffmpeg
+**Solução:**
+- `prepare_segments_optimized.py`: Processamento em **streaming**
+- Chunks de 30s, VAD simples por RMS
+- **<500MB de RAM** (redução de 98%!)
+- Garbage collection agressivo
 
-# Windows
-choco install ffmpeg
+### 2. Transcrição Multi-Modelo
+
+**Estratégia:**
+- **Whisper Base**: Transcrição inicial rápida (bulk processing)
+- **Whisper Medium**: Re-processamento de áudios com problemas
+- Validação automática detecta erros e aciona modelo melhor
+
+### 3. Normalização de Texto
+
+**Biblioteca:** `num2words` (pt_BR nativo)
+
+**Conversões:**
+```python
+"2025" → "dois mil e vinte e cinco"
+"3%" → "três porcento"
+"R$ 100" → "cem reais"
+"1º" → "primeiro"
+"&" → "e"
 ```
 
-### Erro: `CUDA out of memory`
+**Benefícios:**
+- Modelo aprende números falados naturalmente
+- Elimina caracteres problemáticos (%, /, \)
+- Melhora consistência do treinamento
 
-Reduza batch size em `train_config.yaml`:
+### 4. Sistema de Validação QA
+
+**Checks automáticos:**
+- Caracteres inválidos
+- Palavras repetidas >5x
+- Letras isoladas com pontuação
+- Textos muito curtos
+- Palavras não-portuguesas >70%
+
+**Ação:**
+- Re-processamento com Whisper Medium
+- Relatório de problemas
+- Backup automático
+
+---
+
+## 🐛 Solução de Problemas
+
+### Erro: "KeyError: 'youtube_url'"
+
+**Causa:** Linhas de comentário (#) no `videos.csv`
+
+**Solução:** Scripts atualizados ignoram linhas com `#`. Se usar script antigo:
+```python
+# Adicionar antes de processar CSV
+lines = [l for l in lines if not l.startswith('#')]
+```
+
+### Erro: "RuntimeError: Model whisper-base not found"
+
+**Causa:** Nome do modelo incorreto
+
+**Solução:** Usar apenas `base`, `medium`, `large` (sem prefixo `whisper-`)
 
 ```yaml
+# dataset_config.yaml
+asr:
+  model: "openai/whisper-base"  # Correto
+```
+
+### Consumo Alto de RAM (>10GB)
+
+**Causa:** Usando `prepare_segments.py` antigo
+
+**Solução:** Usar `prepare_segments_optimized.py`
+```bash
+python3 -m train.scripts.prepare_segments_optimized
+```
+
+### Transcrições com Caracteres Estranhos (%, /, \)
+
+**Solução:** Executar normalização
+```bash
+python3 -m train.scripts.normalize_transcriptions
+```
+
+### CUDA Out of Memory
+
+**Solução 1:** Reduzir batch size
+```yaml
+# train_config.yaml
 training:
-  batch_size_per_gpu: 2  # Era 4
-  grad_accumulation_steps: 8  # Era 4
-
-advanced:
-  gradient_checkpointing: true
+  batch_size_per_gpu: 2  # era 4
+  gradient_accumulation_steps: 8  # era 4
 ```
 
-### Erro: `yt-dlp não consegue baixar vídeo`
-
-Alguns vídeos têm restrições de download. Tente:
-
-1. Verificar se o vídeo é público
-2. Atualizar yt-dlp: `pip install --upgrade yt-dlp`
-3. Usar outro vídeo
-
-### Dataset muito pequeno (< 30 minutos)
-
-O modelo pode overfittar. Soluções:
-
-1. Adicionar mais vídeos ao `videos.csv`
-2. Reduzir número de epochs
-3. Usar data augmentation (TODO: implementar)
-
-### Transcrição com Whisper muito lenta
-
-Whisper é lento em CPU. Opções:
-
-1. Usar GPU: `device: cuda` em `dataset_config.yaml`
-2. Usar modelo menor: `model: openai/whisper-tiny`
-3. Preferir vídeos com legendas: `prefer_youtube_subtitles: true`
-
-### Checkpoints ocupando muito espaço
-
-Configure em `train_config.yaml`:
-
+**Solução 2:** Usar FP16
 ```yaml
-checkpoints:
-  keep_last_n_checkpoints: 3  # Manter apenas 3
-  save_per_updates: 1000  # Salvar menos frequentemente
+hardware:
+  mixed_precision: "fp16"
 ```
 
 ---
 
-## 🎯 Próximos Passos
+## 📊 Estatísticas de Exemplo
 
-Após concluir o treinamento:
+**Projeto Atual (11 vídeos):**
+- ✅ Áudios baixados: 11 (2h 45min)
+- ✅ Segmentos gerados: 1197
+- ✅ Transcrições válidas: 1092 (91.3%)
+- ✅ Re-processadas: 104 (8.7%)
+- ✅ Normalizadas: 79 (6.6%)
+- ✅ Dataset final: ~2.8h de áudio limpo
 
-### 1. Testar o Modelo
+**Tempo Total:**
+- Download: ~15 min
+- Segmentação: ~8 min
+- Transcrição Base: ~2.5h
+- Validação + Re-processamento: ~30 min
+- Normalização: <1 min
+- **Total: ~3.5 horas**
 
-```bash
-# TODO: Criar script de inferência
-python -m train.scripts.test_inference \
-    --checkpoint train/output/ptbr_finetuned/checkpoint_1000.pt \
-    --text "olá, como você está?" \
-    --ref-audio samples/ref.wav \
-    --output test_output.wav
-```
+---
 
-### 2. Avaliar Qualidade
+## 🎓 Próximos Passos
 
-- Escutar samples gerados em `train/output/ptbr_finetuned/samples/`
-- Comparar com modelo base `firstpixel/F5-TTS-pt-br`
-- Avaliar naturalidade, pronúncia, prosódia
+Após treinar seu modelo:
 
-### 3. Integrar na API
+1. **Testar o modelo**
+   ```bash
+   python -c "from f5_tts import F5TTS; model = F5TTS.from_pretrained('train/output/checkpoints/final'); model.infer('Olá mundo')"
+   ```
 
-**Opção A: Substituir modelo padrão**
+2. **Integrar na aplicação principal**
+   - Copiar checkpoint para `models/f5tts/custom/`
+   - Atualizar `app/engines/f5tts_engine.py`
 
-```bash
-# Copiar checkpoint para models/
-cp train/output/ptbr_finetuned/checkpoint_1000.pt \
-   models/f5tts/pt-br/model_finetuned.safetensors
-```
-
-Atualizar `.env`:
-
-```bash
-F5TTS_MODEL=models/f5tts/pt-br/model_finetuned.safetensors
-```
-
-**Opção B: Criar novo engine/preset** (Próxima tarefa)
-
-- Adicionar engine `f5tts-custom` em `engines/factory.py`
-- Criar quality profile `f5tts_custom_high_quality`
-- Expor via API `/quality-profiles`
-
-### 4. Continuar Treinamento (Opcional)
-
-Se quiser mais epochs:
-
-```bash
-python -m train.run_training \
-    --resume train/output/ptbr_finetuned/last.pt
-```
-
-Ajustar `epochs` em `train_config.yaml` antes.
+3. **Iterar e melhorar**
+   - Adicionar mais vídeos
+   - Ajustar hyperparameters
+   - Experimentar com diferentes vozes
 
 ---
 
 ## 📚 Referências
 
-- **F5-TTS Original**: https://github.com/SWivid/F5-TTS
-- **firstpixel/F5-TTS-pt-br**: https://huggingface.co/firstpixel/F5-TTS-pt-br
-- **Whisper (OpenAI)**: https://github.com/openai/whisper
-- **yt-dlp**: https://github.com/yt-dlp/yt-dlp
+- [F5-TTS Original](https://github.com/SWivid/F5-TTS)
+- [F5-TTS Portuguese](https://huggingface.co/firstpixel/F5-TTS-pt-br)
+- [OpenAI Whisper](https://github.com/openai/whisper)
+- [num2words](https://github.com/savoirfairelinux/num2words)
 
 ---
 
-## 📝 Notas
+## 📝 Changelog
 
-### ⚠️ IMPORTANTE: Não Quebra API Atual
+### 2025-12-02 - Melhorias Majors
 
-- ✅ Todo código de treinamento está isolado em `/train`
-- ✅ API de produção (`/app`) não é alterada
-- ✅ Modelos de inferência atuais continuam funcionando
-- ✅ Checkpoint treinado NÃO é usado automaticamente
-
-Para usar o modelo treinado, você deve **manualmente** integrá-lo na API (Tarefa futura).
-
-### 🔒 Licença
-
-O modelo base `firstpixel/F5-TTS-pt-br` é licenciado sob **CC-BY-NC-4.0** (não comercial).
-
-Certifique-se de respeitar os termos de licença ao usar modelos derivados.
+- ✅ **Segmentação otimizada**: Redução de RAM de 27GB → <500MB
+- ✅ **Sistema de validação QA**: Detecta e re-processa problemas
+- ✅ **Normalização de texto**: Números, %, moeda → forma falada
+- ✅ **Multi-modelo**: Base (rápido) + Medium (qualidade)
+- ✅ **Documentação completa**: README atualizado com todos os detalhes
 
 ---
 
-**✨ Boa sorte com o treinamento! ✨**
-
-Para dúvidas ou problemas, consulte os logs em `train/logs/` ou abra uma issue.
+**Desenvolvido com ❤️ para a comunidade de TTS em português brasileiro**

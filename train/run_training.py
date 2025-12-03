@@ -21,6 +21,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+import glob
 
 import yaml
 import torch
@@ -51,6 +52,40 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def find_latest_checkpoint(output_dir: Path) -> Path:
+    """
+    Encontra o último checkpoint salvo no diretório de output
+    
+    Args:
+        output_dir: Diretório de checkpoints
+    
+    Returns:
+        Path do último checkpoint ou None
+    """
+    if not output_dir.exists():
+        return None
+    
+    # Procurar por model_last.pt primeiro
+    last_ckpt = output_dir / "model_last.pt"
+    if last_ckpt.exists():
+        return last_ckpt
+    
+    # Procurar por model_XXXX.pt
+    checkpoints = list(output_dir.glob("model_*.pt"))
+    if not checkpoints:
+        return None
+    
+    # Ordenar por número (model_500.pt, model_1000.pt, etc)
+    def get_step(path):
+        try:
+            return int(path.stem.split('_')[1])
+        except:
+            return 0
+    
+    checkpoints.sort(key=get_step, reverse=True)
+    return checkpoints[0]
+
+
 def load_config(config_path: Path) -> dict:
     """Carrega configuração do treinamento"""
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -73,16 +108,29 @@ def setup_model(config: dict):
     # Determinar tipo de modelo
     model_cls = DiT if model_config['model_type'] == 'DiT' else UNetT
     
-    # Tokenizer
-    vocab_file = model_config.get('vocab_file')
-    if vocab_file and Path(vocab_file).exists():
-        tokenizer = "custom"
-        logger.info(f"📝 Usando tokenizer customizado: {vocab_file}")
-    else:
-        tokenizer = "pinyin"  # Padrão do pt-br
-        logger.info(f"📝 Usando tokenizer: {tokenizer}")
+    # Tokenizer - usar vocab.txt do dataset
+    dataset_path = Path(config['training']['dataset_path'])
+    vocab_file_dataset = dataset_path / "vocab.txt"
+    vocab_file_config = model_config.get('vocab_file')
     
-    vocab_char_map, vocab_size = get_tokenizer(vocab_file if vocab_file and Path(vocab_file).exists() else None, tokenizer)
+    # Prioridade: 1. vocab do dataset, 2. vocab do config, 3. padrão pt-br
+    if vocab_file_dataset.exists():
+        vocab_file = str(vocab_file_dataset)
+        tokenizer = "custom"
+        logger.info(f"📝 Usando vocab do dataset: {vocab_file}")
+    elif vocab_file_config and Path(vocab_file_config).exists():
+        vocab_file = vocab_file_config
+        tokenizer = "custom"
+        logger.info(f"📝 Usando vocab do config: {vocab_file}")
+    else:
+        # Usar vocab padrão do modelo pt-br
+        vocab_file = None
+        tokenizer = "custom"  # pt-br usa custom, não pinyin
+        logger.warning("⚠️  Nenhum vocab.txt encontrado, usando caracteres do dataset")
+    
+    vocab_char_map, vocab_size = get_tokenizer(vocab_file, tokenizer)
+    
+    logger.info(f"📊 Vocab size: {vocab_size} caracteres")
     
     # Criar modelo
     logger.info(f"🏗️  Inicializando modelo {model_config['model_type']}...")
@@ -95,7 +143,7 @@ def setup_model(config: dict):
             ff_mult=model_config['ff_mult'],
             text_dim=model_config['text_dim'],
             conv_layers=model_config['conv_layers'],
-            vocab_char_map=vocab_char_map,
+            text_num_embeds=vocab_size,  # Tamanho do vocabulário
         ),
         mel_spec_kwargs=dict(
             target_sample_rate=mel_config['target_sample_rate'],
@@ -191,6 +239,11 @@ def main():
         help='Path to checkpoint to resume from'
     )
     parser.add_argument(
+        '--fresh-start',
+        action='store_true',
+        help='Ignore existing checkpoints and start fresh training'
+    )
+    parser.add_argument(
         '--dataset-path',
         type=str,
         default=None,
@@ -217,12 +270,30 @@ def main():
     if args.dataset_path:
         config['training']['dataset_path'] = args.dataset_path
     
+    # Detectar automaticamente se há checkpoint anterior
+    output_dir = Path(config['checkpoints']['output_dir'])
+    existing_checkpoint = find_latest_checkpoint(output_dir)
+    
     # Override resume checkpoint if provided
     if args.resume:
         config['checkpoints']['resume_from_checkpoint'] = args.resume
+        logger.info(f"🔄 Checkpoint manual especificado: {args.resume}")
+    elif existing_checkpoint and not args.fresh_start:
+        # Auto-retomar do último checkpoint
+        config['checkpoints']['resume_from_checkpoint'] = str(existing_checkpoint)
+        logger.info(f"🔄 Checkpoint detectado - continuando treinamento: {existing_checkpoint}")
+        logger.info(f"   (use --fresh-start para treinar do zero)")
+    else:
+        if args.fresh_start:
+            logger.info("🆕 Iniciando treinamento do zero (--fresh-start)")
+        else:
+            logger.info("🆕 Nenhum checkpoint encontrado - iniciando do zero")
     
-    # Verificar dataset
+    # Verificar dataset - usar caminho absoluto
     dataset_path = Path(config['training']['dataset_path'])
+    if not dataset_path.is_absolute():
+        dataset_path = (project_root / dataset_path).resolve()
+    
     raw_arrow = dataset_path / "raw.arrow"
     
     if not raw_arrow.exists():
@@ -244,8 +315,12 @@ def main():
     # Criar diretórios de logs
     if config['logging']['logger'] == 'tensorboard':
         tb_dir = Path(config['logging']['tensorboard_dir'])
+        if not tb_dir.is_absolute():
+            tb_dir = (project_root / tb_dir).resolve()
         tb_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"📊 TensorBoard logs: {tb_dir}")
+        logger.info(f"   Para visualizar: tensorboard --logdir={tb_dir}")
+        logger.info(f"   Acesse: http://localhost:6006")
     
     # Setup model
     logger.info("\n" + "=" * 80)
@@ -254,28 +329,84 @@ def main():
     
     model = setup_model(config)
     
-    # Carregar checkpoint base (se especificado)
+    # Carregar checkpoint base (FINE-TUNING do modelo pré-treinado)
     checkpoint_path = config['model'].get('checkpoint_path')
-    if checkpoint_path and Path(checkpoint_path).exists():
-        logger.info(f"📥 Carregando checkpoint base: {checkpoint_path}")
-        try:
-            # Load checkpoint
-            from safetensors.torch import load_file
-            ckpt = load_file(checkpoint_path, device='cpu')
-            
-            # Carregar state dict (pode ser que precise de unwrap)
-            if 'ema_model_state_dict' in ckpt:
-                model.load_state_dict(ckpt['ema_model_state_dict'])
-                logger.info("✅ Checkpoint EMA carregado")
-            elif 'model_state_dict' in ckpt:
-                model.load_state_dict(ckpt['model_state_dict'])
-                logger.info("✅ Checkpoint carregado")
-            else:
-                model.load_state_dict(ckpt)
-                logger.info("✅ Checkpoint carregado")
-        except Exception as e:
-            logger.warning(f"⚠️  Erro ao carregar checkpoint: {e}")
-            logger.warning("   Iniciando treino do zero...")
+    if checkpoint_path:
+        checkpoint_path = Path(checkpoint_path)
+        if not checkpoint_path.is_absolute():
+            checkpoint_path = (project_root / checkpoint_path).resolve()
+        
+        if checkpoint_path.exists():
+            logger.info(f"📥 Carregando modelo pré-treinado: {checkpoint_path}")
+            try:
+                # Tentar carregar safetensors primeiro (mais rápido)
+                if checkpoint_path.suffix == '.safetensors':
+                    from safetensors.torch import load_file
+                    ckpt = load_file(str(checkpoint_path), device='cpu')
+                else:
+                    # Carregar .pt/.pth
+                    ckpt = torch.load(str(checkpoint_path), map_location='cpu')
+                
+                # Carregar state dict (pode ter wrapping diferente)
+                # IMPORTANTE: strict=False porque vocab size é diferente (pt-br vs original)
+                if 'ema_model_state_dict' in ckpt:
+                    incompatible = model.load_state_dict(ckpt['ema_model_state_dict'], strict=False)
+                    logger.info("✅ Checkpoint EMA carregado (fine-tuning)")
+                elif 'model_state_dict' in ckpt:
+                    incompatible = model.load_state_dict(ckpt['model_state_dict'], strict=False)
+                    logger.info("✅ Checkpoint carregado (fine-tuning)")
+                else:
+                    incompatible = model.load_state_dict(ckpt, strict=False)
+                    logger.info("✅ Checkpoint carregado (fine-tuning)")
+                
+                # Mostrar layers não carregados (esperado devido a vocab size diferente)
+                if incompatible.missing_keys:
+                    logger.info(f"   ⚠️  {len(incompatible.missing_keys)} layers não carregados (serão treinados do zero)")
+                    logger.debug(f"      Missing: {incompatible.missing_keys[:3]}...")
+                if incompatible.unexpected_keys:
+                    logger.info(f"   ℹ️  {len(incompatible.unexpected_keys)} layers ignorados (não compatíveis)")
+                
+                logger.info("🎯 Modo: FINE-TUNING (partindo de modelo pré-treinado pt-br)")
+            except RuntimeError as e:
+                # Erro de compatibilidade - tentar carregar parcialmente
+                if "size mismatch" in str(e):
+                    logger.warning(f"⚠️  Incompatibilidade de tamanho detectada (vocab diferente)")
+                    logger.warning("   Carregando apenas layers compatíveis...")
+                    
+                    # Carregar apenas layers compatíveis
+                    model_dict = model.state_dict()
+                    if 'ema_model_state_dict' in ckpt:
+                        pretrained_dict = ckpt['ema_model_state_dict']
+                    elif 'model_state_dict' in ckpt:
+                        pretrained_dict = ckpt['model_state_dict']
+                    else:
+                        pretrained_dict = ckpt
+                    
+                    # Filtrar layers incompatíveis
+                    pretrained_dict = {k: v for k, v in pretrained_dict.items() 
+                                      if k in model_dict and v.shape == model_dict[k].shape}
+                    
+                    logger.info(f"   ✅ {len(pretrained_dict)}/{len(model_dict)} layers carregados")
+                    logger.info(f"   ⚠️  {len(model_dict) - len(pretrained_dict)} layers serão treinados do zero")
+                    
+                    model_dict.update(pretrained_dict)
+                    model.load_state_dict(model_dict)
+                    
+                    logger.info("🎯 Modo: FINE-TUNING PARCIAL (vocab pt-br customizado)")
+                else:
+                    raise
+            except Exception as e:
+                logger.error(f"❌ Erro ao carregar checkpoint: {e}")
+                logger.error("   Não é possível continuar sem modelo pré-treinado!")
+                import traceback
+                traceback.print_exc()
+                sys.exit(1)
+        else:
+            logger.error(f"❌ Checkpoint não encontrado: {checkpoint_path}")
+            logger.error("   Execute primeiro: python -m train.scripts.download_pretrained_model")
+            sys.exit(1)
+    else:
+        logger.warning("⚠️  Nenhum checkpoint especificado, iniciando do zero...")
     
     # Setup trainer
     logger.info("\n" + "=" * 80)
@@ -292,17 +423,56 @@ def main():
     dataset_name = config['training']['dataset_name']
     
     logger.info(f"📚 Carregando dataset: {dataset_name}")
+    logger.info(f"📁 Caminho: {dataset_path}")
     
     try:
+        # IMPORTANTE: F5-TTS procura dataset em data/{dataset_name}_{tokenizer}/
+        # SEMPRE usar train/data/ (dentro da pasta train)
+        train_root = Path(__file__).parent  # train/
+        f5_tts_data_dir = train_root / "data"
+        f5_tts_data_dir.mkdir(parents=True, exist_ok=True)
+        
+        expected_dataset_dir = f5_tts_data_dir / f"{dataset_name}_custom"
+        
+        if not expected_dataset_dir.exists():
+            logger.info(f"🔗 Criando symlink: {expected_dataset_dir} -> {dataset_path}")
+            expected_dataset_dir.symlink_to(dataset_path.absolute(), target_is_directory=True)
+        
+        # Criar symlink no local onde F5-TTS procura (/root/.local/lib/pythonX.X/data/)
+        python_lib = Path.home() / ".local" / "lib"
+        for python_dir in python_lib.glob("python*"):
+            lib_data_link = python_dir / "data"
+            if lib_data_link.is_symlink():
+                lib_data_link.unlink()
+            elif lib_data_link.exists() and lib_data_link.is_dir():
+                # Backup se for diretório real
+                import shutil
+                backup = python_dir / f"data_backup_{int(__import__('time').time())}"
+                shutil.move(str(lib_data_link), str(backup))
+            
+            # Criar link apontando para train/data
+            if not lib_data_link.exists():
+                lib_data_link.symlink_to(f5_tts_data_dir.absolute(), target_is_directory=True)
+                logger.info(f"🔗 Symlink F5-TTS: {lib_data_link} -> {f5_tts_data_dir}")
+        
+        # Carregar dataset usando o loader padrão do F5-TTS
         train_dataset = load_dataset(
-            dataset_name=str(dataset_path),
-            tokenizer="custom" if config['model'].get('vocab_file') else "pinyin",
+            dataset_name=dataset_name,
+            tokenizer="custom",
             dataset_type="CustomDataset",
+            audio_type="raw",
             mel_spec_kwargs=config['mel_spec']
         )
         logger.info(f"✅ Dataset carregado: {len(train_dataset)} amostras")
     except Exception as e:
         logger.error(f"❌ Erro ao carregar dataset: {e}")
+        logger.error(f"   Dataset path: {dataset_path}")
+        logger.error(f"   Expected path: {expected_dataset_dir}")
+        logger.error(f"   Arquivos no dataset:")
+        for f in dataset_path.glob("*"):
+            logger.error(f"     - {f.name}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
     
     # Iniciar treinamento
@@ -313,7 +483,26 @@ def main():
     logger.info(f"Batch size: {config['training']['batch_size_per_gpu']}")
     logger.info(f"Grad accumulation: {config['training']['grad_accumulation_steps']}")
     logger.info(f"Learning rate: {config['training']['learning_rate']}")
+    
+    # Early Stopping info
+    early_stop_patience = config['training'].get('early_stop_patience', 0)
+    if early_stop_patience > 0:
+        logger.info(f"🛑 Early Stopping: habilitado ({early_stop_patience} epochs sem melhora)")
+        logger.info(f"   Min delta: {config['training'].get('early_stop_min_delta', 0.001)}")
+        logger.info(f"   ⚠️  NOTA: F5-TTS não suporta early stopping nativamente")
+        logger.info(f"   Monitore o loss e pare manualmente (Ctrl+C) se necessário")
+    
     logger.info(f"Output dir: {output_dir}")
+    
+    # TensorBoard info
+    if config['logging']['logger'] == 'tensorboard':
+        logger.info(f"\n📊 TensorBoard:")
+        logger.info(f"   Logs: ./runs/")
+        logger.info(f"   Para visualizar:")
+        logger.info(f"     export PATH=\"$HOME/.local/bin:$PATH\"")
+        logger.info(f"     tensorboard --logdir=runs")
+        logger.info(f"     Abra: http://localhost:6006")
+    
     logger.info("=" * 80 + "\n")
     
     try:

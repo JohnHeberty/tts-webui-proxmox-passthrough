@@ -60,8 +60,12 @@ training:
   warmup_end_lr: 1.0e-4
   
   # Training duration
-  epochs: 10
+  epochs: 1000  # Treina até 1000 epochs ou até early stopping
   max_steps: null  # Se null, usa epochs; se definido, limita por steps
+  
+  # Early Stopping (para quando não evoluir mais)
+  early_stop_patience: 5  # Para se loss não melhorar por 5 epochs (0 = desabilitado)
+  early_stop_min_delta: 0.001  # Melhora mínima considerada significativa
   
   # EMA (Exponential Moving Average)
   ema:
@@ -74,13 +78,14 @@ training:
 # CHECKPOINT MANAGEMENT
 # ========================================
 checkpoints:
-  # Diretório de saída
-  output_dir: "./train/output/ptbr_finetuned"
+  # Diretório de saída (sempre dentro de train/)
+  output_dir: "train/output/ptbr_finetuned"
   
   # Salvamento
   save_per_updates: 500  # Salvar a cada N updates
-  keep_last_n_checkpoints: 5  # Manter apenas os N últimos checkpoints
-  last_per_updates: 100  # Salvar checkpoint "last" a cada N updates
+  save_per_epochs: 1     # Salvar a cada epoch também
+  keep_last_n_checkpoints: 10  # Manter 10 últimos (antes: 5)
+  last_per_updates: 50  # Salvar checkpoint "last" a cada N updates (reduzido para salvar mais frequente)
   
   # Resume training
   resume_from_checkpoint: null  # Path para checkpoint, ou null para novo treino
@@ -88,6 +93,7 @@ checkpoints:
   # Logging de samples de áudio
   log_samples: true
   log_samples_per_updates: 500
+  log_samples_per_epochs: 1  # Gerar sample a cada epoch
 
 # ========================================
 # OPTIMIZER CONFIGURATION
@@ -115,8 +121,8 @@ logging:
   # Logger type
   logger: "tensorboard"  # tensorboard, wandb, ou null
   
-  # TensorBoard
-  tensorboard_dir: "./train/logs/tensorboard"
+  # TensorBoard (SEMPRE dentro de train/)
+  tensorboard_dir: "train/runs"
   
   # Weights & Biases (opcional)
   wandb:
