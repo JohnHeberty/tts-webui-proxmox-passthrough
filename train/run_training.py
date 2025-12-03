@@ -158,22 +158,40 @@ class F5TTSTrainer:
         import sys
         from pathlib import Path
         
-        # Check for existing checkpoints to resume
-        checkpoint_dir = Path(f"/root/.local/lib/python3.11/site-packages/f5_tts/../../ckpts/{self.config['train_dataset_name']}")
+        # Priority 1: Check training output directory for existing checkpoints
+        local_output_dir = self.output_dir
         resume_checkpoint = None
         
-        if checkpoint_dir.exists():
+        if local_output_dir.exists():
             # Look for model_last.pt first (most recent)
-            last_ckpt = checkpoint_dir / "model_last.pt"
+            last_ckpt = local_output_dir / "model_last.pt"
             if last_ckpt.exists():
-                resume_checkpoint = str(last_ckpt)
-                logger.info(f"📂 Encontrado checkpoint para continuar: {resume_checkpoint}")
+                resume_checkpoint = str(last_ckpt.absolute())
+                logger.info(f"📂 Checkpoint encontrado em train/output/: {last_ckpt.name}")
             else:
                 # Look for numbered checkpoints
-                checkpoints = sorted(checkpoint_dir.glob("model_*.pt"), key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0)
+                checkpoints = sorted(local_output_dir.glob("model_*.pt"), 
+                                   key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0)
                 if checkpoints:
-                    resume_checkpoint = str(checkpoints[-1])
-                    logger.info(f"📂 Encontrado checkpoint para continuar: {resume_checkpoint}")
+                    resume_checkpoint = str(checkpoints[-1].absolute())
+                    logger.info(f"📂 Checkpoint encontrado em train/output/: {checkpoints[-1].name}")
+        
+        # Priority 2: Check F5-TTS ckpts directory
+        if not resume_checkpoint:
+            checkpoint_dir = Path(f"/root/.local/lib/python3.11/site-packages/f5_tts/../../ckpts/{self.config['train_dataset_name']}")
+            if checkpoint_dir.exists():
+                last_ckpt = checkpoint_dir / "model_last.pt"
+                if last_ckpt.exists():
+                    resume_checkpoint = str(last_ckpt.absolute())
+                    logger.info(f"📂 Checkpoint encontrado em ckpts/: {last_ckpt.name}")
+        
+        # Priority 3: Use local pretrained model from models/f5tts/pt-br/
+        pretrained_model = None
+        if not resume_checkpoint:
+            local_pretrained = PROJECT_ROOT / "models" / "f5tts" / "pt-br" / "model_last.pt"
+            if local_pretrained.exists():
+                pretrained_model = str(local_pretrained.absolute())
+                logger.info(f"📥 Modelo pré-treinado encontrado: {local_pretrained.relative_to(PROJECT_ROOT)}")
         
         # Preparar argumentos para finetune_cli
         args = [
@@ -198,20 +216,20 @@ class F5TTSTrainer:
         if self.config.get('log_samples', True):
             args.append('--log_samples')
         
-        # Add pretrained model path (usar HuggingFace model ou checkpoint local)
+        # Add pretrained model path
         if resume_checkpoint:
-            # Continue from local checkpoint
+            # Continue from existing checkpoint
             args.extend(['--pretrain', resume_checkpoint])
-            logger.info("🔄 Modo: Continuar treinamento do checkpoint local")
-        elif self.config.get('pretrained_model_path'):
-            # Start from HuggingFace pretrained model
-            args.extend(['--pretrain', self.config['pretrained_model_path']])
-            logger.info(f"📥 Modo: Fine-tuning do modelo {self.config['pretrained_model_path']}")
+            logger.info("🔄 Modo: Continuar treinamento do checkpoint")
+        elif pretrained_model:
+            # Start from local pretrained model
+            args.extend(['--pretrain', pretrained_model])
+            logger.info("🎯 Modo: Fine-tuning do modelo pré-treinado local")
         else:
-            logger.info("🆕 Modo: Treinamento do zero")
+            logger.info("🆕 Modo: Treinamento do zero (sem modelo pré-treinado)")
         
         logger.info("")
-        logger.info("🎯 Iniciando treinamento F5-TTS...")
+        logger.info("🚀 Iniciando treinamento F5-TTS...")
         logger.info(f"   Argumentos: {' '.join(args)}")
         logger.info("")
         

@@ -87,7 +87,7 @@ def get_training_config() -> Dict[str, Any]:
         'warmup_steps': env.get('NUM_WARMUP_UPDATES', 200),
         'train_dataset_name': env.get('DATASET_NAME', 'ptbr_youtube_custom'),
         'dataset_path': env.get('DATASET_PATH', 'train/data/f5_dataset'),
-        'pretrained_model_path': env.get('PRETRAIN_MODEL_PATH', 'hf://firstpixel/F5-TTS-pt-br/pt-br/model_last.pt'),
+        'pretrained_model_path': env.get('PRETRAIN_MODEL_PATH', 'models/f5tts/pt-br/model_last.pt'),
         'output_dir': env.get('OUTPUT_DIR', 'train/output/ptbr_finetuned'),
         'tensorboard_dir': env.get('TENSORBOARD_DIR', 'train/runs'),
         'tensorboard_port': env.get('TENSORBOARD_PORT', 6006),
