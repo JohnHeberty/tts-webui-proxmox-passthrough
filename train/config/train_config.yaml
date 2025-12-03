@@ -92,8 +92,7 @@ checkpoints:
   
   # Logging de samples de áudio
   log_samples: true
-  log_samples_per_updates: 500
-  log_samples_per_epochs: 1  # Gerar sample a cada epoch
+  log_samples_per_updates: 250  # Gerar samples a cada 250 updates
 
 # ========================================
 # OPTIMIZER CONFIGURATION
@@ -171,7 +170,7 @@ validation:
 # ========================================
 advanced:
   # Gradient checkpointing (economiza VRAM)
-  gradient_checkpointing: false
+  gradient_checkpointing: true
   
   # Resumable training com seed
   resumable_with_seed: 666  # Seed para reproducibilidade
