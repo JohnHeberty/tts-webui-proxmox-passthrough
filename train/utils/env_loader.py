@@ -74,17 +74,23 @@ def get_training_config() -> Dict[str, Any]:
     return {
         'epochs': env.get('EPOCHS', 1000),
         'batch_size': env.get('BATCH_SIZE', 4),
+        'batch_size_type': env.get('BATCH_SIZE_TYPE', 'frame'),
         'learning_rate': env.get('LEARNING_RATE', 0.0001),
         'grad_accumulation_steps': env.get('GRAD_ACCUMULATION_STEPS', 4),
+        'max_grad_norm': env.get('MAX_GRAD_NORM', 1.0),
         'early_stop_patience': env.get('EARLY_STOP_PATIENCE', 5),
         'early_stop_min_delta': env.get('EARLY_STOP_MIN_DELTA', 0.001),
         'save_per_updates': env.get('SAVE_PER_UPDATES', 500),
         'last_per_updates': env.get('LAST_PER_UPDATES', 50),
         'keep_last_n_checkpoints': env.get('KEEP_LAST_N_CHECKPOINTS', 10),
-        'dataset_name': env.get('DATASET_NAME', 'ptbr_youtube_custom'),
+        'log_samples_per_updates': env.get('LOG_SAMPLES_PER_UPDATES', 250),
+        'warmup_steps': env.get('NUM_WARMUP_UPDATES', 200),
+        'train_dataset_name': env.get('DATASET_NAME', 'ptbr_youtube_custom'),
         'dataset_path': env.get('DATASET_PATH', 'train/data/f5_dataset'),
+        'pretrained_model_path': env.get('PRETRAIN_MODEL_PATH', 'hf://firstpixel/F5-TTS-pt-br/pt-br/model_last.pt'),
         'output_dir': env.get('OUTPUT_DIR', 'train/output/ptbr_finetuned'),
         'tensorboard_dir': env.get('TENSORBOARD_DIR', 'train/runs'),
+        'tensorboard_port': env.get('TENSORBOARD_PORT', 6006),
         'log_dir': env.get('LOG_DIR', 'train/logs'),
         'device': env.get('DEVICE', 'cuda'),
         'num_workers': env.get('NUM_WORKERS', 4),
@@ -93,7 +99,6 @@ def get_training_config() -> Dict[str, Any]:
         'log_samples': env.get('LOG_SAMPLES', True),
         'log_samples_per_epochs': env.get('LOG_SAMPLES_PER_EPOCHS', 1),
         'seed': env.get('SEED', 666),
-        'num_warmup_updates': env.get('NUM_WARMUP_UPDATES', 200),
     }
 
 

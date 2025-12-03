@@ -155,48 +155,75 @@ class F5TTSTrainer:
     
     def run_training(self):
         """Executa treinamento F5-TTS"""
-        from f5_tts.train.finetune import train
+        import sys
+        from pathlib import Path
         
-        # Carregar config YAML base
-        yaml_config_path = self.train_root / "config" / "train_config.yaml"
-        with open(yaml_config_path, 'r') as f:
-            yaml_config = yaml.safe_load(f)
+        # Check for existing checkpoints to resume
+        checkpoint_dir = Path(f"/root/.local/lib/python3.11/site-packages/f5_tts/../../ckpts/{self.config['train_dataset_name']}")
+        resume_checkpoint = None
         
-        # Override com valores do .env
-        yaml_config['training']['epochs'] = self.config['epochs']
-        yaml_config['training']['batch_size'] = self.config['batch_size']
-        yaml_config['training']['batch_size_type'] = self.config['batch_size_type']
-        yaml_config['training']['grad_accumulation_steps'] = self.config['grad_accumulation_steps']
-        yaml_config['training']['max_grad_norm'] = self.config['max_grad_norm']
-        yaml_config['training']['learning_rate'] = self.config['learning_rate']
-        yaml_config['training']['warmup_steps'] = self.config['warmup_steps']
-        yaml_config['training']['save_per_updates'] = self.config['save_per_updates']
-        yaml_config['training']['last_per_updates'] = self.config['last_per_updates']
-        yaml_config['training']['keep_last_n_checkpoints'] = self.config['keep_last_n_checkpoints']
-        yaml_config['training']['log_samples_per_updates'] = self.config['log_samples_per_updates']
-        yaml_config['training']['early_stop_patience'] = self.config['early_stop_patience']
-        yaml_config['training']['early_stop_min_delta'] = self.config['early_stop_min_delta']
+        if checkpoint_dir.exists():
+            # Look for model_last.pt first (most recent)
+            last_ckpt = checkpoint_dir / "model_last.pt"
+            if last_ckpt.exists():
+                resume_checkpoint = str(last_ckpt)
+                logger.info(f"📂 Encontrado checkpoint para continuar: {resume_checkpoint}")
+            else:
+                # Look for numbered checkpoints
+                checkpoints = sorted(checkpoint_dir.glob("model_*.pt"), key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0)
+                if checkpoints:
+                    resume_checkpoint = str(checkpoints[-1])
+                    logger.info(f"📂 Encontrado checkpoint para continuar: {resume_checkpoint}")
         
-        # Paths
-        yaml_config['data']['train_dataset_name'] = self.config['train_dataset_name']
-        yaml_config['training']['checkpoint_path'] = str(self.output_dir)
-        yaml_config['training']['tensorboard_path'] = str(self.runs_dir)
+        # Preparar argumentos para finetune_cli
+        args = [
+            '--exp_name', 'F5TTS_Base',
+            '--dataset_name', self.config['train_dataset_name'],
+            '--learning_rate', str(self.config['learning_rate']),
+            '--batch_size_per_gpu', str(self.config['batch_size']),
+            '--batch_size_type', self.config['batch_size_type'],
+            '--max_samples', '64',
+            '--grad_accumulation_steps', str(self.config['grad_accumulation_steps']),
+            '--max_grad_norm', str(self.config['max_grad_norm']),
+            '--epochs', str(self.config['epochs']),
+            '--num_warmup_updates', str(self.config['warmup_steps']),
+            '--save_per_updates', str(self.config['save_per_updates']),
+            '--last_per_updates', str(self.config['last_per_updates']),
+            '--keep_last_n_checkpoints', str(self.config['keep_last_n_checkpoints']),
+            '--logger', self.config['logger'],
+            '--finetune',
+        ]
         
-        # Usar pré-treinado
-        yaml_config['training']['finetune'] = True
-        yaml_config['model']['pretrained_path'] = self.config['pretrained_model_path']
+        # Add log_samples flag if enabled
+        if self.config.get('log_samples', True):
+            args.append('--log_samples')
         
-        # Salvar config temporário
-        temp_config_path = self.train_root / "config" / "train_config_runtime.yaml"
-        with open(temp_config_path, 'w') as f:
-            yaml.dump(yaml_config, f, default_flow_style=False, allow_unicode=True)
+        # Add pretrained model path (usar HuggingFace model ou checkpoint local)
+        if resume_checkpoint:
+            # Continue from local checkpoint
+            args.extend(['--pretrain', resume_checkpoint])
+            logger.info("🔄 Modo: Continuar treinamento do checkpoint local")
+        elif self.config.get('pretrained_model_path'):
+            # Start from HuggingFace pretrained model
+            args.extend(['--pretrain', self.config['pretrained_model_path']])
+            logger.info(f"📥 Modo: Fine-tuning do modelo {self.config['pretrained_model_path']}")
+        else:
+            logger.info("🆕 Modo: Treinamento do zero")
         
-        logger.info("🎯 Iniciando treinamento...")
+        logger.info("")
+        logger.info("🎯 Iniciando treinamento F5-TTS...")
+        logger.info(f"   Argumentos: {' '.join(args)}")
         logger.info("")
         
         try:
-            # Executar treinamento
-            train(temp_config_path)
+            # Executar via CLI
+            original_argv = sys.argv.copy()
+            sys.argv = ['finetune_cli'] + args
+            
+            from f5_tts.train.finetune_cli import main as finetune_main
+            finetune_main()
+            
+            sys.argv = original_argv
             
         except KeyboardInterrupt:
             logger.info("")
@@ -210,11 +237,6 @@ class F5TTSTrainer:
             traceback.print_exc()
             self.cleanup()
             sys.exit(1)
-        
-        finally:
-            # Limpar config temporário
-            if temp_config_path.exists():
-                temp_config_path.unlink()
     
     def cleanup(self):
         """Limpa processos em background"""

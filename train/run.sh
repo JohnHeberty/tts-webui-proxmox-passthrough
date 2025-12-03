@@ -14,20 +14,21 @@ echo -e "${BLUE}   F5-TTS Training Pipeline - Portuguese Fine-tuning${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo ""
 
-# Ensure we're in the project root
+# Ensure we're in the train directory
 cd "$(dirname "$0")"
-PROJECT_ROOT=$(pwd)
+TRAIN_ROOT=$(pwd)
+PROJECT_ROOT=$(dirname "$TRAIN_ROOT")
 
 # Add tensorboard to PATH
 export PATH="$HOME/.local/bin:$PATH"
 
 # Check if TensorBoard is already running
-if pgrep -f "tensorboard.*train/runs" > /dev/null; then
+if pgrep -f "tensorboard.*runs" > /dev/null; then
     echo -e "${GREEN}✓${NC} TensorBoard já está rodando"
 else
     echo -e "${BLUE}→${NC} Iniciando TensorBoard em background..."
-    mkdir -p train/logs
-    nohup tensorboard --logdir=train/runs --host=0.0.0.0 --port=6006 --reload_interval=30 > train/logs/tensorboard.log 2>&1 &
+    mkdir -p logs
+    nohup tensorboard --logdir=runs --host=0.0.0.0 --port=6006 --reload_interval=30 > logs/tensorboard.log 2>&1 &
     sleep 2
     
     # Verify TensorBoard started successfully
@@ -43,9 +44,8 @@ echo -e "${BLUE}→${NC} Iniciando treinamento..."
 echo ""
 
 # Run training with environment forcing runs/ to stay in train/
-cd "$PROJECT_ROOT/train"
-export WANDB_DIR="$PROJECT_ROOT/train/runs"
-export TENSORBOARD_DIR="$PROJECT_ROOT/train/runs"
+export WANDB_DIR="$TRAIN_ROOT/runs"
+export TENSORBOARD_DIR="$TRAIN_ROOT/runs"
 
 python3 run_training.py
 
