@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""
+Comando 'train' - Pipeline Completo de Treinamento F5-TTS
+
+Uso:
+    train                    # Pipeline completo automático
+    train --validate-only    # Apenas validar setup
+    train --tensorboard      # Abrir TensorBoard em novo terminal
+    train --monitor          # Abrir monitor de GPU
+"""
+import sys
+import argparse
+from pathlib import Path
+
+# Add train root to path
+train_root = Path(__file__).parent.parent
+sys.path.insert(0, str(train_root))
+
+from scripts.auto_train import AutoTrainer, print_header, print_info, print_success
+from scripts.vscode_terminal import launch_tensorboard, launch_monitoring
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="F5-TTS Auto-Trainer - Pipeline Completo Automatizado",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Exemplos:
+  train                    # Executar pipeline completo
+  train --validate-only    # Apenas validar (sem treinar)
+  train --tensorboard      # Abrir TensorBoard
+  train --monitor          # Abrir monitor de GPU
+  train --help             # Mostrar esta ajuda
+        """
+    )
+    
+    parser.add_argument(
+        '--validate-only',
+        action='store_true',
+        help='Apenas validar setup (não iniciar treinamento)'
+    )
+    
+    parser.add_argument(
+        '--tensorboard',
+        action='store_true',
+        help='Abrir TensorBoard em novo terminal'
+    )
+    
+    parser.add_argument(
+        '--monitor',
+        action='store_true',
+        help='Abrir monitor de GPU'
+    )
+    
+    parser.add_argument(
+        '--force-download',
+        action='store_true',
+        help='Forçar re-download do modelo'
+    )
+    
+    args = parser.parse_args()
+    
+    # Comandos auxiliares
+    if args.tensorboard:
+        print_info("Abrindo TensorBoard...")
+        logdir = train_root / "runs"
+        logdir.mkdir(parents=True, exist_ok=True)
+        success = launch_tensorboard(str(logdir))
+        if success:
+            print_success("TensorBoard iniciado!")
+            print_info("Acesse: http://localhost:6006")
+        return 0
+    
+    if args.monitor:
+        print_info("Abrindo monitor de GPU...")
+        success = launch_monitoring()
+        if success:
+            print_success("Monitor iniciado!")
+        return 0
+    
+    # Pipeline principal
+    print_header("🚀 F5-TTS AUTO-TRAINER")
+    print_info("Pipeline 100% Automatizado")
+    print_info("- Auto-download de modelo")
+    print_info("- Auto-correção de compatibilidade")
+    print_info("- Auto-validação de dataset")
+    print_info("- Treinamento em modo verboso")
+    
+    trainer = AutoTrainer()
+    
+    # Force download se solicitado
+    if args.force_download:
+        print_info("Forçando re-download do modelo...")
+        if trainer.model_original.exists():
+            trainer.model_original.unlink()
+        if trainer.model_fixed.exists():
+            trainer.model_fixed.unlink()
+    
+    # Executar pipeline
+    try:
+        if args.validate_only:
+            # Apenas validar
+            print_info("Modo: Validação apenas\n")
+            trainer.ensure_model()
+            trainer.validate_and_fix_model()
+            trainer.validate_dataset()
+            trainer.validate_config()
+            print_success("\n✅ Validação completa! Sistema pronto para treinar.")
+            print_info("Execute 'train' sem --validate-only para iniciar treinamento")
+        else:
+            # Pipeline completo
+            trainer.run()
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        print_info("\n\n⚠️  Interrompido pelo usuário")
+        return 130
+    except Exception as e:
+        print(f"\n❌ Erro: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

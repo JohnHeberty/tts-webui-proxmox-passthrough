@@ -47,8 +47,143 @@ class F5TTSTrainer:
         self.runs_dir = self.train_root / "runs"
         self.output_dir = self.train_root / "output" / "ptbr_finetuned"
         self.data_dir = self.train_root / "data"
+        self.pretrained_dir = self.train_root / "pretrained"
         self.tensorboard_process = None
         
+    def download_pretrained_model(self):
+        """Baixa modelo pré-treinado do HuggingFace se necessário"""
+        if not self.config.get('pretrained_model_path'):
+            return None
+            
+        pretrained_path = Path(self.config['pretrained_model_path'])
+        
+        # Se caminho relativo, converter para absoluto
+        if not pretrained_path.is_absolute():
+            pretrained_path = PROJECT_ROOT / pretrained_path
+        
+        # Se o arquivo já existe, retorna o caminho
+        if pretrained_path.exists():
+            logger.info(f"✅ Modelo pré-treinado encontrado: {pretrained_path}")
+            return str(pretrained_path.absolute())
+        
+        # Verificar se deve baixar automaticamente
+        if not self.config.get('auto_download_pretrained', False):
+            logger.warning(f"⚠️  Modelo não encontrado: {pretrained_path}")
+            logger.warning("   Configure AUTO_DOWNLOAD_PRETRAINED=true no .env para baixar automaticamente")
+            return None
+        
+        # Baixar modelo do HuggingFace
+        base_model = self.config.get('base_model', 'firstpixel/F5-TTS-pt-br')
+        logger.info(f"📥 Baixando modelo pré-treinado: {base_model}")
+        
+        try:
+            from huggingface_hub import hf_hub_download
+            
+            # Criar diretório
+            self.pretrained_dir.mkdir(parents=True, exist_ok=True)
+            model_dir = self.pretrained_dir / base_model.split('/')[-1]
+            model_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Baixar arquivo pt-br/model_200000.pt (formato .pt com EMA completo)
+            logger.info("   Baixando pt-br/model_200000.pt...")
+            downloaded_file = hf_hub_download(
+                repo_id=base_model,
+                filename="pt-br/model_200000.pt",
+                local_dir=str(model_dir),
+                local_dir_use_symlinks=False
+            )
+            
+            logger.info(f"✅ Modelo baixado: {downloaded_file}")
+            return downloaded_file
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao baixar modelo: {e}")
+            logger.info("   Você pode baixar manualmente de:")
+            logger.info(f"   https://huggingface.co/{base_model}")
+            return None
+    
+    def setup_checkpoints_symlink(self):
+        """
+        Cria symlinks automáticos para F5-TTS:
+        1. ckpts/f5_dataset -> train/output/F5TTS_Base (checkpoints)
+        2. data -> train/data (dataset)
+        3. runs -> train/runs (TensorBoard logs)
+        """
+        # 1. Symlink de checkpoints
+        f5_ckpt_dir = Path("/root/.local/lib/python3.11/ckpts") / self.config['train_dataset_name']
+        target_dir = self.output_dir
+        
+        # Garantir que target existe
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        if f5_ckpt_dir.exists() and f5_ckpt_dir.is_symlink():
+            # Já é symlink - verificar se aponta para lugar certo
+            current_target = f5_ckpt_dir.resolve()
+            if current_target != target_dir:
+                logger.warning(f"⚠️  Symlink aponta para: {current_target}")
+                logger.warning(f"   Redirecionando para: {target_dir}")
+                f5_ckpt_dir.unlink()
+                f5_ckpt_dir.symlink_to(target_dir)
+            else:
+                logger.info(f"✅ Symlink de checkpoints OK: ckpts/{self.config['train_dataset_name']} -> {target_dir.relative_to(PROJECT_ROOT)}")
+        elif f5_ckpt_dir.exists():
+            # Diretório real existe - mover conteúdo
+            logger.info(f"📦 Movendo checkpoints existentes para {target_dir.relative_to(PROJECT_ROOT)}/")
+            import shutil
+            for item in f5_ckpt_dir.iterdir():
+                dest = target_dir / item.name
+                if not dest.exists():
+                    shutil.move(str(item), str(dest))
+                    logger.info(f"   ✅ {item.name}")
+            
+            # Remover diretório vazio e criar symlink
+            try:
+                f5_ckpt_dir.rmdir()
+            except:
+                import shutil
+                shutil.rmtree(f5_ckpt_dir)
+            
+            f5_ckpt_dir.symlink_to(target_dir)
+            logger.info(f"✅ Symlink criado: ckpts/{self.config['train_dataset_name']} -> {target_dir.relative_to(PROJECT_ROOT)}")
+        else:
+            # Não existe - criar symlink
+            f5_ckpt_dir.parent.mkdir(parents=True, exist_ok=True)
+            f5_ckpt_dir.symlink_to(target_dir)
+            logger.info(f"✅ Symlink criado: ckpts/{self.config['train_dataset_name']} -> {target_dir.relative_to(PROJECT_ROOT)}")
+        
+        # 2. Symlink de data (automático)
+        data_link = Path("/root/.local/lib/python3.11/data")
+        if not data_link.exists():
+            data_link.symlink_to(self.data_dir.absolute(), target_is_directory=True)
+            logger.info(f"✅ Symlink criado: data -> {self.data_dir.relative_to(PROJECT_ROOT)}")
+        elif data_link.is_symlink() and data_link.resolve() == self.data_dir:
+            logger.info(f"✅ Symlink de data OK")
+        
+        # 3. Symlink f5_dataset_pinyin -> f5_dataset (automático)
+        dataset_dir = self.data_dir / self.config['train_dataset_name']
+        pinyin_link = self.data_dir / f"{self.config['train_dataset_name']}_pinyin"
+        if not pinyin_link.exists() and dataset_dir.exists():
+            pinyin_link.symlink_to(dataset_dir, target_is_directory=True)
+            logger.info(f"✅ Symlink criado: {pinyin_link.name} -> {dataset_dir.name}")
+        
+        # 4. Symlink runs/ -> train/runs/ (para TensorBoard logs)
+        # F5-TTS cria runs/ na raiz do workspace automaticamente
+        # Precisamos redirecionar ANTES do treinamento começar
+        root_runs = PROJECT_ROOT / "runs"
+        if not root_runs.exists():
+            # Ainda não foi criado - criar symlink preventivamente
+            root_runs.symlink_to(self.runs_dir.absolute(), target_is_directory=True)
+            logger.info(f"✅ Symlink criado: /runs -> {self.runs_dir.relative_to(PROJECT_ROOT)}")
+        elif root_runs.is_symlink():
+            # Já é symlink - verificar se aponta para o lugar certo
+            if root_runs.resolve() != self.runs_dir.absolute():
+                logger.warning(f"⚠️  Symlink /runs aponta para {root_runs.resolve()}")
+                logger.warning(f"   Redirecionando para {self.runs_dir.absolute()}")
+                root_runs.unlink()
+                root_runs.symlink_to(self.runs_dir.absolute(), target_is_directory=True)
+            else:
+                logger.info(f"✅ Symlink /runs OK")
+    
     def setup_environment(self):
         """Configura ambiente e diretórios"""
         logger.info("=" * 80)
@@ -56,14 +191,20 @@ class F5TTSTrainer:
         logger.info("=" * 80)
         
         # Criar diretórios
-        for dir_path in [self.runs_dir, self.output_dir, self.data_dir]:
+        for dir_path in [self.runs_dir, self.output_dir, self.data_dir, self.pretrained_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
         
-        # Mover runs/ e data/ se existirem fora de train/
-        self._organize_directories()
+        # Setup symlinks automáticos (checkpoints, data, pinyin)
+        self.setup_checkpoints_symlink()
         
-        # Setup symlinks para F5-TTS
-        self._setup_symlinks()
+        # Baixar modelo pré-treinado se necessário
+        pretrained_path = self.download_pretrained_model()
+        if pretrained_path:
+            self.config['pretrained_model_path'] = pretrained_path
+        
+        # Mover runs/ e data/ se existirem fora de train/
+        # NÃO PRECISA MAIS - O symlink já redireciona tudo
+        # self._organize_directories()
         
         logger.info("")
         logger.info("📋 CONFIGURAÇÃO (via .env)")
@@ -85,41 +226,22 @@ class F5TTSTrainer:
         logger.info(f"Samples: {self.output_dir.relative_to(PROJECT_ROOT)}/samples/ (a cada {self.config['log_samples_per_updates']} updates)")
         logger.info("=" * 80)
         logger.info("")
+        
+        # Iniciar TensorBoard automaticamente
+        self.start_tensorboard()
     
     def _organize_directories(self):
-        """Move runs/ e data/ para dentro de train/ se necessário"""
+        """Move runs/ da raiz para train/runs se necessário"""
         root_runs = PROJECT_ROOT / "runs"
-        root_data = PROJECT_ROOT / "data"
         
         if root_runs.exists() and root_runs != self.runs_dir:
             logger.info(f"📦 Movendo /runs/ -> /train/runs/")
             if self.runs_dir.exists():
+                import shutil
                 shutil.rmtree(self.runs_dir)
+            import shutil
             shutil.move(str(root_runs), str(self.runs_dir))
-        
-        if root_data.exists() and root_data != self.data_dir:
-            # Apenas mover se não for o data principal do projeto
-            if not (root_data / "f5_dataset").exists():
-                logger.info(f"📦 Movendo /data/ -> /train/data/")
-                backup_name = f"data_backup_{int(time.time())}"
-                shutil.move(str(root_data), str(self.train_root / backup_name))
-    
-    def _setup_symlinks(self):
-        """Configura symlinks para F5-TTS encontrar o dataset"""
-        python_lib = Path.home() / ".local" / "lib"
-        python_dirs = list(python_lib.glob("python*"))
-        
-        for python_dir in python_dirs:
-            data_link = python_dir / "data"
-            
-            if data_link.is_symlink():
-                data_link.unlink()
-            elif data_link.exists():
-                backup = python_dir / f"data_backup_{int(time.time())}"
-                shutil.move(str(data_link), str(backup))
-            
-            data_link.symlink_to(self.data_dir.absolute(), target_is_directory=True)
-            logger.info(f"🔗 Symlink: {data_link} -> {self.data_dir}")
+            logger.info(f"   ✅ Movido")
     
     def start_tensorboard(self):
         """Inicia TensorBoard em background"""
@@ -140,8 +262,21 @@ class F5TTSTrainer:
         
         # Iniciar TensorBoard
         try:
+            # Tentar encontrar tensorboard no PATH ou em locais comuns
+            tensorboard_cmd = None
+            for cmd in ['/root/.local/bin/tensorboard', 'tensorboard']:
+                try:
+                    result = subprocess.run([cmd, '--version'], capture_output=True, timeout=2)
+                    tensorboard_cmd = cmd
+                    break
+                except:
+                    continue
+            
+            if not tensorboard_cmd:
+                raise FileNotFoundError("tensorboard não encontrado")
+            
             self.tensorboard_process = subprocess.Popen(
-                ['tensorboard', '--logdir', str(self.runs_dir), '--port', str(port), '--bind_all'],
+                [tensorboard_cmd, '--logdir', str(self.runs_dir), '--port', str(port), '--bind_all'],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True
@@ -193,6 +328,39 @@ class F5TTSTrainer:
                 pretrained_model = str(local_pretrained.absolute())
                 logger.info(f"📥 Modelo pré-treinado encontrado: {local_pretrained.relative_to(PROJECT_ROOT)}")
         
+        # Priority 4: Use pretrained model from .env configuration
+        if not resume_checkpoint and not pretrained_model:
+            pretrained_path_env = self.config.get('pretrained_model_path')
+            if pretrained_path_env and pretrained_path_env.strip():  # Só se não estiver vazio
+                # Caminhos podem ser:
+                # 1. Absolutos: /root/.local/lib/python3.11/ckpts/f5_dataset/model_last.pt
+                # 2. Relativos ao F5-TTS: ckpts/f5_dataset/model_last.pt
+                # 3. Relativos ao workspace: train/pretrained/model.pt
+                
+                pretrained_path = Path(pretrained_path_env)
+                
+                if pretrained_path.is_absolute() and pretrained_path.exists():
+                    # Caminho absoluto
+                    pretrained_model = str(pretrained_path.absolute())
+                    logger.info(f"📥 Usando modelo pré-treinado (absoluto): {pretrained_path.name}")
+                elif pretrained_path_env.startswith('ckpts/'):
+                    # Caminho relativo ao F5-TTS (ckpts/f5_dataset/model_last.pt)
+                    f5tts_base = Path("/root/.local/lib/python3.11")
+                    pretrained_full = f5tts_base / pretrained_path_env
+                    if pretrained_full.exists():
+                        pretrained_model = str(pretrained_full.absolute())
+                        logger.info(f"📥 Usando modelo pré-treinado (F5-TTS): {pretrained_full.name}")
+                    else:
+                        logger.warning(f"⚠️  Modelo não encontrado: {pretrained_full}")
+                else:
+                    # Caminho relativo ao workspace
+                    pretrained_full = self.train_root / pretrained_path_env.replace('train/', '')
+                    if pretrained_full.exists():
+                        pretrained_model = str(pretrained_full.absolute())
+                        logger.info(f"📥 Usando modelo pré-treinado (workspace): {pretrained_full.name}")
+                    else:
+                        logger.warning(f"⚠️  Modelo não encontrado: {pretrained_full}")
+        
         # Preparar argumentos para finetune_cli
         args = [
             '--exp_name', 'F5TTS_Base',
@@ -200,7 +368,7 @@ class F5TTSTrainer:
             '--learning_rate', str(self.config['learning_rate']),
             '--batch_size_per_gpu', str(self.config['batch_size']),
             '--batch_size_type', self.config['batch_size_type'],
-            '--max_samples', '64',
+            '--max_samples', str(self.config.get('max_samples', 32)),
             '--grad_accumulation_steps', str(self.config['grad_accumulation_steps']),
             '--max_grad_norm', str(self.config['max_grad_norm']),
             '--epochs', str(self.config['epochs']),
@@ -209,8 +377,13 @@ class F5TTSTrainer:
             '--last_per_updates', str(self.config['last_per_updates']),
             '--keep_last_n_checkpoints', str(self.config['keep_last_n_checkpoints']),
             '--logger', self.config['logger'],
-            '--finetune',
         ]
+        
+        # Add finetune flag only if we have a pretrained model
+        # (finetune mode requires a checkpoint to continue from)
+        has_pretrained = resume_checkpoint or pretrained_model
+        if has_pretrained:
+            args.append('--finetune')
         
         # Add log_samples flag if enabled
         if self.config.get('log_samples', True):
@@ -230,7 +403,7 @@ class F5TTSTrainer:
         
         logger.info("")
         logger.info("🚀 Iniciando treinamento F5-TTS...")
-        logger.info(f"   Argumentos: {' '.join(args)}")
+        logger.info(f"   Argumentos completos: {args}")
         logger.info("")
         
         try:
