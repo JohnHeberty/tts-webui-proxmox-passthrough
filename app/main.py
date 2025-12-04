@@ -230,16 +230,16 @@ def submit_processing_task(job: Job):
 async def create_job(
     text: str = Form(..., min_length=1, max_length=10000, description="Texto para dublar (1-10.000 caracteres)"),
     source_language: str = Form(..., description="Idioma do texto (pt, pt-BR, en, es, fr, etc.)"),
-    mode: TTSJobMode = Form(..., description="Modo: dubbing (voz genérica) ou dubbing_with_clone (voz clonada)"),
-    voice_preset: Optional[VoicePreset] = Form(VoicePreset.female_generic, description="Preset de voz genérica (dropdown, apenas para mode=dubbing)"),
+    mode_str: str = Form(..., description="Modo: 'dubbing' (voz genérica) ou 'dubbing_with_clone' (voz clonada)"),
+    voice_preset_str: Optional[str] = Form('female_generic', description="Preset de voz genérica (dropdown, apenas para mode=dubbing)"),
     voice_id: Optional[str] = Form(None, description="ID de voz clonada (apenas para mode=dubbing_with_clone)"),
     target_language: Optional[str] = Form(None, description="Idioma de destino (padrão: mesmo que source_language)"),
-    # TTS Engine Selection (Sprint 4)
-    tts_engine: TTSEngine = Form(TTSEngine.XTTS, description="TTS engine: 'xtts' (default/stable) or 'f5tts' (experimental/high-quality)"),
+    # TTS Engine Selection (Sprint 4 + SPRINT-06 fix)
+    tts_engine_str: str = Form('xtts', description="TTS engine: 'xtts' (default/stable) or 'f5tts' (experimental/high-quality)"),
     ref_text: Optional[str] = Form(None, description="Reference transcription for F5-TTS voice cloning (auto-transcribed if None)"),
     # Quality Profile (NEW - usa sistema de profiles por engine)
     quality_profile_id: Optional[str] = Form(None, description="Quality profile ID (ex: 'xtts_balanced', 'f5tts_ultra_quality'). Se None, usa padrão do engine."),
-    # RVC Parameters (Sprint 7)
+    # RVC Parameters (Sprint 7 + SPRINT-06 fix)
     enable_rvc: bool = Form(False, description="Enable RVC voice conversion (default: False)"),
     rvc_model_id: Optional[str] = Form(None, description="RVC model ID (required if enable_rvc=True)"),
     rvc_pitch: int = Form(0, description="Pitch shift in semitones (-12 to +12)"),
@@ -247,7 +247,7 @@ async def create_job(
     rvc_filter_radius: int = Form(3, description="Median filter radius (0 to 7)"),
     rvc_rms_mix_rate: float = Form(0.25, description="RMS mix rate (0.0 to 1.0)"),
     rvc_protect: float = Form(0.33, description="Protect voiceless consonants (0.0 to 0.5)"),
-    rvc_f0_method: RvcF0Method = Form(RvcF0Method.RMVPE, description="Pitch extraction method (dropdown)")
+    rvc_f0_method_str: str = Form('rmvpe', description="Pitch extraction method: 'rmvpe' (default), 'harvest', 'crepe', etc.")
 ) -> Job:
     """
     Cria job de dublagem com validação rigorosa (similar a admin/cleanup)
@@ -280,7 +280,31 @@ async def create_job(
     - **rvc_f0_method**: Pitch extraction method - DROPDOWN (rmvpe/fcpe/pm/harvest/dio/crepe)
     """
     try:
-        # Validações adicionais
+        # ===== SPRINT-06: Validação de Enums =====
+        from app.utils.form_parsers import validate_enum_string
+        
+        # Validar mode
+        mode = validate_enum_string(mode_str, TTSJobMode, "mode", case_sensitive=False)
+        
+        # Validar voice_preset (se fornecido)
+        voice_preset = None
+        if voice_preset_str:
+            voice_preset = validate_enum_string(voice_preset_str, VoicePreset, "voice_preset", case_sensitive=False)
+        
+        # Validar tts_engine
+        tts_engine = validate_enum_string(tts_engine_str, TTSEngine, "tts_engine", case_sensitive=False)
+        
+        # Validar rvc_f0_method
+        rvc_f0_method = validate_enum_string(rvc_f0_method_str, RvcF0Method, "rvc_f0_method", case_sensitive=False)
+        
+        # Logging estruturado
+        logger.info(
+            f"📥 Job creation request: mode={mode.value}, engine={tts_engine.value}, "
+            f"preset={voice_preset.value if voice_preset else None}, "
+            f"rvc={enable_rvc}, f0_method={rvc_f0_method.value}"
+        )
+        
+        # ===== Validações adicionais =====
         if not is_language_supported(source_language):
             raise InvalidLanguageException(source_language)
         
@@ -352,12 +376,10 @@ async def create_job(
             ref_text=ref_text
         )
         
-        # Adiciona quality_profile_id (novo sistema)
+        # Adiciona quality_profile_id (novo sistema) - tts_engine já é TTSEngine enum
         if quality_profile_id:
             # Validar se profile existe
-            engine_name = tts_engine.value if isinstance(tts_engine, TTSEngine) else tts_engine
-            engine_enum = TTSEngine(engine_name) if isinstance(engine_name, str) else engine_name
-            profile = quality_profile_manager.get_profile(engine_enum, quality_profile_id)
+            profile = quality_profile_manager.get_profile(tts_engine, quality_profile_id)
             if not profile:
                 raise HTTPException(
                     status_code=404,
@@ -366,11 +388,10 @@ async def create_job(
             new_job.quality_profile = quality_profile_id
         else:
             # Usa perfil padrão do engine
-            engine_name = tts_engine.value if isinstance(tts_engine, TTSEngine) else tts_engine
-            default_profile_id = f"{engine_name}_balanced"
+            default_profile_id = f"{tts_engine.value}_balanced"
             new_job.quality_profile = default_profile_id
         
-        # Adiciona parâmetros RVC (Sprint 7)
+        # Adiciona parâmetros RVC (Sprint 7) - rvc_f0_method já é RvcF0Method enum
         if enable_rvc:
             new_job.enable_rvc = True
             new_job.rvc_model_id = rvc_model_id
@@ -379,7 +400,7 @@ async def create_job(
             new_job.rvc_filter_radius = rvc_filter_radius
             new_job.rvc_rms_mix_rate = rvc_rms_mix_rate
             new_job.rvc_protect = rvc_protect
-            new_job.rvc_f0_method = rvc_f0_method.value if isinstance(rvc_f0_method, RvcF0Method) else rvc_f0_method  # Converte enum para string se necessário
+            new_job.rvc_f0_method = rvc_f0_method.value  # Converte enum para string
         
         # Verifica cache
         existing_job = job_store.get_job(new_job.id)
@@ -694,7 +715,7 @@ async def clone_voice(
     name: str = Form(...),
     language: str = Form(...),
     description: Optional[str] = Form(None),
-    tts_engine: str = Form('xtts', description="TTS engine: 'xtts' (default) or 'f5tts' (experimental)"),
+    tts_engine_str: str = Form('xtts', description="TTS engine: 'xtts' (default) or 'f5tts' (experimental)"),
     ref_text: Optional[str] = Form(None, description="Reference transcription for F5-TTS (auto-transcribed if None)")
 ):
     """
@@ -718,14 +739,11 @@ async def clone_voice(
         if not is_language_supported(language):
             raise InvalidLanguageException(language)
         
-        # Validar tts_engine
-        if tts_engine not in ['xtts', 'f5tts']:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid tts_engine: '{tts_engine}'. Must be 'xtts' or 'f5tts'"
-            )
+        # Validar tts_engine usando utility (SPRINT-04)
+        from app.utils.form_parsers import validate_enum_string
+        tts_engine = validate_enum_string(tts_engine_str, TTSEngine, "tts_engine", case_sensitive=False)
         
-        logger.info(f"📥 Clone voice request: engine={tts_engine}, name={name}, language={language}")
+        logger.info(f"📥 Clone voice request: engine={tts_engine.value}, name={name}, language={language}")
         
         # Lê arquivo
         content = await file.read()
@@ -752,7 +770,7 @@ async def clone_voice(
             voice_name=name,
             voice_description=description,
             source_language=language,
-            tts_engine=tts_engine,  # Já é string, não precisa converter
+            tts_engine=tts_engine.value,  # Converter enum para string
             ref_text=ref_text
         )
         # IMPORTANTE: Setar input_file ANTES de salvar/enviar
