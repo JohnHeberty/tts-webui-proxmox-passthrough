@@ -5,6 +5,12 @@ Verificar estrutura de diretórios do F5-TTS após correções
 from pathlib import Path
 import sys
 
+# Carregar config do .env
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+from train.utils.env_loader import get_training_config
+config = get_training_config()
+
 def check_structure():
     print("\n🔍 Verificando estrutura de diretórios...\n")
     
@@ -12,9 +18,10 @@ def check_structure():
     ok_count = 0
     
     # 1. Verificar output directory
-    output_dir = Path("/home/tts-webui-proxmox-passthrough/train/output/F5TTS_Base")
+    output_dir = project_root / config.get('output_dir', 'train/output/ptbr_finetuned')
+    output_rel = output_dir.relative_to(project_root)
     if output_dir.exists():
-        print(f"✅ train/output/F5TTS_Base/ existe")
+        print(f"✅ {output_rel}/ existe")
         ok_count += 1
         
         # Verificar checkpoints
@@ -31,12 +38,14 @@ def check_structure():
         issues.append("output_dir_missing")
     
     # 2. Verificar symlink de checkpoints
-    f5_ckpt = Path("/root/.local/lib/python3.11/ckpts/f5_dataset")
+    ckpts_dir = config.get('f5tts_ckpts_dir', '/root/.local/lib/python3.11/ckpts')
+    dataset_name = config.get('train_dataset_name', 'f5_dataset')
+    f5_ckpt = Path(f"{ckpts_dir}/{dataset_name}")
     if f5_ckpt.exists() and f5_ckpt.is_symlink():
         target = f5_ckpt.resolve()
         if target == output_dir:
             print(f"\n✅ Symlink de checkpoints OK")
-            print(f"   /root/.local/lib/python3.11/ckpts/f5_dataset")
+            print(f"   {ckpts_dir}/{dataset_name}")
             print(f"   → {target}")
             ok_count += 1
         else:
@@ -53,7 +62,7 @@ def check_structure():
         issues.append("symlink_missing")
     
     # 3. Verificar dataset
-    data_dir = Path("/home/tts-webui-proxmox-passthrough/train/data/f5_dataset")
+    data_dir = project_root / config.get('dataset_path', 'train/data/f5_dataset')
     if data_dir.exists():
         wavs = list(data_dir.glob("wavs/*.wav"))
         print(f"\n✅ Dataset OK: {len(wavs)} arquivos .wav")
@@ -63,10 +72,11 @@ def check_structure():
         issues.append("dataset_missing")
     
     # 4. Verificar symlink de data
-    data_symlink = Path("/root/.local/lib/python3.11/data")
+    f5_base_dir = config.get('f5tts_base_dir', '/root/.local/lib/python3.11')
+    data_symlink = Path(f"{f5_base_dir}/data")
     if data_symlink.is_symlink():
         target = data_symlink.resolve()
-        expected = Path("/home/tts-webui-proxmox-passthrough/train/data")
+        expected = project_root / config.get('dataset_path', 'train/data/f5_dataset').rsplit('/', 1)[0]
         if target == expected:
             print(f"✅ Symlink de data OK")
             ok_count += 1

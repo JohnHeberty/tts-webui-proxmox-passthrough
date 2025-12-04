@@ -24,6 +24,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from train.utils.text_normalizer import TextNormalizer
+from train.utils.env_loader import get_training_config
 
 # Setup logging
 logging.basicConfig(
@@ -35,8 +36,10 @@ logger = logging.getLogger(__name__)
 
 def main():
     """Função principal."""
-    base_path = Path("/home/tts-webui-proxmox-passthrough/train")
-    transcriptions_path = base_path / "data/processed/transcriptions.json"
+    # Carregar configuração do .env
+    config = get_training_config()
+    processed_dir = Path(config.get('processed_data_dir', 'train/data/processed'))
+    transcriptions_path = processed_dir / "transcriptions.json"
     
     if not transcriptions_path.exists():
         logger.error(f"❌ Arquivo não encontrado: {transcriptions_path}")

@@ -136,20 +136,35 @@ def convert_ptbr_checkpoint(input_path: Path, output_path: Path) -> bool:
 
 
 def main():
-    # Caminhos
-    input_path = Path("/root/.local/lib/python3.11/ckpts/f5_dataset/pretrained_model_200000.pt")
-    output_path = Path("/root/.local/lib/python3.11/ckpts/f5_dataset/model_200000_converted.pt")
+    # Carregar config do .env
+    import sys
+    from pathlib import Path as PathLib
+    project_root = PathLib(__file__).parent.parent.parent
+    sys.path.insert(0, str(project_root))
+    from train.utils.env_loader import get_training_config
+    config = get_training_config()
+    
+    # Caminhos usando .env
+    ckpts_dir = config.get('f5tts_ckpts_dir', '/root/.local/lib/python3.11/ckpts')
+    dataset_name = config.get('train_dataset_name', 'f5_dataset')
+    input_path = Path(f"{ckpts_dir}/{dataset_name}/pretrained_model_200000.pt")
+    output_path = Path(f"{ckpts_dir}/{dataset_name}/model_200000_converted.pt")
     
     if not input_path.exists():
         print(f"❌ Modelo não encontrado: {input_path}")
         print("\nProcurando em locais alternativos...")
         
-        # Tentar localização alternativa
-        alt_path = Path("/home/tts-webui-proxmox-passthrough/train/pretrained/F5-TTS-pt-br/pt-br/model_200000.pt")
-        if alt_path.exists():
-            input_path = alt_path
-            output_path = alt_path.parent / "model_200000_converted.pt"
-            print(f"✅ Encontrado em: {input_path}")
+        # Tentar localização alternativa (PRETRAIN_MODEL_PATH do .env)
+        pretrained_path = config.get('pretrained_model_path')
+        if pretrained_path:
+            alt_path = project_root / pretrained_path
+            if alt_path.exists():
+                input_path = alt_path
+                output_path = alt_path.parent / "model_200000_converted.pt"
+                print(f"✅ Encontrado em: {input_path}")
+            else:
+                print("❌ Modelo pt-BR não encontrado em nenhum local!")
+                return 1
         else:
             print("❌ Modelo pt-BR não encontrado em nenhum local!")
             return 1

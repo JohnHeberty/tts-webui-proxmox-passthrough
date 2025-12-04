@@ -79,7 +79,7 @@ training:
 # ========================================
 checkpoints:
   # Diretório de saída (sempre dentro de train/)
-  output_dir: "train/output/ptbr_finetuned"
+  output_dir: "train/output/ptbr_finetuned2"
   
   # Salvamento
   save_per_updates: 500  # Salvar a cada N updates

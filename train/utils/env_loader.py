@@ -97,10 +97,22 @@ def get_training_config() -> Dict[str, Any]:
         'device': env.get('DEVICE', 'cuda'),
         'num_workers': env.get('NUM_WORKERS', 4),
         'mixed_precision': env.get('MIXED_PRECISION', 'fp16'),
+        'max_samples': env.get('MAX_SAMPLES', 32),
         'logger': env.get('LOGGER', 'tensorboard'),
         'log_samples': env.get('LOG_SAMPLES', True),
         'log_samples_per_epochs': env.get('LOG_SAMPLES_PER_EPOCHS', 1),
         'seed': env.get('SEED', 666),
+        # Novas configurações
+        'exp_name': env.get('EXP_NAME', 'F5TTS_Base'),
+        'model_filename': env.get('MODEL_FILENAME', 'pt-br/model_200000.pt'),
+        'f5tts_base_dir': env.get('F5TTS_BASE_DIR', '/root/.local/lib/python3.11'),
+        'f5tts_ckpts_dir': env.get('F5TTS_CKPTS_DIR', '/root/.local/lib/python3.11/ckpts'),
+        'local_pretrained_path': env.get('LOCAL_PRETRAINED_PATH', 'models/f5tts/pt-br/model_last.pt'),
+        # Data preparation
+        'raw_data_dir': env.get('RAW_DATA_DIR', 'train/data/raw'),
+        'processed_data_dir': env.get('PROCESSED_DATA_DIR', 'train/data/processed'),
+        'videos_csv': env.get('VIDEOS_CSV', 'train/data/videos.csv'),
+        'config_dir': env.get('CONFIG_DIR', 'train/config'),
     }
 
 

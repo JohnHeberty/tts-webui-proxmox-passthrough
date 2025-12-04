@@ -44,11 +44,22 @@ class F5TTSTrainer:
     def __init__(self):
         self.config = get_training_config()
         self.train_root = TRAIN_ROOT
-        self.runs_dir = self.train_root / "runs"
-        self.output_dir = self.train_root / "output" / "ptbr_finetuned"
-        self.data_dir = self.train_root / "data"
+        # Usar paths do .env
+        self.runs_dir = PROJECT_ROOT / self.config['tensorboard_dir']
+        self.output_dir = PROJECT_ROOT / self.config['output_dir']
+        self.data_dir = PROJECT_ROOT / self.config['dataset_path'].rsplit('/', 1)[0]
         self.pretrained_dir = self.train_root / "pretrained"
         self.tensorboard_process = None
+        
+        # 🔒 Garantia: se nada foi configurado, baixa e usa o F5-TTS-pt-br como base
+        if not self.config.get("pretrained_model_path") and not self.config.get("auto_download_pretrained"):
+            logger.info(
+                "Nenhum PRETRAIN_MODEL_PATH definido e AUTO_DOWNLOAD_PRETRAINED=False. "
+                "Habilitando download automático do modelo 'firstpixel/F5-TTS-pt-br'."
+            )
+            self.config["auto_download_pretrained"] = True
+            self.config["base_model"] = self.config.get("base_model", "firstpixel/F5-TTS-pt-br")
+
         
     def download_pretrained_model(self):
         """Baixa modelo pré-treinado do HuggingFace se necessário"""
@@ -84,11 +95,12 @@ class F5TTSTrainer:
             model_dir = self.pretrained_dir / base_model.split('/')[-1]
             model_dir.mkdir(parents=True, exist_ok=True)
             
-            # Baixar arquivo pt-br/model_200000.pt (formato .pt com EMA completo)
-            logger.info("   Baixando pt-br/model_200000.pt...")
+            # Baixar arquivo do modelo (configurável via MODEL_FILENAME no .env)
+            model_filename = self.config.get('model_filename', 'pt-br/model_200000.pt')
+            logger.info(f"   Baixando {model_filename}...")
             downloaded_file = hf_hub_download(
                 repo_id=base_model,
-                filename="pt-br/model_200000.pt",
+                filename=model_filename,
                 local_dir=str(model_dir),
                 local_dir_use_symlinks=False
             )
@@ -110,7 +122,8 @@ class F5TTSTrainer:
         3. runs -> train/runs (TensorBoard logs)
         """
         # 1. Symlink de checkpoints
-        f5_ckpt_dir = Path("/root/.local/lib/python3.11/ckpts") / self.config['train_dataset_name']
+        f5_ckpts_base = self.config.get('f5tts_ckpts_dir', '/root/.local/lib/python3.11/ckpts')
+        f5_ckpt_dir = Path(f5_ckpts_base) / self.config['train_dataset_name']
         target_dir = self.output_dir
         
         # Garantir que target existe
@@ -152,7 +165,8 @@ class F5TTSTrainer:
             logger.info(f"✅ Symlink criado: ckpts/{self.config['train_dataset_name']} -> {target_dir.relative_to(PROJECT_ROOT)}")
         
         # 2. Symlink de data (automático)
-        data_link = Path("/root/.local/lib/python3.11/data")
+        f5_base_dir = self.config.get('f5tts_base_dir', '/root/.local/lib/python3.11')
+        data_link = Path(f5_base_dir) / "data"
         if not data_link.exists():
             data_link.symlink_to(self.data_dir.absolute(), target_is_directory=True)
             logger.info(f"✅ Symlink criado: data -> {self.data_dir.relative_to(PROJECT_ROOT)}")
@@ -245,7 +259,7 @@ class F5TTSTrainer:
     
     def start_tensorboard(self):
         """Inicia TensorBoard em background"""
-        port = self.config['tensorboard_port']
+        port = self.config.get('tensorboard_port', 6006)
         
         # Verificar se já está rodando
         try:
@@ -313,7 +327,9 @@ class F5TTSTrainer:
         
         # Priority 2: Check F5-TTS ckpts directory
         if not resume_checkpoint:
-            checkpoint_dir = Path(f"/root/.local/lib/python3.11/site-packages/f5_tts/../../ckpts/{self.config['train_dataset_name']}")
+            # Usar F5TTS_CKPTS_DIR do .env ou path padrão
+            f5tts_base = self.config.get('f5tts_ckpts_dir', '/root/.local/lib/python3.11/ckpts')
+            checkpoint_dir = Path(f"{f5tts_base}/{self.config['train_dataset_name']}")
             if checkpoint_dir.exists():
                 last_ckpt = checkpoint_dir / "model_last.pt"
                 if last_ckpt.exists():
@@ -323,7 +339,9 @@ class F5TTSTrainer:
         # Priority 3: Use local pretrained model from models/f5tts/pt-br/
         pretrained_model = None
         if not resume_checkpoint:
-            local_pretrained = PROJECT_ROOT / "models" / "f5tts" / "pt-br" / "model_last.pt"
+            # Usar LOCAL_PRETRAINED_PATH do .env ou path padrão
+            local_pretrained_path = self.config.get('local_pretrained_path', 'models/f5tts/pt-br/model_last.pt')
+            local_pretrained = PROJECT_ROOT / local_pretrained_path
             if local_pretrained.exists():
                 pretrained_model = str(local_pretrained.absolute())
                 logger.info(f"📥 Modelo pré-treinado encontrado: {local_pretrained.relative_to(PROJECT_ROOT)}")
@@ -345,7 +363,8 @@ class F5TTSTrainer:
                     logger.info(f"📥 Usando modelo pré-treinado (absoluto): {pretrained_path.name}")
                 elif pretrained_path_env.startswith('ckpts/'):
                     # Caminho relativo ao F5-TTS (ckpts/f5_dataset/model_last.pt)
-                    f5tts_base = Path("/root/.local/lib/python3.11")
+                    f5tts_base_dir = self.config.get('f5tts_base_dir', '/root/.local/lib/python3.11')
+                    f5tts_base = Path(f5tts_base_dir)
                     pretrained_full = f5tts_base / pretrained_path_env
                     if pretrained_full.exists():
                         pretrained_model = str(pretrained_full.absolute())
@@ -363,20 +382,20 @@ class F5TTSTrainer:
         
         # Preparar argumentos para finetune_cli
         args = [
-            '--exp_name', 'F5TTS_Base',
+            '--exp_name', self.config.get('exp_name', 'F5TTS_Base'),
             '--dataset_name', self.config['train_dataset_name'],
             '--learning_rate', str(self.config['learning_rate']),
             '--batch_size_per_gpu', str(self.config['batch_size']),
             '--batch_size_type', self.config['batch_size_type'],
             '--max_samples', str(self.config.get('max_samples', 32)),
             '--grad_accumulation_steps', str(self.config['grad_accumulation_steps']),
-            '--max_grad_norm', str(self.config['max_grad_norm']),
+            '--max_grad_norm', str(self.config.get('max_grad_norm', 1.0)),
             '--epochs', str(self.config['epochs']),
             '--num_warmup_updates', str(self.config['warmup_steps']),
             '--save_per_updates', str(self.config['save_per_updates']),
             '--last_per_updates', str(self.config['last_per_updates']),
             '--keep_last_n_checkpoints', str(self.config['keep_last_n_checkpoints']),
-            '--logger', self.config['logger'],
+            '--logger', self.config.get('logger', 'tensorboard'),
         ]
         
         # Add finetune flag only if we have a pretrained model

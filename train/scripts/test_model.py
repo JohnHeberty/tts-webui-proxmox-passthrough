@@ -120,7 +120,14 @@ def print_metrics_report():
             logger.info("")
     
     # 2. Analisar checkpoints
-    output_dir = Path("train/output/ptbr_finetuned")
+    # Usar OUTPUT_DIR do .env
+    import sys
+    from pathlib import Path as PathLib
+    project_root = PathLib(__file__).parent.parent.parent
+    sys.path.insert(0, str(project_root))
+    from train.utils.env_loader import get_training_config
+    config = get_training_config()
+    output_dir = project_root / config.get('output_dir', 'train/output/ptbr_finetuned')
     checkpoints = []
     
     if output_dir.exists():

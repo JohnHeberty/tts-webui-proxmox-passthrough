@@ -8,6 +8,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 
+# Add project root to path if needed
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from train.utils.env_loader import get_training_config
+
 def check_emoji(condition, success_msg, fail_msg):
     """Helper para print com emoji"""
     if condition:
@@ -67,7 +74,8 @@ def main():
     
     # 2. Verificar Dataset
     print("📁 2. Dataset")
-    dataset_path = train_root / "data" / "f5_dataset"
+    config = get_training_config()
+    dataset_path = Path(config.get('dataset_path', train_root / "data" / "f5_dataset"))
     
     all_ok &= check_emoji(
         dataset_path.exists(),
@@ -233,7 +241,7 @@ def main():
     # 6. Verificar Diretórios de Saída
     print("💾 6. Diretórios de Saída")
     
-    output_dir = train_root / "output" / "ptbr_finetuned"
+    output_dir = Path(config.get('output_dir', train_root / "output" / "ptbr_finetuned"))
     output_dir.mkdir(parents=True, exist_ok=True)
     all_ok &= check_emoji(
         output_dir.exists(),
@@ -241,7 +249,7 @@ def main():
         ""
     )
     
-    runs_dir = train_root / "runs"
+    runs_dir = Path(config.get('tensorboard_dir', train_root / "runs"))
     runs_dir.mkdir(parents=True, exist_ok=True)
     all_ok &= check_emoji(
         runs_dir.exists(),

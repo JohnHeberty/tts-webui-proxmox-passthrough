@@ -19,6 +19,13 @@ from collections import Counter
 import whisper
 import torch
 import gc
+import sys
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from train.utils.env_loader import get_training_config
 
 # Configurar logging
 logging.basicConfig(
@@ -180,9 +187,12 @@ def retranscribe_with_better_model(audio_path: Path, model_name: str = "medium")
 
 def main():
     """Função principal."""
-    base_path = Path("/home/tts-webui-proxmox-passthrough/train")
-    transcriptions_path = base_path / "data/processed/transcriptions.json"
-    wavs_dir = base_path / "data/processed/wavs"
+    # Carregar configuração do .env
+    config = get_training_config()
+    processed_dir = Path(config.get('processed_data_dir', 'train/data/processed'))
+    transcriptions_path = processed_dir / "transcriptions.json"
+    wavs_dir = processed_dir / "wavs"
+    log_dir = Path(config.get('log_dir', 'train/logs'))
     
     logger.info("=" * 80)
     logger.info("🔍 VALIDAÇÃO E RE-PROCESSAMENTO DE TRANSCRIÇÕES")

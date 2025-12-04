@@ -31,6 +31,10 @@ import yaml
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Carregar config do .env
+from train.utils.env_loader import get_training_config
+env_config = get_training_config()
+
 try:
     import yt_dlp
     from num2words import num2words
@@ -94,7 +98,8 @@ _PT_BR_VOCAB = None  # carregado lazy a partir de _COMMON_PT_WORDS + arquivo, se
 
 def load_config() -> dict:
     """Carrega configuração do dataset"""
-    config_path = project_root / "train" / "config" / "dataset_config.yaml"
+    config_dir = env_config.get('config_dir', 'train/config')
+    config_path = project_root / config_dir / "dataset_config.yaml"
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
@@ -511,10 +516,14 @@ def main():
     # Load config
     config = load_config()
 
-    # Paths
-    data_dir = project_root / "train" / "data"
-    videos_csv = data_dir / "videos.csv"
-    processed_dir = data_dir / "processed"
+    # Paths (usar .env)
+    data_base = env_config.get('dataset_path', 'train/data/f5_dataset').rsplit('/', 1)[0]
+    processed_data_dir = env_config.get('processed_data_dir', 'train/data/processed')
+    videos_csv_path = env_config.get('videos_csv', 'train/data/videos.csv')
+    
+    data_dir = project_root / data_base
+    processed_dir = project_root / processed_data_dir
+    videos_csv = project_root / videos_csv_path
     wavs_dir = processed_dir / "wavs"
     subtitles_dir = data_dir / "subtitles"
 

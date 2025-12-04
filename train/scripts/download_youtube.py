@@ -25,6 +25,10 @@ import yaml
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Carregar config do .env
+from train.utils.env_loader import get_training_config
+env_config = get_training_config()
+
 try:
     import yt_dlp
 except ImportError:
@@ -44,8 +48,9 @@ logger = logging.getLogger(__name__)
 
 
 def load_config() -> dict:
-    """Carrega configuração do dataset"""
-    config_path = project_root / "train" / "config" / "dataset_config.yaml"
+    """ Carrega configuração do dataset"""
+    config_dir = env_config.get('config_dir', 'train/config')
+    config_path = project_root / config_dir / "dataset_config.yaml"
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 

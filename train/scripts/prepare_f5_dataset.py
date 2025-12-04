@@ -18,6 +18,10 @@ import yaml
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Carregar config do .env
+from train.utils.env_loader import get_training_config
+env_config = get_training_config()
+
 try:
     from datasets.arrow_writer import ArrowWriter
     import soundfile as sf
@@ -54,9 +58,11 @@ def main():
     # Load config
     config = load_config()
     
-    # Paths
-    data_dir = project_root / "train" / "data"
-    f5_dataset_dir = data_dir / "f5_dataset"
+    # Paths (usar .env quando possível)
+    data_base = env_config.get('dataset_path', 'train/data/f5_dataset').rsplit('/', 1)[0]
+    data_dir = project_root / data_base
+    dataset_name = env_config.get('train_dataset_name', 'f5_dataset')
+    f5_dataset_dir = data_dir / dataset_name
     metadata_file = f5_dataset_dir / "metadata.csv"
     
     if not metadata_file.exists():

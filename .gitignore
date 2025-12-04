@@ -1,4 +1,11 @@
-# Python
+# ================================================================================
+# GITIGNORE CONSOLIDADO - TTS WebUI Proxmox Passthrough
+# ================================================================================
+# Organizado por categoria para fácil manutenção
+
+# ================================================================================
+# PYTHON
+# ================================================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -19,44 +26,149 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.pyc
+*.pyo
+*.pyd
 
-# Virtual environments
+# ================================================================================
+# VIRTUAL ENVIRONMENTS
+# ================================================================================
 venv/
 ENV/
 env/
-train/runs/
+.venv/
 
-# IDEs
+# ================================================================================
+# IDEs E EDITORES
+# ================================================================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.vscode-server/
 
-# OS
+# ================================================================================
+# SISTEMA OPERACIONAL
+# ================================================================================
 .DS_Store
 Thumbs.db
+*.tmp
+*.temp
 
-# Logs
-*.log
-logs/
-
-# Runtime data
-uploads/
-processed/
-temp/
-voice_profiles/
-models/
-
-# Environment
+# ================================================================================
+# ENVIRONMENT VARIABLES
+# ================================================================================
 .env
 .env.local
+.env.*.local
 
-# Testing
+# ================================================================================
+# LOGS
+# ================================================================================
+*.log
+logs/
+train/logs/*.log
+train/logs/tensorboard/
+
+# ================================================================================
+# TESTING
+# ================================================================================
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
+tests/output_clone_analysis/
 
-# Documentation
+# ================================================================================
+# DOCUMENTATION BUILD
+# ================================================================================
 docs/_build/
+
+# ================================================================================
+# MODELS E CHECKPOINTS (ARQUIVOS GRANDES)
+# ================================================================================
+# Root models directory
+models/
+
+# Training checkpoints
+*.pt
+*.pth
+*.safetensors
+train/output/**/*.pt
+train/output/**/*.pth
+train/output/**/*.safetensors
+
+# ================================================================================
+# TRAINING DATA (ARQUIVOS GRANDES)
+# ================================================================================
+# Raw audio
+train/data/raw/*.wav
+train/data/raw/*.mp3
+train/data/raw/*.flac
+
+# Processed segments
+train/data/processed/wavs/*.wav
+train/data/processed/*.json
+
+# Subtitles
+train/data/subtitles/*.vtt
+train/data/subtitles/*.srt
+
+# F5-TTS datasets
+train/data/f5_dataset/wavs/*.wav
+train/data/f5_dataset/*.arrow
+train/data/f5_dataset/*.csv
+train/data/f5_dataset/*.json
+train/data/f5_dataset_30s/wavs/*.wav
+train/data/f5_dataset_30s/*.arrow
+train/data/f5_dataset_30s/*.csv
+train/data/f5_dataset_30s/*.json
+train/data/f5_dataset_pinyin
+
+# Cache
+train/data/cache/
+
+# ================================================================================
+# TRAINING OUTPUTS
+# ================================================================================
+# TensorBoard logs
+train/runs/
+
+# Generated audio samples
+train/output/**/samples/*.wav
+
+# Pretrained models downloads
+train/pretrained/*/
+
+# ================================================================================
+# RUNTIME DATA
+# ================================================================================
+uploads/
+processed/
+temp/
+voice_profiles/
+
+# ================================================================================
+# KEEP STRUCTURE FILES
+# ================================================================================
+# Manter .gitkeep em diretórios vazios
+!**/.gitkeep
+
+# ================================================================================
+# KEEP IMPORTANT CONFIG FILES
+# ================================================================================
+# Manter configs pequenos
+!train/config/*.yaml
+!train/config/*.yml
+!train/data/videos.csv
+!train/.env.example
+!.env.example
+
+# Manter documentação
+!**/*.md
+!**/README.md
+
+# Manter scripts
+!train/scripts/*.py
+!train/utils/*.py

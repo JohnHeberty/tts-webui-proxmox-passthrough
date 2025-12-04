@@ -7,6 +7,12 @@ import sys
 from pathlib import Path
 import torch
 
+# Carregar config do .env
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+from train.utils.env_loader import get_training_config
+config = get_training_config()
+
 # Cores para terminal
 GREEN = '\033[92m'
 RED = '\033[91m'
@@ -34,7 +40,7 @@ def main():
     
     # 1. Dataset
     print(f"{YELLOW}📁 Dataset{RESET}")
-    dataset_path = Path("/home/tts-webui-proxmox-passthrough/train/data/f5_dataset")
+    dataset_path = project_root / config.get('dataset_path', 'train/data/f5_dataset')
     wavs_dir = dataset_path / "wavs"
     metadata_file = dataset_path / "metadata.csv"
     
@@ -58,7 +64,9 @@ def main():
     
     # 2. Checkpoint
     print(f"{YELLOW}💾 Checkpoint{RESET}")
-    checkpoint_path = Path("/root/.local/lib/python3.11/ckpts/f5_dataset/model_last.pt")
+    ckpts_dir = config.get('f5tts_ckpts_dir', '/root/.local/lib/python3.11/ckpts')
+    dataset_name = config.get('train_dataset_name', 'f5_dataset')
+    checkpoint_path = Path(f"{ckpts_dir}/{dataset_name}/model_last.pt")
     
     all_ok &= check(checkpoint_path.exists(), "Checkpoint encontrado")
     

@@ -22,6 +22,8 @@ audio:
   # Clipping prevention
   headroom_db: -1.0  # Headroom para evitar clipping
 
+  fade_ms: 5.0   # milissegundos de fade-in/fade-out em cada segmento
+
 # ========================================
 # SEGMENTATION
 # ========================================
@@ -29,7 +31,7 @@ segmentation:
   # Duração dos segmentos (em segundos)
   min_duration: 3.0
   max_duration: 12.0
-  target_duration: 8.0  # Duração ideal
+  target_duration: 12.0  # Duração ideal
   
   # Voice Activity Detection (VAD)
   use_vad: true
