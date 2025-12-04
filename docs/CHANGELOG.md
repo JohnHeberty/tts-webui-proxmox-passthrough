@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 🔥 Fixed - CRITICAL
+
+#### Engine Selection Bug (P0 - Critical)
+- **CRITICAL BUG FIX:** Engine selection being completely ignored in `/voices/clone` endpoint
+  - **Issue:** Frontend selection of F5-TTS was being ignored by backend
+  - **Impact:** 100% failure rate - F5-TTS never worked since implementation
+  - **Root Cause:** FastAPI `Form(TTSEngine.XTTS)` with Enum ignores user input, always defaults to XTTS
+  - **Fix:** Changed to `str = Form('xtts')` with explicit validation
+  - **Files Modified:**
+    - `app/main.py` line 697: Changed Form parameter type from `TTSEngine` to `str`
+    - Added explicit validation: `if tts_engine not in ['xtts', 'f5tts']`
+    - Added request logging: `logger.info(f"📥 Clone voice request: engine={tts_engine}...")`
+    - Added job creation logging with all parameters
+  - **References:** `RESULT.md`, `SPRINTS.md` (SPRINT-01)
+  - **Tested:** Manual validation + automated tests created
+  - **Deployed:** 2024-12-04 23:17 UTC
+
+### ✅ Added
+
+#### Testing
+- **New Test Suite:** `tests/test_clone_voice_engine_selection.py`
+  - Comprehensive engine selection testing (XTTS + F5-TTS)
+  - Invalid engine validation tests (400 error)
+  - Backward compatibility tests (default engine)
+  - Case-insensitive handling tests
+  - **Regression Test:** Dedicated test to prevent bug from returning (`test_f5tts_selection_not_ignored`)
+  - 6 test cases covering 100% of engine selection scenarios
+  - References: `SPRINTS.md` (SPRINT-02)
+
+#### Logging & Observability
+- **Structured Logging in Processor:** `app/processor.py`
+  - Initial processing log with full metadata:
+    - `engine_requested` vs `engine_selected` (detect fallbacks)
+    - `has_ref_text` flag
+    - Job ID, voice name, language
+  - Completion log with metrics:
+    - Processing duration in seconds
+    - Voice ID created
+    - Engine actually used
+  - All logs use structured `extra={}` format for easy parsing
+  - References: `SPRINTS.md` (SPRINT-03)
+
+### 📚 Documentation
+- **Root Cause Analysis:** `RESULT.md` - Complete investigation of engine selection bug
+  - 5 WHYs analysis
+  - Full flow tracing (frontend → backend → processor → engine)
+  - 3 proposed solutions with pros/cons
+  - Implementation outcomes section
+- **Sprint Planning:** `SPRINTS.md` - Detailed breakdown of 6 sprints
+  - SPRINT-01: Hotfix (✅ completed)
+  - SPRINT-02: Tests (✅ completed)
+  - SPRINT-03: Logging (✅ completed)
+  - SPRINT-04: Validation utility (pending)
+  - SPRINT-05: Postmortem docs (pending)
+  - SPRINT-06: Endpoint audit (pending)
+
+---
+
 ## [2.0.0] - 2025-11-27
 
 ### 🚀 Major Release: XTTS v2 Migration + Complete Refactoring

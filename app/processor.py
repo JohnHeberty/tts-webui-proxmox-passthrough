@@ -197,10 +197,26 @@ class VoiceProcessor:
         Returns:
             VoiceProfile criado
         """
+        import datetime
+        start_time = datetime.datetime.now()
+        
         try:
             # Determina qual engine usar
             engine_type = job.tts_engine or self.settings.get('tts_engine_default', 'xtts')
-            logger.info("Starting clone job %s with engine %s", job.id, engine_type)
+            
+            # 🎬 Logging estruturado inicial
+            logger.info(
+                "🎬 Starting voice clone processing",
+                extra={
+                    "job_id": job.id,
+                    "engine_requested": job.tts_engine,
+                    "engine_selected": engine_type,
+                    "engine_fallback": engine_type != job.tts_engine,
+                    "voice_name": job.voice_name,
+                    "language": job.source_language,
+                    "has_ref_text": job.ref_text is not None
+                }
+            )
             
             # Garante que engine esteja carregado (lazy load)
             engine = self._get_engine(engine_type)
@@ -253,11 +269,24 @@ class VoiceProcessor:
             job.output_file = voice_profile.profile_path
             job.voice_id = voice_profile.id
             
-            import datetime
             job.completed_at = datetime.datetime.now()
             
             if self.job_store:
                 self.job_store.update_job(job)
+            
+            # ✅ Logging estruturado de sucesso
+            duration_secs = (job.completed_at - start_time).total_seconds()
+            logger.info(
+                "✅ Voice clone completed",
+                extra={
+                    "job_id": job.id,
+                    "voice_id": voice_profile.id,
+                    "voice_name": job.voice_name,
+                    "engine_used": engine_type,
+                    "duration_secs": round(duration_secs, 2),
+                    "status": "success"
+                }
+            )
             
             logger.info("Voice clone job %s completed: %s", job.id, voice_profile.id)
             

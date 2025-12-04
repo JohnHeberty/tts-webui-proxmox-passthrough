@@ -694,7 +694,7 @@ async def clone_voice(
     name: str = Form(...),
     language: str = Form(...),
     description: Optional[str] = Form(None),
-    tts_engine: TTSEngine = Form(TTSEngine.XTTS, description="TTS engine: 'xtts' or 'f5tts'"),
+    tts_engine: str = Form('xtts', description="TTS engine: 'xtts' (default) or 'f5tts' (experimental)"),
     ref_text: Optional[str] = Form(None, description="Reference transcription for F5-TTS (auto-transcribed if None)")
 ):
     """
@@ -717,6 +717,15 @@ async def clone_voice(
         # Validações
         if not is_language_supported(language):
             raise InvalidLanguageException(language)
+        
+        # Validar tts_engine
+        if tts_engine not in ['xtts', 'f5tts']:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid tts_engine: '{tts_engine}'. Must be 'xtts' or 'f5tts'"
+            )
+        
+        logger.info(f"📥 Clone voice request: engine={tts_engine}, name={name}, language={language}")
         
         # Lê arquivo
         content = await file.read()
@@ -743,14 +752,19 @@ async def clone_voice(
             voice_name=name,
             voice_description=description,
             source_language=language,
-            tts_engine=tts_engine.value if isinstance(tts_engine, TTSEngine) else tts_engine,  # Converte enum para string se necessário
+            tts_engine=tts_engine,  # Já é string, não precisa converter
             ref_text=ref_text
         )
         # IMPORTANTE: Setar input_file ANTES de salvar/enviar
         clone_job.input_file = str(file_path)
         
-        # DEBUG: Verificar antes de serializar
-        logger.debug(f"🔍 Job antes de salvar: input_file={clone_job.input_file}")
+        # DEBUG: Verificar job criado
+        logger.debug(f"🔍 Job created: id={clone_job.id}")
+        logger.debug(f"   - tts_engine: {clone_job.tts_engine}")
+        logger.debug(f"   - voice_name: {clone_job.voice_name}")
+        logger.debug(f"   - language: {clone_job.source_language}")
+        logger.debug(f"   - ref_text: {clone_job.ref_text or '(None - will auto-transcribe)'}")
+        logger.debug(f"   - input_file: {clone_job.input_file}")
         
         # Salva job no Redis com input_file preenchido
         job_store.save_job(clone_job)
