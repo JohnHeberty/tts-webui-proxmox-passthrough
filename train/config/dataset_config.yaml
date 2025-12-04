@@ -53,17 +53,31 @@ transcription:
   
   # ASR (Automatic Speech Recognition)
   asr:
-    model: "openai/whisper-base"  # tiny, base, small, medium, large
-    device: "cuda"  # cuda ou cpu
+    # Nome do modelo usado pelo whisper.load_model
+    # Valores válidos: tiny, base, small, medium, large, large-v2
+    model: "base"             # modelo principal (rápido)
+
+    # Modelo (ou mesmo modelo) para retranscrição de alta precisão
+    # Se sua GPU aguentar, você pode trocar para "medium" ou "large-v2"
+    high_precision_model: "base"
+
+    device: "cuda"            # "cuda" ou "cpu"
     language: "pt"
-    task: "transcribe"  # transcribe ou translate
+    task: "transcribe"        # "transcribe" ou "translate"
     
-    # Whisper parameters
+    # Parâmetros padrão do Whisper
     beam_size: 5
     best_of: 5
     temperature: 0.0
+
+    # Parâmetros para modo de alta precisão (quando retranscreve)
+    # Usados quando high_precision=True
+    hp_beam_size: 8
+    hp_best_of: 8
+    hp_temperature: 0.0
     
-    # VAD filter para Whisper (melhora accuracy)
+    # (opcional) Se você for usar algum wrapper com VAD, pode aproveitar isso,
+    # mas o script atual não usa esses parâmetros ainda:
     use_vad_filter: true
     vad_filter_min_silence_duration: 0.5
 
@@ -92,17 +106,37 @@ text_preprocessing:
     "??": "?"
     "  ": " "
   
-  # Filtros de qualidade
-  min_text_length: 10  # Caracteres
-  max_text_length: 500  # Caracteres
+  # Filtros de qualidade por tamanho
+  min_text_length: 10    # caracteres
+  max_text_length: 500   # caracteres
+  # (opcional) Mínimo de palavras para aceitar um segmento
+  min_word_count: 2
+
+  # Limpeza de bordas bugadas (palavras quebradas no começo/fim do segmento)
+  cleanup_segment_edges: true
+
+  # Lógica de retranscrição com modelo mais preciso quando
+  # há muitas palavras fora do vocabulário (OOV)
+  retranscribe_on_oov: true
+  # Proporção mínima de palavras desconhecidas para considerar texto ruim
+  oov_ratio_threshold: 0.6        # 60%
+  # Quantidade mínima absoluta de palavras desconhecidas
+  oov_min_unknowns: 4
+  # Quantidade mínima de palavras no segmento para ativar a checagem
+  oov_min_total_words: 8
+
+  # Vocabulário externo opcional (um termo por linha, em minúsculo)
+  # Se você criar esse arquivo, descomente e ajuste o caminho:
+  # vocab_file: "train/resources/pt_br_vocab.txt"
   
-  # Remover linhas com caracteres suspeitos
+  # Remover linhas com termos/ruídos indesejados
   remove_lines_with:
     - "[música]"
     - "[aplausos]"
     - "[risos]"
     - "♪"
     - "�"
+
 
 # ========================================
 # YOUTUBE DOWNLOAD

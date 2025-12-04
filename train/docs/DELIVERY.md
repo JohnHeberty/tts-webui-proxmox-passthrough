@@ -24,7 +24,7 @@ train/
 ├── README.md                      # 📖 Documentação completa (português)
 ├── quickstart.py                  # 🚀 Script de teste rápido
 ├── run_training.py                # 🏋️ Script principal de treinamento
-├── requirements_train.txt         # 📦 Dependências Python
+├── requirements_train.txt         # 📦 Dependências python3
 │
 ├── config/
 │   ├── train_config.yaml          # ⚙️ Configuração de treinamento
@@ -84,7 +84,7 @@ id,youtube_url,speaker,emotion,language,split,notes
 #### **Opção A: Script Único (Quickstart)**
 
 ```bash
-python -m train.quickstart
+python3 -m train.quickstart
 ```
 
 Executa todo o pipeline automaticamente (download → transcrição → dataset).
@@ -93,32 +93,32 @@ Executa todo o pipeline automaticamente (download → transcrição → dataset)
 
 ```bash
 # 1. Download de áudio
-python -m train.scripts.download_youtube
+python3 -m train.scripts.download_youtube
 
 # 2. Segmentação (VAD, 3-12s)
-python -m train.scripts.prepare_segments
+python3 -m train.scripts.prepare_segments_optimized
 
 # 3. Transcrição (legendas YouTube ou Whisper)
-python -m train.scripts.transcribe_or_subtitles
+python3 -m train.scripts.transcribe_or_subtitles
 
 # 4. Construir metadata.csv
-python -m train.scripts.build_metadata_csv
+python3 -m train.scripts.build_metadata_csv
 
 # 5. Preparar dataset F5-TTS (Arrow)
-python -m train.scripts.prepare_f5_dataset
+python3 -m train.scripts.prepare_f5_dataset
 ```
 
 ### 4️⃣ Treinar Modelo
 
 ```bash
 # Iniciar treinamento
-python -m train.run_training
+python3 -m train.run_training
 
 # Ou com configuração customizada
-python -m train.run_training --config train/config/train_config.yaml
+python3 -m train.run_training --config train/config/train_config.yaml
 
 # Ou retomar de checkpoint
-python -m train.run_training --resume train/output/ptbr_finetuned/last.pt
+python3 -m train.run_training --resume train/output/ptbr_finetuned/last.pt
 ```
 
 ---
@@ -300,14 +300,14 @@ Baseado nas recomendações do `firstpixel/F5-TTS-pt-br`:
 
 ### Mínimo (CPU)
 
-- Python 3.8+
+- python3 3.8+
 - 16GB RAM
 - 50GB espaço em disco
 - ffmpeg
 
 ### Recomendado (GPU)
 
-- Python 3.8+
+- python3 3.8+
 - CUDA GPU (6GB+ VRAM)
 - 16GB RAM
 - 100GB espaço em disco
@@ -315,8 +315,8 @@ Baseado nas recomendações do `firstpixel/F5-TTS-pt-br`:
 
 ### Testado Em
 
-- ✅ Python 3.10 + CUDA 11.8 + GPU RTX 3090
-- ✅ Python 3.11 + CPU (mais lento)
+- ✅ python3 3.10 + CUDA 11.8 + GPU RTX 3090
+- ✅ python3 3.11 + CPU (mais lento)
 
 ---
 
@@ -368,7 +368,7 @@ Criar script de inferência:
 
 ```bash
 # TODO: Implementar
-python -m train.scripts.test_inference \
+python3 -m train.scripts.test_inference \
     --checkpoint train/output/ptbr_finetuned/checkpoint_1000.pt \
     --text "olá, como você está?" \
     --ref-audio samples/ref.wav
@@ -414,7 +414,7 @@ Pipeline **completo**, **testável** e **pronto para uso** para fine-tuning do F
 
 ### Resumo do Que Foi Criado
 
-- ✅ **6 scripts Python** modulares e bem documentados
+- ✅ **6 scripts python3** modulares e bem documentados
 - ✅ **2 arquivos YAML** de configuração
 - ✅ **1 script de treinamento** completo (compatível com F5-TTS oficial)
 - ✅ **1 script quickstart** para teste rápido
@@ -427,10 +427,10 @@ Pipeline **completo**, **testável** e **pronto para uso** para fine-tuning do F
 ### O Que Você Pode Fazer Agora
 
 1. ✅ Adicionar vídeos do YouTube em `videos.csv`
-2. ✅ Executar `python -m train.quickstart` para teste
+2. ✅ Executar `python3 -m train.quickstart` para teste
 3. ✅ Ou executar pipeline passo a passo
 4. ✅ Ajustar configs YAML conforme sua GPU
-5. ✅ Treinar modelo customizado: `python -m train.run_training`
+5. ✅ Treinar modelo customizado: `python3 -m train.run_training`
 6. ✅ Usar checkpoint treinado (integração futura)
 
 ### O Que NÃO Foi Alterado

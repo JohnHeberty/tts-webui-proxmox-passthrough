@@ -16,14 +16,18 @@
 # 3,https://www.youtube.com/watch?v=ZZZZZZZZZZZ,speaker_male,neutral,pt-br,val,Podcast entrevista
 
 id,youtube_url,speaker,emotion,language,split,notes
-1,https://www.youtube.com/watch?v=FsO-m3sl02Y,narrator1,happy,pt-br,train,COMO EU GANHO R$ 900,00 POR SEMANA USANDO O MERCADO LIVRE - PASSO A PASSO
-2,https://www.youtube.com/watch?v=zzzBOcfo_sM,narrator1,neutral,pt-br,train,O NUBANK VAI QUEBRAR? PORQUE OS BANCOS ESTÃO FALINDO?
-3,https://www.youtube.com/watch?v=4hLl0w7Bn_c,narrator1,neutral,pt-br,train,O JEITO MAIS FÁCIL DE VOCÊ COMPRAR SUA CASA PRÓPRIA!
-4,https://www.youtube.com/watch?v=mD-TqYYPiqU,narrator1,happy,pt-br,train,TODA A VERDADE SOBRE COMO FIQUEI RICO!
-5,https://www.youtube.com/watch?v=-MvgbbC0qxw,narrator1,happy,pt-br,train,3 TIPOS DE SITES PRA VOCÊ COPIAR E COMEÇAR A LUCRAR AINDA ESSE MÊS
-6,https://www.youtube.com/watch?v=yuZuRyXRqHc,narrator1,happy,pt-br,train,SEJA UM AFILIADO DO MERCADO LIVRE E LUCRE TODO DIA COM SITE PRÓPRIO SEM APARECER
-7,https://www.youtube.com/watch?v=1ZpI2k88DYc,narrator1,happy,pt-br,train,ATIVE ESSAS 3 COISAS PRA BOMBAR SUAS VENDAS AINDA HOJE!
-8,https://www.youtube.com/watch?v=THntEmnAyx0,narrator1,neutral,pt-br,train,20 ANOS DE YOUTUBE! O MAIOR MANUAL DE EMPREENDEDORISMO DIGITAL QUE VOCÊ NUNCA VIU
-9,https://www.youtube.com/watch?v=50QVKBs0ziY,narrator1,happy,pt-br,train,SÓ EXISTE UM CAMINHO PARA FICAR RICO E ENRIQUECER RÁPIDO
-10,https://www.youtube.com/watch?v=-E4yKCitV5M,narrator1,happy,pt-br,train,QUANTO UM BLOG PODE RENDER POR MÊS [VOCÊ VAI FICAR CHOCADO]
-11,https://www.youtube.com/watch?v=E0C6kcus4Ew,narrator1,neutral,pt-br,train,COMO GERAR CONTEÚDO INFINITO E TRANSFORMAR SEU SITE EM UMA MÁQUINA DE LUCRO
+1,https://www.youtube.com/watch?v=of3ayOsYq9g&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=4,narrator1,neutral,pt-br,train,RICARDINHO ACF + LUCAS FONTANA - Flow #526
+2,https://www.youtube.com/watch?v=1aTRB1Fn-DI&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=5,narrator2,happy,pt-br,train,RICARDINHO + RATO BORRACHUDO + GUILHERME [TONIMEK] - Flow #525
+3,https://www.youtube.com/watch?v=ZmWeZJzK4rw&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=6,narrator3,neutral,pt-br,train,LUIZ SAYÃO - Flow #524
+4,https://www.youtube.com/watch?v=9obbARXUpc8&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=9,narrator4,neutral,pt-br,train,FLAVIO AUGUSTO + BRENO MASI - Flow #521
+5,https://www.youtube.com/watch?v=9zCdmoDYGsw&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=11,narrator5,neutral,pt-br,val,RATO BORRACHUDO - Flow #519
+6,https://www.youtube.com/watch?v=1KX1bYk7k0o&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=12,narrator6,neutral,pt-br,train,GUILHERME [TONIMEK] - Flow #518
+7,https://www.youtube.com/watch?v=fp_ZUjLAl8A&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=18,narrator7,neutral,pt-br,train,INVESTIDOR SARDINHA - Flow #512
+8,https://www.youtube.com/watch?v=6pfrG_h2kts&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=19,narrator8,neutral,pt-br,train,EDUARDO CORRÊA + GANLEY - Flow #511
+9,https://www.youtube.com/watch?v=kyT66IJMkEM&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=20,narrator9,neutral,pt-br,train,DANIEL LOPEZ + RONY VERNET - Flow #510
+10,https://www.youtube.com/watch?v=xqzUcfql1tc&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=22,narrator10,neutral,pt-br,train,[FOFOCAS DA F1] REGINALDO LEME + RODRIGO LAMONATO (SPLASH AND GO) - Flow #508
+11,https://www.youtube.com/watch?v=ayBFCY7OpVc&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=23,narrator11,neutral,pt-br,train,DANIELA MERCURY - Flow #507
+12,https://www.youtube.com/watch?v=0Aqx2WWBYB4&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=24,narrator12,neutral,pt-br,train,ROBERTA DUARTE - Flow #506
+13,https://www.youtube.com/watch?v=0KC_t3achZI&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=25,narrator13,sad,pt-br,train,CAITO MAIA SERGIO ZIMERMAN e CAROL PAIFFER [SHARK TANK BRASIL] - Flow #505
+14,https://www.youtube.com/watch?v=yUN9VJBhAFw&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=26,narrator14,neutral,pt-br,train,TIAGO TCAR + GUILHERME LEMMI - Flow #504
+15,https://www.youtube.com/watch?v=o4iztRwPEVc&list=PLWieWKZeFoVRmUNn9KA2dVpQswo19QkwQ&index=28,narrator15,sad,pt-br,train,CORONEL TELHADA + CAPITÃO TELHADA - Flow #502

@@ -59,9 +59,17 @@ def load_videos_catalog(csv_path: Path) -> List[Dict]:
     """
     videos = []
     with open(csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
+        # Filtrar linhas de comentário e linhas vazias
+        lines = []
+        for line in f:
+            stripped = line.strip()
+            if stripped and not stripped.startswith('#'):
+                lines.append(line)
+        
+        # Parse CSV
+        reader = csv.DictReader(lines)
         for row in reader:
-            if row['youtube_url'].strip():  # Ignora linhas vazias
+            if row.get('youtube_url', '').strip():  # Ignora linhas vazias
                 videos.append(row)
     
     logger.info(f"📋 {len(videos)} vídeos encontrados no catálogo")
@@ -89,37 +97,35 @@ def download_audio(
     video_id = video_info['id']
     url = video_info['youtube_url']
     
-    # Nome do arquivo de saída
-    output_filename = f"video_{video_id.zfill(5)}.wav"
-    output_path = output_dir / output_filename
+    # Nome do arquivo de saída (sem extensão, yt-dlp adiciona automaticamente)
+    output_filename = f"video_{video_id.zfill(5)}"
+    output_path = os.path.join(output_dir, f"{output_filename}")
+    output_path = output_path + ".wav" if ".wav" not in output_path else output_path
     
     # Skip se já existe (e não é force)
-    if output_path.exists() and not force:
+    if os.path.exists(output_path) and not force:
         logger.info(f"✓ {output_filename} já existe (pulando)")
         return True
     
     # yt-dlp options
     ydl_opts = {
         'format': config['youtube']['audio_format'],
-        'outtmpl': str(output_dir / f'temp_{video_id}.%(ext)s'),
+        'outtmpl': os.path.join(output_dir, f'{output_filename}'),
+        'noplaylist': True,  # Download only the video, not the playlist
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'wav',
-        }, {
-            'key': 'FFmpegAudio',
             'preferredcodec': 'wav',
             'preferredquality': '0',
         }],
         'postprocessor_args': [
-            '-ar', str(config['audio']['target_sample_rate']),
-            '-ac', str(config['audio']['channels']),
+            '-ar', '24000',
+            '-ac', '1',
         ],
         'quiet': False,
         'no_warnings': False,
         'extract_flat': False,
         'retries': config['youtube']['max_retries'],
         'fragment_retries': config['youtube']['max_retries'],
-        'ratelimit': config['youtube'].get('rate_limit'),
     }
     
     # Download com retry logic
@@ -136,15 +142,9 @@ def download_audio(
                 title = info_dict.get('title', 'Unknown')
                 duration = info_dict.get('duration', 0)
                 
-                # Encontrar arquivo baixado
-                temp_files = list(output_dir.glob(f'temp_{video_id}.*'))
-                if not temp_files:
-                    raise FileNotFoundError(f"Arquivo temporário não encontrado para video_{video_id}")
-                
-                temp_file = temp_files[0]
-                
-                # Renomear para nome final
-                temp_file.rename(output_path)
+                # Verificar se arquivo foi criado
+                if not os.path.exists(output_path):
+                    raise FileNotFoundError(f"Arquivo {output_filename} não foi criado após o download")
                 
                 logger.info(f"✅ {output_filename} baixado com sucesso!")
                 logger.info(f"   Título: {title}")
@@ -175,12 +175,12 @@ def main():
     config = load_config()
     
     # Paths
-    data_dir = project_root / "train" / "data"
-    videos_csv = data_dir / "videos.csv"
-    raw_dir = data_dir / "raw"
+    data_dir = os.path.join(project_root, "train", "data")
+    videos_csv = os.path.join(data_dir, "videos.csv")
+    raw_dir = os.path.join(data_dir, "raw")
     
     # Criar diretório de saída
-    raw_dir.mkdir(parents=True, exist_ok=True)
+    os.makedirs(raw_dir, exist_ok=True)
     
     # Verificar se ffmpeg está disponível
     try:
@@ -192,7 +192,7 @@ def main():
         sys.exit(1)
     
     # Verificar se videos.csv existe
-    if not videos_csv.exists():
+    if not os.path.exists(videos_csv):
         logger.error(f"❌ Arquivo não encontrado: {videos_csv}")
         logger.error("   Crie o arquivo videos.csv com a lista de vídeos do YouTube")
         sys.exit(1)
@@ -215,10 +215,12 @@ def main():
     for i, video_info in enumerate(videos, 1):
         logger.info(f"\n[{i}/{len(videos)}] Processando vídeo {video_info['id']}...")
         
-        output_filename = f"video_{video_info['id'].zfill(5)}.wav"
-        output_path = raw_dir / output_filename
+        output_filename = f"video_{video_info['id'].zfill(5)}"
+        output_filename = output_filename + ".wav" if ".wav" not in output_filename else output_filename
         
-        if output_path.exists():
+        output_path = os.path.join(raw_dir, output_filename)
+        
+        if os.path.exists(output_path):
             logger.info(f"✓ {output_filename} já existe (pulando)")
             skipped_count += 1
             continue
