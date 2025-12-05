@@ -124,7 +124,7 @@ class F5TTSQualityProfile(BaseQualityProfile):
         le=64,
         description="Diffusion steps (8-64): Maior = melhor qualidade, mais lento. Recomendado: 32"
     )
-    cfg_scale: float = Field(
+    cfg_strength: float = Field(
         default=2.0,
         ge=1.0,
         le=5.0,
@@ -320,7 +320,7 @@ DEFAULT_F5TTS_PROFILES = {
         engine=TTSEngine.F5TTS,
         is_default=True,
         nfe_step=48,  # Sweet spot qualidade/performance
-        cfg_scale=2.5,  # Natural e expressivo
+        cfg_strength=2.5,  # Natural e expressivo
         speed=0.9,  # 10% mais lento = mais articulado
         sway_sampling_coef=-1.0,
         denoise_audio=True,
@@ -346,7 +346,7 @@ DEFAULT_F5TTS_PROFILES = {
         engine=TTSEngine.F5TTS,
         is_default=False,
         nfe_step=64,  # Máxima qualidade (diminishing returns >64)
-        cfg_scale=2.0,
+        cfg_strength=2.0,
         speed=1.0,
         sway_sampling_coef=-1.0,
         denoise_audio=True,
@@ -372,7 +372,7 @@ DEFAULT_F5TTS_PROFILES = {
         engine=TTSEngine.F5TTS,
         is_default=False,
         nfe_step=32,  # Baseline do paper
-        cfg_scale=2.0,
+        cfg_strength=2.0,
         speed=1.0,
         sway_sampling_coef=-1.0,
         denoise_audio=True,
@@ -398,7 +398,7 @@ DEFAULT_F5TTS_PROFILES = {
         engine=TTSEngine.F5TTS,
         is_default=False,
         nfe_step=16,  # Mínimo aceitável
-        cfg_scale=1.5,
+        cfg_strength=1.5,
         speed=1.0,
         sway_sampling_coef=-1.0,
         denoise_audio=False,

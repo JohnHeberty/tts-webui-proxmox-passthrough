@@ -784,6 +784,14 @@ class F5TtsEngine(TTSEngine):
                 show_info=logger.info
             )
             
+            # Log parameters being used for debugging
+            logger.info(
+                f"🎛️  F5-TTS synthesis params: nfe_step={tts_params.get('nfe_step', 32)}, "
+                f"cfg_strength={tts_params.get('cfg_strength', 2.0)}, "
+                f"sway_sampling_coef={tts_params.get('sway_sampling_coef', -1.0)}, "
+                f"speed={tts_params.get('speed', 1.0)}"
+            )
+            
             # Use library's infer_process function
             # CRITICAL: cross_fade_duration=0.0 disables automatic chunking!
             # If > 0, infer_process splits text internally causing long pauses
@@ -948,6 +956,12 @@ class F5TtsEngine(TTSEngine):
         """
         Map QualityProfile to F5-TTS parameters.
         
+        IMPORTANTE: Usa valores idênticos ao treinamento para match de qualidade.
+        Os valores padrão da biblioteca f5_tts são:
+        - nfe_step = 32
+        - cfg_strength = 2.0
+        - sway_sampling_coef = -1.0
+        
         Args:
             quality: Quality profile enum
         
@@ -969,14 +983,14 @@ class F5TtsEngine(TTSEngine):
             return {
                 'nfe_step': 64,
                 'cfg_strength': 2.5,
-                'sway_sampling_coef': 0.5
+                'sway_sampling_coef': -1.0  # FIXADO: 0.5 causava artefatos
             }
-        else:  # BALANCED (default) - Otimizado para PT-BR natural
-            # Good balance of quality and speed, prosódia natural
+        else:  # BALANCED (default) - MATCH com treinamento!
+            # ✅ Valores idênticos aos usados no treinamento (trainer.py)
             return {
-                'nfe_step': 40,
-                'cfg_strength': 2.2,
-                'sway_sampling_coef': 0.3  # Micro-variações naturais
+                'nfe_step': 32,  # Padrão da biblioteca
+                'cfg_strength': 2.0,  # Padrão da biblioteca
+                'sway_sampling_coef': -1.0  # Padrão da biblioteca (auto)
             }
     
     def _normalize_language(self, language: str) -> str:
