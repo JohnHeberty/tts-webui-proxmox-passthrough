@@ -379,7 +379,7 @@ class VoiceProcessor:
                     "job_id": job.id,
                     "voice_id": voice_profile.id,
                     "voice_name": job.voice_name,
-                    "engine_used": engine_type,
+                    "engine_used": job.tts_engine_used,
                     "duration_secs": round(duration_secs, 2),
                     "status": "success"
                 }
