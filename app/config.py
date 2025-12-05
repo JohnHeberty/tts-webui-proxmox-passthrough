@@ -66,6 +66,7 @@ def get_settings():
                 'device': os.getenv('F5TTS_DEVICE', 'cuda'),  # cuda ou cpu
                 'fallback_to_cpu': os.getenv('F5TTS_FALLBACK_CPU', 'true').lower() == 'true',
                 'model_name': os.getenv('F5TTS_MODEL', 'firstpixel/F5-TTS-pt-br'),  # PT-BR otimizado por padrão
+                'custom_checkpoint': os.getenv('F5TTS_CUSTOM_CHECKPOINT', ''),  # Checkpoint fine-tunado (vazio = usa padrão)
                 
                 # Whisper (auto-transcription)
                 'whisper_model': os.getenv('F5TTS_WHISPER_MODEL', 'base'),

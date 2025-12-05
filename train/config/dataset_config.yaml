@@ -17,7 +17,7 @@ audio:
   
   # Audio normalization
   normalize_audio: true
-  target_lufs: -20.0  # Loudness target em LUFS
+  target_lufs: -23.0  # Loudness target em LUFS target_lufs: -23.0  # ou -24.0 em vez de -20.0
   
   # Clipping prevention
   headroom_db: -1.0  # Headroom para evitar clipping
@@ -30,21 +30,25 @@ audio:
 segmentation:
   # Duração dos segmentos (em segundos)
   min_duration: 3.0
-  max_duration: 12.0
-  target_duration: 12.0  # Duração ideal
+  max_duration: 10.0
+  target_duration: 7.0  # Duração ideal
   
+  # Overlap entre segmentos (para evitar cortes bruscos)
+  segment_overlap: 0.1  #  50ms de overlap entre segmentos
+  # Estes abaixo serão ignorados por este script (sem VAD),
+  # mas pode deixar aí:  
+
   # Voice Activity Detection (VAD)
   use_vad: true
   vad_threshold: -40  # Threshold em dB para considerar silêncio
   vad_frame_size: 512  # Frame size para VAD
-  
+
   # Silence removal
   remove_silence: true
   silence_threshold_db: -40
   min_silence_duration: 0.3  # Mínimo de silêncio para cortar (segundos)
-  
-  # Overlap entre segmentos (para evitar cortes bruscos)
-  segment_overlap: 0.1  # 100ms de overlap
+
+  vad_chunk_duration: 10.0   # ou 10.0 se quiser ser bem conservador
 
 # ========================================
 # TRANSCRIPTION

@@ -87,10 +87,17 @@ def create_engine(
             
             engine_class = _ENGINE_REGISTRY['f5tts']
             f5tts_config = settings.get('tts_engines', {}).get('f5tts', {})
+            
+            # Custom checkpoint from environment variable
+            custom_ckpt = f5tts_config.get('custom_checkpoint')
+            if custom_ckpt:
+                logger.info(f"🎯 Using custom F5-TTS checkpoint: {custom_ckpt}")
+            
             engine = engine_class(
                 device=f5tts_config.get('device'),
                 fallback_to_cpu=f5tts_config.get('fallback_to_cpu', True),
-                model_name=f5tts_config.get('model_name')
+                model_name=f5tts_config.get('model_name'),
+                custom_ckpt_path=custom_ckpt  # NEW: Pass custom checkpoint
             )
         elif engine_type == 'f5tts-ptbr':
             if _ENGINE_REGISTRY['f5tts-ptbr'] is None:

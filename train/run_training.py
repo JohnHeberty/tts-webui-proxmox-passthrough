@@ -48,6 +48,14 @@ class F5TTSTrainer:
         self.runs_dir = PROJECT_ROOT / self.config['tensorboard_dir']
         self.output_dir = PROJECT_ROOT / self.config['output_dir']
         self.data_dir = PROJECT_ROOT / self.config['dataset_path'].rsplit('/', 1)[0]
+        
+        # Ajustar workers baseado no sistema
+        import multiprocessing
+        cpu_count = multiprocessing.cpu_count()
+        max_workers = max(1, cpu_count - 4)  # Deixa 4 cores livres
+        if 'dataloader_workers' not in self.config or self.config['dataloader_workers'] > max_workers:
+            logger.warning(f"⚠️  Ajustando workers: {self.config.get('dataloader_workers', 16)} → {max_workers}")
+            self.config['dataloader_workers'] = max_workers
         self.pretrained_dir = self.train_root / "pretrained"
         self.tensorboard_process = None
         
@@ -198,6 +206,36 @@ class F5TTSTrainer:
             else:
                 logger.info(f"✅ Symlink /runs OK")
     
+    def validate_checkpoint(self, checkpoint_path: str) -> bool:
+        """
+        Valida se um checkpoint pode ser carregado
+        
+        Returns:
+            True se válido, False se corrompido
+        """
+        try:
+            import torch
+            checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+            
+            # Verificar se tem as keys esperadas
+            if not isinstance(checkpoint, dict):
+                logger.error(f"❌ Checkpoint não é um dict: {checkpoint_path}")
+                return False
+            
+            # Verificar tamanho do arquivo (checkpoints válidos têm ~5GB)
+            file_size_gb = Path(checkpoint_path).stat().st_size / (1024**3)
+            if file_size_gb < 1.0:
+                logger.error(f"❌ Checkpoint muito pequeno ({file_size_gb:.1f}GB): {checkpoint_path}")
+                return False
+            
+            logger.info(f"✅ Checkpoint válido ({file_size_gb:.1f}GB): {Path(checkpoint_path).name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Checkpoint corrompido: {checkpoint_path}")
+            logger.error(f"   Erro: {e}")
+            return False
+    
     def setup_environment(self):
         """Configura ambiente e diretórios"""
         logger.info("=" * 80)
@@ -314,16 +352,30 @@ class F5TTSTrainer:
         if local_output_dir.exists():
             # Look for model_last.pt first (most recent)
             last_ckpt = local_output_dir / "model_last.pt"
-            if last_ckpt.exists():
+            if last_ckpt.exists() and self.validate_checkpoint(str(last_ckpt)):
                 resume_checkpoint = str(last_ckpt.absolute())
-                logger.info(f"📂 Checkpoint encontrado em train/output/: {last_ckpt.name}")
+                logger.info(f"📂 Checkpoint válido encontrado: {last_ckpt.name}")
             else:
+                if last_ckpt.exists():
+                    logger.warning(f"⚠️  Checkpoint corrompido, ignorando: {last_ckpt.name}")
+                    # Renomear checkpoint corrompido
+                    corrupted_name = last_ckpt.with_suffix('.pt.corrupted')
+                    last_ckpt.rename(corrupted_name)
+                    logger.info(f"   Renomeado para: {corrupted_name.name}")
+                
                 # Look for numbered checkpoints
                 checkpoints = sorted(local_output_dir.glob("model_*.pt"), 
                                    key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0)
-                if checkpoints:
-                    resume_checkpoint = str(checkpoints[-1].absolute())
-                    logger.info(f"📂 Checkpoint encontrado em train/output/: {checkpoints[-1].name}")
+                for ckpt in reversed(checkpoints):  # Mais recente primeiro
+                    if self.validate_checkpoint(str(ckpt)):
+                        resume_checkpoint = str(ckpt.absolute())
+                        logger.info(f"📂 Checkpoint válido encontrado: {ckpt.name}")
+                        break
+                    else:
+                        logger.warning(f"⚠️  Checkpoint corrompido, pulando: {ckpt.name}")
+                        # Renomear checkpoint corrompido
+                        corrupted_name = ckpt.with_suffix('.pt.corrupted')
+                        ckpt.rename(corrupted_name)
         
         # Priority 2: Check F5-TTS ckpts directory
         if not resume_checkpoint:
@@ -332,9 +384,9 @@ class F5TTSTrainer:
             checkpoint_dir = Path(f"{f5tts_base}/{self.config['train_dataset_name']}")
             if checkpoint_dir.exists():
                 last_ckpt = checkpoint_dir / "model_last.pt"
-                if last_ckpt.exists():
+                if last_ckpt.exists() and self.validate_checkpoint(str(last_ckpt)):
                     resume_checkpoint = str(last_ckpt.absolute())
-                    logger.info(f"📂 Checkpoint encontrado em ckpts/: {last_ckpt.name}")
+                    logger.info(f"📂 Checkpoint válido encontrado em ckpts/: {last_ckpt.name}")
         
         # Priority 3: Use local pretrained model from models/f5tts/pt-br/
         pretrained_model = None
@@ -342,9 +394,11 @@ class F5TTSTrainer:
             # Usar LOCAL_PRETRAINED_PATH do .env ou path padrão
             local_pretrained_path = self.config.get('local_pretrained_path', 'models/f5tts/pt-br/model_last.pt')
             local_pretrained = PROJECT_ROOT / local_pretrained_path
-            if local_pretrained.exists():
+            if local_pretrained.exists() and self.validate_checkpoint(str(local_pretrained)):
                 pretrained_model = str(local_pretrained.absolute())
-                logger.info(f"📥 Modelo pré-treinado encontrado: {local_pretrained.relative_to(PROJECT_ROOT)}")
+                logger.info(f"📥 Modelo pré-treinado válido: {local_pretrained.relative_to(PROJECT_ROOT)}")
+            elif local_pretrained.exists():
+                logger.warning(f"⚠️  Modelo pré-treinado corrompido: {local_pretrained.relative_to(PROJECT_ROOT)}")
         
         # Priority 4: Use pretrained model from .env configuration
         if not resume_checkpoint and not pretrained_model:

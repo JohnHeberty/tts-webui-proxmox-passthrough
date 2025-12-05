@@ -96,6 +96,7 @@ def get_training_config() -> Dict[str, Any]:
         'log_dir': env.get('LOG_DIR', 'train/logs'),
         'device': env.get('DEVICE', 'cuda'),
         'num_workers': env.get('NUM_WORKERS', 4),
+        'dataloader_workers': env.get('DATALOADER_WORKERS', 8),  # Workers para DataLoader
         'mixed_precision': env.get('MIXED_PRECISION', 'fp16'),
         'max_samples': env.get('MAX_SAMPLES', 32),
         'logger': env.get('LOGGER', 'tensorboard'),

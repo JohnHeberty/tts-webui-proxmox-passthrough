@@ -37,6 +37,15 @@ import torch
 import torchaudio
 from scipy import signal
 
+# F5-TTS library imports
+from f5_tts.model import DiT
+from f5_tts.infer.utils_infer import (
+    load_model,
+    load_vocoder,
+    infer_process,
+    preprocess_ref_audio_text
+)
+
 from .base import TTSEngine
 from ..models import VoiceProfile, QualityProfile
 from ..exceptions import TTSEngineException, InvalidAudioException
@@ -81,7 +90,8 @@ class F5TtsEngine(TTSEngine):
         device: Optional[str] = None,
         fallback_to_cpu: bool = True,
         model_name: str = 'firstpixel/F5-TTS-pt-br',
-        whisper_model: str = 'base'
+        whisper_model: str = 'base',
+        custom_ckpt_path: Optional[str] = None  # NEW: Custom checkpoint path
     ):
         """
         Initialize F5-TTS engine.
@@ -92,6 +102,7 @@ class F5TtsEngine(TTSEngine):
             model_name: HuggingFace model name (default: firstpixel/F5-TTS-pt-br)
             whisper_model: Whisper model for auto-transcription
                           ('tiny', 'base', 'small', 'medium', 'large')
+            custom_ckpt_path: Path to custom trained checkpoint (e.g., /app/train/output/model_last.pt)
         """
         # Model configuration
         # E2-TTS: Enhanced F5-TTS with emotion support
@@ -100,6 +111,7 @@ class F5TtsEngine(TTSEngine):
         
         # Salvar nome do modelo HuggingFace original
         self.hf_model_name = model_name
+        self.custom_ckpt_path = custom_ckpt_path  # Store custom checkpoint path
         
         # Config name (usado apenas para determinar YAML config interno)
         # Model names match YAML config files in f5_tts/configs/
@@ -132,32 +144,54 @@ class F5TtsEngine(TTSEngine):
                         f"Risco de OOM. Recomenda-se LOW_VRAM=true."
                     )
         
-        # Load F5-TTS model (new API)
+        # Load F5-TTS model using library's load_model function
         try:
-            from f5_tts.api import F5TTS
             settings = get_settings()
             
             # LOW_VRAM mode: lazy loading via VRAMManager
             if settings.get('low_vram_mode'):
                 logger.info("LOW_VRAM mode enabled: F5-TTS will be loaded on-demand")
-                self.tts = None  # Lazy load
+                self.ema_model = None
+                self.vocoder = None
                 self._model_loaded = False
-                self._f5tts_class = F5TTS  # Store class for lazy loading
             else:
                 # Normal mode: load immediately
                 logger.info(f"Loading F5-TTS model: {self.hf_model_name}")
-                ckpt_file = self._get_model_ckpt_file()
-                self.tts = F5TTS(
-                    model=self.config_name,  # Config YAML name (F5TTS_Base, E2TTS_Base)
-                    ckpt_file=ckpt_file,     # Model checkpoint (pt-br ou vazio para default)
-                    device=self.device,
-                    hf_cache_dir=str(self.cache_dir)
+                ckpt_path = self._get_model_ckpt_file()
+                
+                # Model architecture config (DiT for F5-TTS)
+                model_cfg = {
+                    "dim": 1024,
+                    "depth": 22,
+                    "heads": 16,
+                    "ff_mult": 2,
+                    "text_dim": 512,
+                    "conv_layers": 4
+                }
+                
+                logger.info(f"Loading checkpoint: {ckpt_path}")
+                # Use library's load_model function (handles everything: CFM creation, checkpoint loading, vocab)
+                self.ema_model = load_model(
+                    model_cls=DiT,
+                    model_cfg=model_cfg,
+                    ckpt_path=ckpt_path,
+                    mel_spec_type='vocos',
+                    vocab_file='',  # Uses default vocab
+                    ode_method='euler',
+                    use_ema=True,
+                    device=self.device
                 )
                 
-                # CRÍTICO: Garantir que todos os tensors estão no device correto
-                self._ensure_model_on_device(self.tts)
+                # Load vocoder (vocos mel-24khz)
+                logger.info("Loading Vocos vocoder...")
+                self.vocoder = load_vocoder(
+                    vocoder_name='vocos',
+                    is_local=False,
+                    device=self.device
+                )
                 
-                logger.info(f"✅ F5-TTS model loaded successfully: {self.hf_model_name}")
+                self._model_loaded = True
+                logger.info(f"✅ F5-TTS model and vocoder loaded successfully")
             
         except Exception as e:
             logger.error(f"Failed to load F5-TTS model: {e}", exc_info=True)
@@ -175,12 +209,24 @@ class F5TtsEngine(TTSEngine):
         """
         Get checkpoint file path for the model.
         
-        For PT-BR model (firstpixel/F5-TTS-pt-br), downloads from HuggingFace
-        and patches checkpoint keys if needed (ema. → ema_model.).
+        Priority:
+        1. Custom checkpoint path (e.g., /app/train/output/model_last.pt)
+        2. PT-BR model from HuggingFace (firstpixel/F5-TTS-pt-br)
+        3. Default (empty string - uses library's default)
         
         Returns:
-            str: Path to checkpoint file (patched if PT-BR, empty for default)
+            str: Path to checkpoint file
         """
+        # Priority 1: Custom trained checkpoint
+        if self.custom_ckpt_path:
+            from pathlib import Path
+            ckpt_path = Path(self.custom_ckpt_path)
+            if not ckpt_path.exists():
+                raise FileNotFoundError(f"Custom checkpoint not found: {self.custom_ckpt_path}")
+            logger.info(f"✅ Using custom trained checkpoint: {ckpt_path}")
+            return str(ckpt_path)
+        
+        # Priority 2: PT-BR model from HuggingFace
         if 'firstpixel' in self.hf_model_name.lower() or 'pt-br' in self.hf_model_name.lower():
             from huggingface_hub import hf_hub_download
             from safetensors.torch import load_file, save_file
@@ -209,40 +255,77 @@ class F5TtsEngine(TTSEngine):
                     state_dict = load_file(ckpt_path)
                     logger.debug(f"Loaded {len(state_dict)} keys from checkpoint")
                     
-                    # Detect if patching is needed
-                    sample_key = next(iter(state_dict.keys()))
-                    needs_patching = sample_key.startswith('ema.') and not sample_key.startswith('ema_model.')
+                    # Inspect checkpoint structure
+                    sample_keys = list(state_dict.keys())[:3]
+                    logger.info(f"   Sample keys from checkpoint: {sample_keys}")
                     
-                    if needs_patching:
-                        logger.info("   Detected 'ema.' prefix (incompatible), patching to 'ema_model.'...")
-                        
-                        # Patch keys: ema. → ema_model.
-                        fixed_state_dict = {
-                            k.replace('ema.', 'ema_model.', 1): v  # Replace only first occurrence
-                            for k, v in state_dict.items()
-                        }
-                        
-                        # Verify patching worked
-                        patched_sample = next(iter(fixed_state_dict.keys()))
-                        logger.debug(f"Sample key before: {sample_key}")
-                        logger.debug(f"Sample key after:  {patched_sample}")
-                        
-                        # Save patched checkpoint
-                        logger.info(f"   Saving patched checkpoint to: {patched_path}")
-                        save_file(fixed_state_dict, patched_path)
-                        
-                        # Verify file was created
-                        if Path(patched_path).exists():
-                            file_size_gb = Path(patched_path).stat().st_size / (1024**3)
-                            logger.info(f"✅ Patched checkpoint saved successfully ({file_size_gb:.2f} GB)")
-                        else:
-                            raise RuntimeError(f"Failed to create patched checkpoint: {patched_path}")
+                    # CRITICAL FIX: PT-BR checkpoint has BOTH wrong prefixes:
+                    # 1. "ema." instead of "ema_model."
+                    # 2. "model." wrapping all transformer keys
+                    # 
+                    # Example wrong key: "ema.model.transformer.input_embed.proj.weight"
+                    # Should become: "ema_model.transformer.input_embed.proj.weight"
+                    # 
+                    # We need to:
+                    # - Replace "ema." → "ema_model."
+                    # - Remove "model." prefix from transformer keys
+                    
+                    logger.info("   Patching checkpoint keys for F5-TTS compatibility...")
+                    
+                    # Get model_state_dict if wrapped
+                    if 'model_state_dict' in state_dict:
+                        logger.info("   Found 'model_state_dict' wrapper, extracting...")
+                        checkpoint_dict = state_dict['model_state_dict']
                     else:
-                        logger.info("   Checkpoint already has correct 'ema_model.' prefix, no patching needed")
-                        # Just create a symlink or copy
-                        import shutil
-                        shutil.copy(ckpt_path, patched_path)
-                        logger.info(f"✅ Checkpoint copied to: {patched_path}")
+                        checkpoint_dict = state_dict
+                    
+                    # Patch all keys
+                    fixed_state_dict = {}
+                    patch_count = 0
+                    for k, v in checkpoint_dict.items():
+                        # Skip non-model keys (step, initted, etc)
+                        if k in ['step', 'initted', 'optimizer_state_dict', 'lr_scheduler_state_dict']:
+                            continue
+                        
+                        original_key = k
+                        
+                        # Step 1: Fix ema. → ema_model.
+                        if k.startswith('ema.'):
+                            k = k.replace('ema.', 'ema_model.', 1)
+                            patch_count += 1
+                        
+                        # Step 2: Remove "model." prefix from transformer architecture
+                        # CFM expects: "ema_model.transformer.xxx" NOT "ema_model.model.transformer.xxx"
+                        if '.model.transformer.' in k:
+                            k = k.replace('.model.transformer.', '.transformer.', 1)
+                            patch_count += 1
+                        elif k.startswith('model.'):
+                            # Also handle bare "model.transformer.xxx" (no ema prefix)
+                            k = k.replace('model.', '', 1)
+                            patch_count += 1
+                        
+                        fixed_state_dict[k] = v
+                    
+                    logger.info(f"   Patched {patch_count} keys")
+                    
+                    # Verify patching worked
+                    patched_samples = list(fixed_state_dict.keys())[:3]
+                    logger.info(f"   Sample patched keys: {patched_samples}")
+                    
+                    # CRITICAL: F5-TTS library expects checkpoint["model_state_dict"]
+                    # We need to wrap our patched dict with this structure
+                    checkpoint_to_save = {"model_state_dict": fixed_state_dict}
+                    
+                    # Save patched checkpoint
+                    logger.info(f"   Saving patched checkpoint to: {patched_path}")
+                    save_file(checkpoint_to_save, patched_path)
+                    
+                    # Verify file was created
+                    if Path(patched_path).exists():
+                        file_size_gb = Path(patched_path).stat().st_size / (1024**3)
+                        logger.info(f"✅ Patched checkpoint saved successfully ({file_size_gb:.2f} GB)")
+                    else:
+                        raise RuntimeError(f"Failed to create patched checkpoint: {patched_path}")
                     
                 except Exception as e:
                     logger.error(f"Failed to patch checkpoint: {e}", exc_info=True)
@@ -465,6 +548,30 @@ class F5TtsEngine(TTSEngine):
                     logger.info("ref_text not provided, auto-transcribing...")
                     ref_text = await self._auto_transcribe(ref_audio_path, language)
                     logger.info(f"Auto-transcribed: {ref_text[:50]}...")
+            else:
+                # No voice profile: use default reference audio from training data
+                # F5-TTS REQUIRES reference audio, so we use a generic sample
+                logger.info("No voice profile provided, using default reference audio...")
+                default_ref_audio = Path("/app/train/data/processed/wavs")
+                if default_ref_audio.exists():
+                    # Use first available sample
+                    audio_files = list(default_ref_audio.glob("*.wav"))
+                    if audio_files:
+                        ref_audio_path = str(audio_files[0])
+                        logger.info(f"Using default ref audio: {Path(ref_audio_path).name}")
+                        # CRITICAL: ref_text must be proportional to audio duration!
+                        # Longer ref_text = larger max_chars in infer_process
+                        # For ~10s audio, use ~100-150 chars to avoid excessive chunking
+                        ref_text = """Este é um exemplo de texto de referência para síntese de voz em português brasileiro.
+                        O texto deve ter aproximadamente o mesmo tamanho do áudio de referência para garantir
+                        que a geração funcione corretamente sem dividir em muitos chunks pequenos."""
+                    else:
+                        raise FileNotFoundError("No reference audio files found in /app/train/data/processed/wavs/")
+                else:
+                    raise FileNotFoundError(
+                        "F5-TTS requires reference audio. Please provide a voice_profile or ensure "
+                        "/app/train/data/processed/wavs/ contains audio samples."
+                    )
             
             # Run F5-TTS inference (blocking - use thread pool)
             loop = asyncio.get_event_loop()
@@ -473,11 +580,10 @@ class F5TtsEngine(TTSEngine):
             # Add speed to params
             tts_params['speed'] = speed
             
-            # CHUNKING: Verificar se deve dividir texto por pontuação
-            settings = get_settings()
-            chunk_by_punctuation = settings.get('chunk_by_punctuation', True)
-            max_chunk_chars = settings.get('max_chunk_chars', 200)
-            cross_fade_duration = settings.get('cross_fade_duration', 0.05)
+            # Run F5-TTS inference in thread pool
+            # Note: infer_process handles all synthesis internally
+            # cross_fade_duration=0.0 prevents automatic text chunking
+            loop = asyncio.get_event_loop()
             
             # LOW_VRAM mode: load model → synthesize → unload
             if settings.get('low_vram_mode'):
@@ -485,28 +591,22 @@ class F5TtsEngine(TTSEngine):
                     model_params = self._normalize_f5_params(tts_params)
                     audio_array = await loop.run_in_executor(
                         None,
-                        self._synthesize_with_chunking,
+                        self._synthesize_blocking,
                         text,
                         ref_audio_path,
                         ref_text,
-                        model_params,
-                        chunk_by_punctuation,
-                        max_chunk_chars,
-                        cross_fade_duration
+                        model_params
                     )
             else:
                 # Normal mode: model already loaded
                 model_params = self._normalize_f5_params(tts_params)
                 audio_array = await loop.run_in_executor(
                     None,
-                    self._synthesize_with_chunking,
+                    self._synthesize_blocking,
                     text,
                     ref_audio_path,
                     ref_text,
-                    model_params,
-                    chunk_by_punctuation,
-                    max_chunk_chars,
-                    cross_fade_duration
+                    model_params
                 )
             
             # Apply speed adjustment if needed (already done in infer)
@@ -677,68 +777,40 @@ class F5TtsEngine(TTSEngine):
             np.ndarray: Generated audio
         """
         try:
-            # Garantir modelo no device correto ANTES de inferência
-            self._ensure_model_on_device(self.tts)
+            # Preprocess reference audio (function from library)
+            ref_audio_preprocessed, ref_text_final = preprocess_ref_audio_text(
+                ref_audio_path,
+                ref_text,
+                show_info=logger.info
+            )
             
-            # F5-TTS API nova: infer(ref_file, ref_text, gen_text, ...)
-            audio_np, sample_rate, _ = self.tts.infer(
-                ref_file=ref_audio_path,
-                ref_text=ref_text,
+            # Use library's infer_process function
+            # CRITICAL: cross_fade_duration=0.0 disables automatic chunking!
+            # If > 0, infer_process splits text internally causing long pauses
+            audio_np, sample_rate, spectrogram = infer_process(
+                ref_audio=ref_audio_preprocessed,
+                ref_text=ref_text_final,
                 gen_text=text,
+                model_obj=self.ema_model,
+                vocoder=self.vocoder,
+                mel_spec_type='vocos',
+                show_info=logger.info,
+                progress=None,  # Suppress progress bar
+                target_rms=0.1,
+                cross_fade_duration=0.0,  # DISABLED: prevents auto-chunking
                 nfe_step=tts_params.get('nfe_step', 32),
                 cfg_strength=tts_params.get('cfg_strength', 2.0),
                 sway_sampling_coef=tts_params.get('sway_sampling_coef', -1.0),
                 speed=tts_params.get('speed', 1.0),
-                show_info=lambda x: None  # Suppress print
-                # progress removed - uses default tqdm
+                fix_duration=None,
+                device=self.device
             )
             
             return audio_np
             
-        except RuntimeError as e:
-            # Proteção contra device mismatch
-            if 'Expected all tensors to be on the same device' in str(e):
-                logger.warning(f"⚠️  Device mismatch detected, attempting recovery...")
-                logger.warning(f"Original error: {e}")
-                
-                # Estratégia de recuperação: mover tudo para CPU e tentar novamente
-                if self.device == 'cuda':
-                    logger.warning("🔄 Falling back to CPU for this synthesis...")
-                    
-                    # Mover modelo para CPU temporariamente
-                    if hasattr(self.tts, 'to'):
-                        self.tts.to('cpu')
-                    
-                    # Mover submodelos
-                    for attr_name in ['ema_model', 'vocoder', 'model']:
-                        if hasattr(self.tts, attr_name):
-                            attr = getattr(self.tts, attr_name)
-                            if hasattr(attr, 'to'):
-                                attr.to('cpu')
-                    
-                    # Tentar síntese em CPU
-                    try:
-                        audio_np, sample_rate, _ = self.tts.infer(
-                            ref_file=ref_audio_path,
-                            ref_text=ref_text,
-                            gen_text=text,
-                            nfe_step=tts_params.get('nfe_step', 32),
-                            cfg_strength=tts_params.get('cfg_strength', 2.0),
-                            sway_sampling_coef=tts_params.get('sway_sampling_coef', -1.0),
-                            speed=tts_params.get('speed', 1.0),
-                            show_info=lambda x: None
-                        )
-                        logger.info("✅ CPU fallback synthesis succeeded")
-                        return audio_np
-                    except Exception as cpu_error:
-                        logger.error(f"❌ CPU fallback also failed: {cpu_error}")
-                        raise
-                else:
-                    # Já estava em CPU, não tem como fazer fallback
-                    raise
-            else:
-                # Outro tipo de RuntimeError
-                raise
+        except Exception as e:
+            logger.error(f"F5-TTS synthesis failed: {e}", exc_info=True)
+            raise TTSEngineException(f"Synthesis error: {e}") from e
     
     async def clone_voice(
         self,

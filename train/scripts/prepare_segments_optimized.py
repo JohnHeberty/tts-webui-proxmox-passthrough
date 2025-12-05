@@ -1,14 +1,15 @@
 """
-Preparação e segmentação de áudio OTIMIZADA para baixo consumo de memória,
-com correção de artefatos de recorte (click/zumbido no fim dos segmentos).
+Preparação e segmentação de áudio para F5-TTS (PT-BR)
+-----------------------------------------------------
 
-- Processamento em chunks (streaming, não carrega o arquivo inteiro)
-- VAD baseado em energia RMS (sem modelos pesados)
-- Merge de segmentos entre chunks
-- Segmentação com overlap configurável
-- Normalização com pyloudnorm (se disponível) ou RMS simples
-- Resample com resample_poly (quando disponível)
-- Fade-in / fade-out curto em cada segmento para evitar clicks/zumbido
+Objetivos:
+- Funcionar com áudios MUITO longos sem estourar RAM
+- Usar VAD simples (energia RMS em dB) para pegar só trechos com fala
+- Dividir as regiões de fala em segmentos de duração controlada
+  (min_duration, max_duration, segment_overlap)
+- Aplicar fade-in / fade-out curto para evitar clicks/zumbidos
+- Normalizar (RMS ou pyloudnorm, se disponível)
+- Resample para target_sample_rate (config.audio.target_sample_rate)
 
 Uso:
     python -m train.scripts.prepare_segments
@@ -17,16 +18,20 @@ Uso:
 import gc
 import json
 import logging
+import math
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 import yaml
+
+import warnings
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Dependências básicas
 try:
     import numpy as np
     import soundfile as sf
@@ -35,7 +40,7 @@ except ImportError as e:
     print("Instale com: pip install numpy soundfile")
     sys.exit(1)
 
-# Dependências opcionais (melhor qualidade se existirem)
+# Dependências opcionais
 try:
     import pyloudnorm as pyln
 except ImportError:
@@ -46,9 +51,7 @@ try:
 except ImportError:
     signal = None
 
-import math
-
-# Setup logging
+# Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -64,44 +67,16 @@ logger = logging.getLogger(__name__)
 # CONFIG
 # ======================
 
-
 def load_config() -> dict:
-    """Carrega configuração do dataset"""
+    """Carrega configuração do dataset (dataset_config.yaml)."""
     config_path = project_root / "train" / "config" / "dataset_config.yaml"
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 # ======================
-# SEGMENTAÇÃO
+# VAD SIMPLES (ENERGIA)
 # ======================
-
-
-def split_segment_by_duration(
-    start: float, end: float, config: dict
-) -> List[Tuple[float, float]]:
-    """
-    Divide um segmento longo em partes menores respeitando duração máxima
-    e overlap configurado.
-    """
-    seg_config = config["segmentation"]
-    max_dur = float(seg_config["max_duration"])
-    overlap = float(seg_config.get("segment_overlap", 0.0))
-
-    duration = end - start
-    if duration <= max_dur:
-        return [(start, end)]
-
-    segments: List[Tuple[float, float]] = []
-    current_start = start
-
-    while current_start < end:
-        current_end = min(current_start + max_dur, end)
-        segments.append((current_start, current_end))
-        current_start = current_end - overlap
-
-    return segments
-
 
 def detect_voice_in_chunk(
     audio_chunk: np.ndarray,
@@ -109,14 +84,15 @@ def detect_voice_in_chunk(
     seg_config: dict,
 ) -> List[Tuple[float, float]]:
     """
-    Detecta segmentos com voz em um chunk usando energia RMS.
+    Detecta regiões com voz em um chunk usando energia RMS em dB.
 
-    Retorna tempos RELATIVOS ao chunk (em segundos).
+    Retorna tempos RELATIVOS ao chunk (segundos):
+        [(start_sec_rel, end_sec_rel), ...]
     """
-    frame_size = int(seg_config["vad_frame_size"])
+    frame_size = int(seg_config.get("vad_frame_size", 512))
     hop_size = frame_size // 2
-    threshold_db = float(seg_config["vad_threshold"])
-    min_silence_duration = float(seg_config["min_silence_duration"])
+    threshold_db = float(seg_config.get("vad_threshold", -40.0))
+    min_silence_duration = float(seg_config.get("min_silence_duration", 0.3))
 
     if frame_size <= 0 or hop_size <= 0:
         raise ValueError("vad_frame_size deve ser > 0")
@@ -129,15 +105,16 @@ def detect_voice_in_chunk(
 
     min_silence_frames = max(1, int(min_silence_duration * sr / hop_size))
     silence_count = 0
+    eps = 1e-10
 
     for i in range(num_frames):
         start_idx = i * hop_size
         end_idx = start_idx + frame_size
         frame = audio_chunk[start_idx:end_idx]
 
-        # RMS -> dB (com epsilon pra evitar log(0))
-        rms = float(np.sqrt(np.mean(frame**2) + 1e-10))
-        db = 20.0 * np.log10(rms + 1e-10)
+        # RMS -> dB (energia)
+        rms = float(np.sqrt(np.mean(frame * frame) + eps))
+        db = 20.0 * math.log10(rms + eps)
 
         has_voice = db > threshold_db
         time = start_idx / sr  # tempo relativo ao chunk
@@ -157,6 +134,7 @@ def detect_voice_in_chunk(
                     in_voice = False
                     silence_count = 0
 
+    # Se terminou o chunk ainda em voz
     if in_voice:
         voice_end = (num_frames * hop_size) / sr
         if voice_end > voice_start:
@@ -165,90 +143,180 @@ def detect_voice_in_chunk(
     return segments
 
 
-def merge_segments(
-    segments: List[Tuple[float, float]], seg_config: dict
-) -> List[Tuple[float, float]]:
+def iter_voice_regions(
+    input_path: Path,
+    seg_config: dict,
+    orig_sr: int,
+    total_frames: int,
+) -> Iterable[Tuple[float, float]]:
     """
-    Mescla segmentos adjacentes se o silêncio entre eles for menor que
-    min_silence_duration.
+    Lê o arquivo em chunks pequenos, aplica VAD e devolve
+    REGIÕES DE FALA (start_sec, end_sec) já mescladas.
+
+    Tudo em streaming; só mantém na memória:
+      - o chunk atual
+      - a região atual em construção
     """
-    if not segments:
-        return []
+    use_vad = seg_config.get("use_vad", True)
+    if not use_vad:
+        # Sem VAD: o arquivo inteiro é "voz"
+        total_duration = total_frames / orig_sr
+        yield (0.0, total_duration)
+        return
 
-    segments = sorted(segments, key=lambda x: x[0])
-    merged: List[Tuple[float, float]] = []
+    vad_chunk_duration = float(seg_config.get("vad_chunk_duration", 10.0))
+    vad_chunk_duration = max(2.0, vad_chunk_duration)  # não deixar ridiculamente pequeno
+    chunk_samples = int(vad_chunk_duration * orig_sr)
+    min_silence_to_merge = float(seg_config.get("min_silence_duration", 0.3))
 
-    min_silence = float(seg_config["min_silence_duration"])
-    current_start, current_end = segments[0]
+    logger.info(f"   VAD streaming em chunks de {vad_chunk_duration:.1f}s")
 
-    for start, end in segments[1:]:
-        if start - current_end < min_silence:
-            current_end = max(current_end, end)
-        else:
-            merged.append((current_start, current_end))
-            current_start, current_end = start, end
+    current_region_start = None  # tipo: float | None
+    current_region_end = None
 
-    merged.append((current_start, current_end))
-    return merged
+    with sf.SoundFile(str(input_path)) as audio_file:
+        chunk_start_time = 0.0
+
+        while True:
+            chunk = audio_file.read(frames=chunk_samples, dtype="float32")
+            if chunk.size == 0:
+                break
+
+            # Mono
+            if chunk.ndim > 1:
+                chunk = chunk.mean(axis=1)
+
+            # VAD no chunk (tempos relativos)
+            local_segments = detect_voice_in_chunk(chunk, orig_sr, seg_config)
+
+            # Converter para tempos absolutos e mesclar em uma linha contínua
+            for s_rel, e_rel in local_segments:
+                s_abs = chunk_start_time + s_rel
+                e_abs = chunk_start_time + e_rel
+
+                if current_region_start is None:
+                    current_region_start = s_abs
+                    current_region_end = e_abs
+                else:
+                    # Se a nova região começa logo depois da atual, mescla
+                    if s_abs - current_region_end <= min_silence_to_merge:
+                        current_region_end = max(current_region_end, e_abs)
+                    else:
+                        # Fecha a região anterior e começa outra
+                        yield (current_region_start, current_region_end)
+                        current_region_start = s_abs
+                        current_region_end = e_abs
+
+            chunk_start_time += len(chunk) / orig_sr
+            del chunk
+            gc.collect()
+
+    # Última região
+    if current_region_start is not None and current_region_end is not None:
+        yield (current_region_start, current_region_end)
 
 
 # ======================
-# NORMALIZAÇÃO
+# SEGMENTOS FINAIS
 # ======================
 
+def iter_final_segments_from_regions(
+    regions: Iterable[Tuple[float, float]],
+    seg_config: dict,
+) -> Iterable[Tuple[float, float]]:
+    """
+    A partir de regiões de fala (start, end) gera segmentos finais respeitando:
+    - min_duration
+    - max_duration
+    - segment_overlap
+    """
+    min_duration = float(seg_config.get("min_duration", 3.0))
+    max_duration = float(seg_config.get("max_duration", 7.0))
+    target_duration = float(seg_config.get("target_duration", max_duration))
+    overlap = float(seg_config.get("segment_overlap", 0.0))
+
+    # Por segurança: target_duration não pode passar de max_duration
+    target_duration = min(target_duration, max_duration)
+    step = max(0.1, target_duration - overlap)
+
+    logger.info(
+        f"   target_duration={target_duration:.1f}s, max_duration={max_duration:.1f}s, "
+        f"overlap={overlap:.1f}s, step={step:.2f}s"
+    )
+
+    for region_start, region_end in regions:
+        region_dur = region_end - region_start
+        if region_dur < min_duration:
+            continue
+
+        cur_start = region_start
+
+        while True:
+            # Se não cabe pelo menos min_duration, para
+            if cur_start + min_duration > region_end:
+                break
+
+            seg_end = min(cur_start + max_duration, region_end)
+            seg_dur = seg_end - cur_start
+
+            if seg_dur < min_duration:
+                break
+
+            yield (cur_start, seg_end)
+
+            if seg_end >= region_end:
+                break
+
+            cur_start = seg_end - overlap
+
+
+# ======================
+# NORMALIZAÇÃO / RESAMPLE / FADE
+# ======================
 
 def normalize_audio_simple(audio: np.ndarray, target_db: float = -20.0) -> np.ndarray:
-    """
-    Normalização simples de áudio para um nível de dB alvo (RMS).
-    """
-    rms = float(np.sqrt(np.mean(audio**2) + 1e-10))
-    current_db = 20.0 * np.log10(rms + 1e-10)
+    """Normalização RMS simples para target_db."""
+    eps = 1e-10
+    rms = float(np.sqrt(np.mean(audio * audio) + eps))
+    current_db = 20.0 * math.log10(rms + eps)
     gain_db = target_db - current_db
     gain_linear = 10.0 ** (gain_db / 20.0)
-    normalized = audio * gain_linear
+    audio = audio * gain_linear
 
-    # Prevenir clipping
-    max_val = float(np.abs(normalized).max())
+    max_val = float(np.max(np.abs(audio)))
     if max_val > 0.99:
-        normalized = normalized / max_val * 0.99
+        audio = audio * (0.99 / max_val)
 
-    return normalized.astype(np.float32, copy=False)
+    return audio.astype(np.float32, copy=False)
 
 
 def normalize_segment(
     audio: np.ndarray,
     sr: int,
     audio_config: dict,
+    meter=None,
 ) -> np.ndarray:
-    """
-    Normaliza um segmento de áudio usando pyloudnorm se disponível,
-    senão cai para normalização RMS simples.
-    """
+    """Normaliza um segmento usando pyloudnorm (se disponível) ou RMS simples."""
     if not audio_config.get("normalize_audio", False):
         return audio
 
-    target_lufs = float(audio_config.get("target_lufs", -23.0))
+    target_lufs = float(audio_config.get("target_lufs", -20.0))
 
-    if pyln is not None:
+    if pyln is not None and meter is not None:
         try:
-            meter = pyln.Meter(sr)
             loudness = meter.integrated_loudness(audio)
-            normalized = pyln.normalize.loudness(audio, loudness, target_lufs)
-            # Prevenir clipping
-            max_val = float(np.abs(normalized).max())
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                audio = pyln.normalize.loudness(audio, loudness, target_lufs)
+            max_val = float(np.max(np.abs(audio)))
             if max_val > 0.99:
-                normalized = normalized / max_val * 0.99
-            return normalized.astype(np.float32, copy=False)
+                audio = audio * (0.99 / max_val)
+            return audio.astype(np.float32, copy=False)
         except Exception as e:
             logger.warning(f"   ⚠️  Falha ao normalizar com pyloudnorm: {e}")
 
-    # Fallback: usa target_lufs como alvo em dB RMS
+    # Fallback RMS
     return normalize_audio_simple(audio, target_db=target_lufs)
-
-
-# ======================
-# RESAMPLE + FADE
-# ======================
 
 
 def resample_segment(
@@ -257,27 +325,24 @@ def resample_segment(
     target_sr: int,
 ) -> Tuple[np.ndarray, int]:
     """
-    Faz resample do segmento. Se scipy.signal estiver disponível, usa
-    resample_poly (qualidade melhor e menos artefatos). Senão, faz
-    decimação/repetição simples.
+    Resample do segmento:
+    - resample_poly (scipy) se disponível
+    - senão, decimação/repetição simples
     """
     if orig_sr == target_sr:
         return audio, orig_sr
 
     if signal is not None:
         try:
-            # Usa razão em termos reduzidos para resample_poly
             g = math.gcd(orig_sr, target_sr)
             up = target_sr // g
             down = orig_sr // g
-            audio_rs = signal.resample_poly(audio, up, down).astype(
-                np.float32, copy=False
-            )
+            audio_rs = signal.resample_poly(audio, up, down).astype(np.float32, copy=False)
             return audio_rs, target_sr
         except Exception as e:
             logger.warning(f"   ⚠️  Falha ao fazer resample com resample_poly: {e}")
 
-    # Fallback simples (menos ideal, porém estável)
+    # Fallback simples
     if orig_sr > target_sr:
         step = max(1, int(round(orig_sr / target_sr)))
         audio_rs = audio[::step]
@@ -288,16 +353,8 @@ def resample_segment(
     return audio_rs.astype(np.float32, copy=False), target_sr
 
 
-def apply_fade(
-    audio: np.ndarray,
-    sr: int,
-    fade_ms: float = 5.0,
-) -> np.ndarray:
-    """
-    Aplica fade-in e fade-out curto para evitar clicks/zumbidos no começo/fim.
-
-    fade_ms: duração do fade em milissegundos.
-    """
+def apply_fade(audio: np.ndarray, sr: int, fade_ms: float = 5.0) -> np.ndarray:
+    """Fade-in e fade-out curtos para evitar clicks/zumbidos."""
     if fade_ms <= 0.0:
         return audio
 
@@ -305,8 +362,8 @@ def apply_fade(
     if n_fade <= 0 or len(audio) < 2 * n_fade:
         return audio
 
-    fade_in = np.linspace(0.0, 1.0, n_fade, dtype=audio.dtype)
-    fade_out = np.linspace(1.0, 0.0, n_fade, dtype=audio.dtype)
+    fade_in = np.linspace(0.0, 1.0, n_fade, dtype=np.float32)
+    fade_out = np.linspace(1.0, 0.0, n_fade, dtype=np.float32)
 
     audio[:n_fade] *= fade_in
     audio[-n_fade:] *= fade_out
@@ -314,9 +371,8 @@ def apply_fade(
 
 
 # ======================
-# PIPELINE PRINCIPAL
+# PROCESSAMENTO POR ARQUIVO
 # ======================
-
 
 def process_audio_file(
     input_path: Path,
@@ -324,113 +380,63 @@ def process_audio_file(
     config: dict,
 ) -> List[dict]:
     """
-    Processa um arquivo de áudio com baixo consumo de memória:
-    - VAD em chunks
-    - merge de segmentos
-    - split de segmentos longos com overlap
-    - extração + normalização + resample de cada segmento
-    - fade-in / fade-out curto em cada segmento (para evitar zumbido/click)
+    Pipeline completo para um arquivo:
+    - Descobre regiões de fala via VAD streaming
+    - Gera segmentos finais (start/end em segundos)
+    - Extrai o áudio de cada segmento, normaliza, aplica fade e salva
     """
-    logger.info(f"📄 Processando: {input_path.name}")
-
     seg_config = config["segmentation"]
     audio_config = config["audio"]
 
+    # Descobrir SR e total de frames pela API unificada
+    with sf.SoundFile(str(input_path)) as f:
+        orig_sr = int(f.samplerate)
+        total_frames = len(f)
+
+    total_duration = total_frames / orig_sr
+
     target_sr = int(audio_config["target_sample_rate"])
-    min_duration = float(seg_config["min_duration"])
-    max_duration = float(seg_config["max_duration"])
-    fade_ms = float(audio_config.get("fade_ms", 5.0))  # ms de fade-in/out
+    fade_ms = float(audio_config.get("fade_ms", 5.0))
 
-    # Info do arquivo
-    info = sf.info(str(input_path))
-    total_duration = float(info.duration)
-    orig_sr = int(info.samplerate)
+    logger.info(f"📄 Processando: {input_path.name}")
+    logger.info(f"   Duração total: {total_duration:.2f}s | SR: {orig_sr}Hz")
 
-    logger.info(f"   Duração total: {total_duration:.2f}s")
-    logger.info(f"   Sample rate original: {orig_sr}Hz")
+    # Passo 1: VAD streaming -> regiões de fala
+    regions = list(iter_voice_regions(input_path, seg_config, orig_sr, total_frames))
+    logger.info(f"   Regiões de fala detectadas (após merge): {len(regions)}")
 
-    # VAD em chunks
-    use_vad = seg_config.get("use_vad", True)
-    vad_chunk_duration = float(seg_config.get("vad_chunk_duration", 60.0))
-    vad_chunk_duration = max(5.0, min(vad_chunk_duration, total_duration))
+    if not regions:
+        logger.warning("   ⚠️ Nenhuma região de fala detectada, pulando arquivo.")
+        return []
 
-    all_voice_segments: List[Tuple[float, float]] = []
+    # Passo 2: Geração dos segmentos finais (somente tempos)
+    final_segments = list(iter_final_segments_from_regions(regions, seg_config))
+    logger.info(f"   Segmentos finais a extrair: {len(final_segments)}")
 
-    if use_vad:
-        logger.info(f"   VAD em chunks de {vad_chunk_duration:.1f}s...")
-        chunk_samples = int(vad_chunk_duration * orig_sr)
+    if not final_segments:
+        logger.warning("   ⚠️ Nenhum segmento final gerado (talvez min_duration muito alta).")
+        return []
 
-        with sf.SoundFile(str(input_path)) as audio_file:
-            chunk_start_time = 0.0
-            while True:
-                # Lê chunk como float32
-                chunk = audio_file.read(frames=chunk_samples, dtype="float32")
-                if chunk.size == 0:
-                    break
+    # Meter para normalização por loudness (por SR alvo)
+    meter = None
+    if pyln is not None and audio_config.get("normalize_audio", False):
+        try:
+            meter = pyln.Meter(target_sr)
+        except Exception:
+            meter = None
 
-                # Mono
-                if chunk.ndim > 1:
-                    chunk = chunk.mean(axis=1)
-
-                # Detecta voz nesse chunk (tempos relativos)
-                voice_rel = detect_voice_in_chunk(chunk, orig_sr, seg_config)
-
-                # Ajusta para tempo absoluto
-                for s_rel, e_rel in voice_rel:
-                    s_abs = chunk_start_time + s_rel
-                    e_abs = chunk_start_time + e_rel
-                    if e_abs > s_abs:
-                        all_voice_segments.append((s_abs, e_abs))
-
-                # Atualiza tempo global
-                chunk_start_time += len(chunk) / orig_sr
-
-                # Liberar memória
-                del chunk
-                gc.collect()
-
-        logger.info(
-            f"   Segmentos com voz detectados (antes do merge): {len(all_voice_segments)}"
-        )
-
-        # Mesclar segmentos adjacentes
-        all_voice_segments = merge_segments(all_voice_segments, seg_config)
-        logger.info(f"   Segmentos após merge: {len(all_voice_segments)}")
-    else:
-        # Sem VAD: usa áudio inteiro
-        all_voice_segments = [(0.0, total_duration)]
-
-    # Filtra curtos e divide longos, com overlap
-    final_segments: List[Tuple[float, float]] = []
-    for start, end in all_voice_segments:
-        dur = end - start
-        if dur < min_duration:
-            continue
-
-        if dur > max_duration:
-            subsegments = split_segment_by_duration(start, end, config)
-            for s_sub, e_sub in subsegments:
-                if e_sub - s_sub >= min_duration:
-                    final_segments.append((s_sub, e_sub))
-        else:
-            final_segments.append((start, end))
-
-    logger.info(f"   Segmentos finais: {len(final_segments)}")
-
-    # Extração de segmentos + normalização + resample + fade
     segment_info_list: List[dict] = []
     base_name = input_path.stem
 
+    # Passo 3: Extração dos segmentos do arquivo original
     with sf.SoundFile(str(input_path)) as audio_file:
-        total_frames = len(audio_file)
-
         for idx, (start_time, end_time) in enumerate(final_segments):
             start_sample = int(round(start_time * orig_sr))
             end_sample = int(round(end_time * orig_sr))
-            # Garante que não passa do tamanho do arquivo
+
+            # Garantias de bounds
             start_sample = max(0, min(start_sample, total_frames))
             end_sample = max(0, min(end_sample, total_frames))
-
             frames = max(0, end_sample - start_sample)
             if frames <= 0:
                 continue
@@ -441,22 +447,22 @@ def process_audio_file(
             if segment.ndim > 1:
                 segment = segment.mean(axis=1)
 
-            # Resample para target_sr
+            # Resample para SR alvo
             segment, current_sr = resample_segment(segment, orig_sr, target_sr)
 
             # Normalização
-            segment = normalize_segment(segment, current_sr, audio_config)
+            segment = normalize_segment(segment, current_sr, audio_config, meter)
 
-            # Sanitizar valores (evita NaN/Inf que podem virar zumbido)
-            segment = np.nan_to_num(segment, nan=0.0, posinf=0.0, neginf=0.0)
+            # Sanitizar valores (NaN/Inf)
+            np.nan_to_num(segment, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
 
-            # Fade-in / Fade-out curto para evitar click/zumbido no recorte
+            # Fade in/out
             segment = apply_fade(segment, current_sr, fade_ms=fade_ms)
 
-            # Prevenir clipping extra
-            max_val = float(np.abs(segment).max())
+            # Anti-clipping extra
+            max_val = float(np.max(np.abs(segment)))
             if max_val > 0.99:
-                segment = segment / max_val * 0.99
+                segment *= (0.99 / max_val)
 
             # Salvar
             output_filename = f"{base_name}_seg{idx:04d}.wav"
@@ -469,36 +475,37 @@ def process_audio_file(
                 subtype="PCM_16",
             )
 
-            duration = len(segment) / current_sr
+            seg_duration = len(segment) / current_sr
             segment_info = {
                 "audio_path": str(
                     output_path.relative_to(project_root / "train" / "data")
                 ),
                 "original_file": input_path.name,
                 "segment_index": idx,
-                "duration": duration,
-                "start_time": start_time,
-                "end_time": end_time,
+                "duration": seg_duration,
+                "start_time": float(start_time),
+                "end_time": float(end_time),
             }
             segment_info_list.append(segment_info)
 
-            del segment
-            gc.collect()
-
-            # Log a cada 100 segmentos
+            # GC ocasional (para longos loops)
             if (idx + 1) % 100 == 0:
+                gc.collect()
                 logger.info(
-                    f"   Progresso: {idx + 1}/{len(final_segments)} segmentos salvos..."
+                    f"   Progresso: {idx + 1}/{len(final_segments)} segmentos extraídos..."
                 )
 
-    logger.info(f"   ✅ {len(segment_info_list)} segmentos salvos\n")
+    logger.info(f"   ✅ {len(segment_info_list)} segmentos salvos para {input_path.name}\n")
     return segment_info_list
 
 
+# ======================
+# MAIN
+# ======================
+
 def main():
-    """Main function"""
     logger.info("=" * 80)
-    logger.info("PREPARAÇÃO E SEGMENTAÇÃO DE ÁUDIO (OTIMIZADA + HÍBRIDA)")
+    logger.info("PREPARAÇÃO E SEGMENTAÇÃO DE ÁUDIO (VAD + STREAMING)")
     logger.info("=" * 80)
 
     config = load_config()
@@ -527,10 +534,10 @@ def main():
         except Exception as e:
             logger.error(f"❌ Erro ao processar {audio_file.name}: {e}")
             import traceback
-
             traceback.print_exc()
         gc.collect()
 
+    processed_dir.mkdir(parents=True, exist_ok=True)
     mapping_file = processed_dir / "segments_mapping.json"
     with open(mapping_file, "w", encoding="utf-8") as f:
         json.dump(all_segments, f, indent=2, ensure_ascii=False)
@@ -542,13 +549,16 @@ def main():
     logger.info(f"✂️  Segmentos gerados: {len(all_segments)}")
 
     if all_segments:
-        durations = np.array(
-            [seg["duration"] for seg in all_segments], dtype=np.float32
-        )
-        logger.info(f"⏱️  Duração média: {float(durations.mean()):.2f}s")
-        logger.info(f"⏱️  Duração mínima: {float(durations.min()):.2f}s")
-        logger.info(f"⏱️  Duração máxima: {float(durations.max()):.2f}s")
-        logger.info(f"⏱️  Duração total: {float(durations.sum()) / 3600:.2f}h")
+        durations = [seg["duration"] for seg in all_segments]
+        total_duration = sum(durations)
+        min_duration = min(durations)
+        max_duration = max(durations)
+        avg_duration = total_duration / len(durations)
+
+        logger.info(f"⏱️  Duração média: {avg_duration:.2f}s")
+        logger.info(f"⏱️  Duração mínima: {min_duration:.2f}s")
+        logger.info(f"⏱️  Duração máxima: {max_duration:.2f}s")
+        logger.info(f"⏱️  Duração total: {total_duration / 3600:.2f}h")
 
     logger.info(f"📁 Segmentos salvos em: {wavs_dir}")
     logger.info(f"📄 Mapping salvo em: {mapping_file}")

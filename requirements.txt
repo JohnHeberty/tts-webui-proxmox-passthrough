@@ -27,7 +27,7 @@ faster-whisper>=1.0.0  # pra transcrição de ref_text
 
 # Fix pyarrow compatibility issue with datasets
 # pyarrow 22.0.0 removed PyExtensionType, need compatible datasets version
-datasets>=2.20.0  # Compatible with pyarrow 22.x
+datasets>=4.4.1  # CRITICAL: Version 4.4.1+ required for pyarrow 22.x compatibility
 pyarrow>=22.0.0   # Latest stable
 
 # === RVC HELPERS (sem tts-with-rvc aqui!) ===
