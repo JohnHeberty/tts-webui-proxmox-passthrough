@@ -172,23 +172,89 @@ class F5TtsEngine(TTSEngine):
         self.rvc_client = None
     
     def _get_model_ckpt_file(self) -> str:
-        """Get checkpoint file path for the model.
+        """
+        Get checkpoint file path for the model.
         
-        For pt-br model (firstpixel/F5-TTS-pt-br), downloads from HuggingFace.
-        For other models, returns empty string (uses default SWivid repo).
+        For PT-BR model (firstpixel/F5-TTS-pt-br), downloads from HuggingFace
+        and patches checkpoint keys if needed (ema. → ema_model.).
+        
+        Returns:
+            str: Path to checkpoint file (patched if PT-BR, empty for default)
         """
         if 'firstpixel' in self.hf_model_name.lower() or 'pt-br' in self.hf_model_name.lower():
             from huggingface_hub import hf_hub_download
-            logger.info(f"Downloading pt-br model checkpoint from {self.hf_model_name}...")
+            from safetensors.torch import load_file, save_file
+            from pathlib import Path
+            
+            logger.info(f"Downloading PT-BR model checkpoint from {self.hf_model_name}...")
+            
+            # Download original checkpoint
             ckpt_path = hf_hub_download(
                 repo_id='firstpixel/F5-TTS-pt-br',
                 filename='pt-br/model_last.safetensors',
                 cache_dir=str(self.cache_dir)
             )
             logger.info(f"✅ PT-BR checkpoint downloaded: {ckpt_path}")
-            return ckpt_path
+            
+            # Check if patching is needed
+            patched_path = ckpt_path.replace('.safetensors', '_patched.safetensors')
+            
+            if not Path(patched_path).exists():
+                logger.info("🔧 Patching PT-BR checkpoint keys: ema. → ema_model.")
+                logger.info("   This is a one-time operation (cached for future use)")
+                
+                try:
+                    # Load original checkpoint
+                    logger.debug(f"Loading checkpoint from: {ckpt_path}")
+                    state_dict = load_file(ckpt_path)
+                    logger.debug(f"Loaded {len(state_dict)} keys from checkpoint")
+                    
+                    # Detect if patching is needed
+                    sample_key = next(iter(state_dict.keys()))
+                    needs_patching = sample_key.startswith('ema.') and not sample_key.startswith('ema_model.')
+                    
+                    if needs_patching:
+                        logger.info("   Detected 'ema.' prefix (incompatible), patching to 'ema_model.'...")
+                        
+                        # Patch keys: ema. → ema_model.
+                        fixed_state_dict = {
+                            k.replace('ema.', 'ema_model.', 1): v  # Replace only first occurrence
+                            for k, v in state_dict.items()
+                        }
+                        
+                        # Verify patching worked
+                        patched_sample = next(iter(fixed_state_dict.keys()))
+                        logger.debug(f"Sample key before: {sample_key}")
+                        logger.debug(f"Sample key after:  {patched_sample}")
+                        
+                        # Save patched checkpoint
+                        logger.info(f"   Saving patched checkpoint to: {patched_path}")
+                        save_file(fixed_state_dict, patched_path)
+                        
+                        # Verify file was created
+                        if Path(patched_path).exists():
+                            file_size_gb = Path(patched_path).stat().st_size / (1024**3)
+                            logger.info(f"✅ Patched checkpoint saved successfully ({file_size_gb:.2f} GB)")
+                        else:
+                            raise RuntimeError(f"Failed to create patched checkpoint: {patched_path}")
+                    else:
+                        logger.info("   Checkpoint already has correct 'ema_model.' prefix, no patching needed")
+                        # Just create a symlink or copy
+                        import shutil
+                        shutil.copy(ckpt_path, patched_path)
+                        logger.info(f"✅ Checkpoint copied to: {patched_path}")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to patch checkpoint: {e}", exc_info=True)
+                    logger.warning("Falling back to original checkpoint (may fail to load)")
+                    return ckpt_path
+            else:
+                logger.info(f"✅ Using cached patched checkpoint: {patched_path}")
+            
+            return patched_path
         else:
             # Use default SWivid repo (leave ckpt_file empty)
+            logger.debug("Using default F5-TTS model (SWivid repo)")
             return ''
     
     def _select_device(self, device: Optional[str], fallback_to_cpu: bool) -> str:

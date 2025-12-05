@@ -230,12 +230,12 @@ def submit_processing_task(job: Job):
 async def create_job(
     text: str = Form(..., min_length=1, max_length=10000, description="Texto para dublar (1-10.000 caracteres)"),
     source_language: str = Form(..., description="Idioma do texto (pt, pt-BR, en, es, fr, etc.)"),
-    mode_str: str = Form(..., description="Modo: 'dubbing' (voz genérica) ou 'dubbing_with_clone' (voz clonada)"),
-    voice_preset_str: Optional[str] = Form('female_generic', description="Preset de voz genérica (dropdown, apenas para mode=dubbing)"),
+    mode: str = Form(..., description="Modo: 'dubbing' (voz genérica) ou 'dubbing_with_clone' (voz clonada)"),
+    voice_preset: Optional[str] = Form('female_generic', description="Preset de voz genérica (dropdown, apenas para mode=dubbing)"),
     voice_id: Optional[str] = Form(None, description="ID de voz clonada (apenas para mode=dubbing_with_clone)"),
     target_language: Optional[str] = Form(None, description="Idioma de destino (padrão: mesmo que source_language)"),
     # TTS Engine Selection (Sprint 4 + SPRINT-06 fix)
-    tts_engine_str: str = Form('xtts', description="TTS engine: 'xtts' (default/stable) or 'f5tts' (experimental/high-quality)"),
+    tts_engine: str = Form('xtts', description="TTS engine: 'xtts' (default/stable) or 'f5tts' (experimental/high-quality)"),
     ref_text: Optional[str] = Form(None, description="Reference transcription for F5-TTS voice cloning (auto-transcribed if None)"),
     # Quality Profile (NEW - usa sistema de profiles por engine)
     quality_profile_id: Optional[str] = Form(None, description="Quality profile ID (ex: 'xtts_balanced', 'f5tts_ultra_quality'). Se None, usa padrão do engine."),
@@ -247,7 +247,7 @@ async def create_job(
     rvc_filter_radius: int = Form(3, description="Median filter radius (0 to 7)"),
     rvc_rms_mix_rate: float = Form(0.25, description="RMS mix rate (0.0 to 1.0)"),
     rvc_protect: float = Form(0.33, description="Protect voiceless consonants (0.0 to 0.5)"),
-    rvc_f0_method_str: str = Form('rmvpe', description="Pitch extraction method: 'rmvpe' (default), 'harvest', 'crepe', etc.")
+    rvc_f0_method: str = Form('rmvpe', description="Pitch extraction method: 'rmvpe' (default), 'harvest', 'crepe', etc.")
 ) -> Job:
     """
     Cria job de dublagem com validação rigorosa (similar a admin/cleanup)
@@ -284,24 +284,24 @@ async def create_job(
         from app.utils.form_parsers import validate_enum_string
         
         # Validar mode
-        mode = validate_enum_string(mode_str, TTSJobMode, "mode", case_sensitive=False)
+        mode_enum = validate_enum_string(mode, TTSJobMode, "mode", case_sensitive=False)
         
         # Validar voice_preset (se fornecido)
-        voice_preset = None
-        if voice_preset_str:
-            voice_preset = validate_enum_string(voice_preset_str, VoicePreset, "voice_preset", case_sensitive=False)
+        voice_preset_enum = None
+        if voice_preset:
+            voice_preset_enum = validate_enum_string(voice_preset, VoicePreset, "voice_preset", case_sensitive=False)
         
         # Validar tts_engine
-        tts_engine = validate_enum_string(tts_engine_str, TTSEngine, "tts_engine", case_sensitive=False)
+        tts_engine_enum = validate_enum_string(tts_engine, TTSEngine, "tts_engine", case_sensitive=False)
         
         # Validar rvc_f0_method
-        rvc_f0_method = validate_enum_string(rvc_f0_method_str, RvcF0Method, "rvc_f0_method", case_sensitive=False)
+        rvc_f0_method_enum = validate_enum_string(rvc_f0_method, RvcF0Method, "rvc_f0_method", case_sensitive=False)
         
         # Logging estruturado
         logger.info(
-            f"📥 Job creation request: mode={mode.value}, engine={tts_engine.value}, "
-            f"preset={voice_preset.value if voice_preset else None}, "
-            f"rvc={enable_rvc}, f0_method={rvc_f0_method.value}"
+            f"📥 Job creation request: mode={mode_enum.value}, engine={tts_engine_enum.value}, "
+            f"preset={voice_preset_enum.value if voice_preset_enum else None}, "
+            f"rvc={enable_rvc}, f0_method={rvc_f0_method_enum.value}"
         )
         
         # ===== Validações adicionais =====
@@ -313,16 +313,16 @@ async def create_job(
             target_language = source_language
         
         # Validações específicas por modo (comparar com string value para compatibilidade)
-        if mode.value == "dubbing":
-            if not voice_preset:
-                voice_preset = VoicePreset.female_generic
-            if not is_voice_preset_valid(voice_preset.value if isinstance(voice_preset, VoicePreset) else voice_preset):
+        if mode_enum.value == "dubbing":
+            if not voice_preset_enum:
+                voice_preset_enum = VoicePreset.female_generic
+            if not is_voice_preset_valid(voice_preset_enum.value if isinstance(voice_preset_enum, VoicePreset) else voice_preset_enum):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Invalid voice preset: {voice_preset}. Valid presets: {get_voice_presets()}"
                 )
         
-        if mode.value == "dubbing_with_clone":
+        if mode_enum.value == "dubbing_with_clone":
             if not voice_id:
                 raise HTTPException(
                     status_code=400,
@@ -362,7 +362,7 @@ async def create_job(
                 raise HTTPException(status_code=400, detail="rvc_protect must be between 0.0 and 0.5")
         
         # Converte TTSJobMode para JobMode (são compatíveis por valor)
-        job_mode = JobMode(mode.value) if isinstance(mode, TTSJobMode) else mode
+        job_mode = JobMode(mode_enum.value) if isinstance(mode_enum, TTSJobMode) else mode_enum
         
         # Cria job
         new_job = Job.create_new(
@@ -370,16 +370,16 @@ async def create_job(
             text=text,
             source_language=source_language,
             target_language=target_language,
-            voice_preset=voice_preset.value if isinstance(voice_preset, VoicePreset) else (voice_preset if voice_preset else None),
+            voice_preset=voice_preset_enum.value if isinstance(voice_preset_enum, VoicePreset) else (voice_preset if voice_preset else None),
             voice_id=voice_id,
-            tts_engine=tts_engine.value if isinstance(tts_engine, TTSEngine) else tts_engine,  # Converte enum para string se necessário
+            tts_engine=tts_engine_enum.value if isinstance(tts_engine_enum, TTSEngine) else tts_engine,  # Converte enum para string se necessário
             ref_text=ref_text
         )
         
-        # Adiciona quality_profile_id (novo sistema) - tts_engine já é TTSEngine enum
+        # Adiciona quality_profile_id (novo sistema) - tts_engine_enum já é TTSEngine enum
         if quality_profile_id:
             # Validar se profile existe
-            profile = quality_profile_manager.get_profile(tts_engine, quality_profile_id)
+            profile = quality_profile_manager.get_profile(tts_engine_enum, quality_profile_id)
             if not profile:
                 raise HTTPException(
                     status_code=404,
@@ -388,10 +388,10 @@ async def create_job(
             new_job.quality_profile = quality_profile_id
         else:
             # Usa perfil padrão do engine
-            default_profile_id = f"{tts_engine.value}_balanced"
+            default_profile_id = f"{tts_engine_enum.value}_balanced"
             new_job.quality_profile = default_profile_id
         
-        # Adiciona parâmetros RVC (Sprint 7) - rvc_f0_method já é RvcF0Method enum
+        # Adiciona parâmetros RVC (Sprint 7) - rvc_f0_method_enum já é RvcF0Method enum
         if enable_rvc:
             new_job.enable_rvc = True
             new_job.rvc_model_id = rvc_model_id
@@ -400,7 +400,7 @@ async def create_job(
             new_job.rvc_filter_radius = rvc_filter_radius
             new_job.rvc_rms_mix_rate = rvc_rms_mix_rate
             new_job.rvc_protect = rvc_protect
-            new_job.rvc_f0_method = rvc_f0_method.value  # Converte enum para string
+            new_job.rvc_f0_method = rvc_f0_method_enum.value  # Converte enum para string
         
         # Verifica cache
         existing_job = job_store.get_job(new_job.id)
@@ -1140,6 +1140,78 @@ async def health_check():
     status_code = 200 if is_healthy else 503
     
     return JSONResponse(content=health_status, status_code=status_code)
+
+
+@app.get("/health/engines", tags=["health"])
+async def health_check_engines():
+    """
+    Check health status of all TTS engines (SPRINT-03).
+    
+    Returns detailed status for each engine including:
+    - Availability (can the engine be loaded?)
+    - Configuration (device, model, languages)
+    - Error details (if unavailable)
+    
+    Returns:
+        dict: Status of each engine
+    
+    Example Response:
+        {
+            "status": "healthy",
+            "engines": {
+                "xtts": {
+                    "status": "available",
+                    "engine_name": "xtts",
+                    "sample_rate": 24000,
+                    "languages": ["pt-BR", "en", "es", ...]
+                },
+                "f5tts": {
+                    "status": "unavailable",
+                    "error": "checkpoint incompatibility",
+                    "error_type": "RuntimeError"
+                }
+            },
+            "timestamp": "2024-12-05T01:30:00"
+        }
+    """
+    results = {}
+    
+    for engine_name in ['xtts', 'f5tts']:
+        try:
+            # Try to get engine (will load if not cached)
+            engine = processor._get_engine(engine_name)
+            
+            # Get supported languages (may be expensive, limit to first 10)
+            try:
+                all_languages = engine.get_supported_languages()
+                sample_languages = all_languages[:10] if len(all_languages) > 10 else all_languages
+            except:
+                sample_languages = ["unavailable"]
+            
+            results[engine_name] = {
+                "status": "available",
+                "engine_name": engine.engine_name,
+                "device": str(engine.device),
+                "sample_rate": engine.sample_rate,
+                "languages": sample_languages,
+                "total_languages": len(all_languages) if 'all_languages' in locals() else 0
+            }
+        except Exception as e:
+            results[engine_name] = {
+                "status": "unavailable",
+                "error": str(e)[:200],  # Truncate long errors
+                "error_type": type(e).__name__
+            }
+    
+    # Overall status: healthy if at least one engine available
+    any_available = any(r["status"] == "available" for r in results.values())
+    all_available = all(r["status"] == "available" for r in results.values())
+    
+    return {
+        "status": "healthy" if all_available else ("degraded" if any_available else "unhealthy"),
+        "engines": results,
+        "timestamp": datetime.now().isoformat()
+    }
 
 
 # =============================================================================

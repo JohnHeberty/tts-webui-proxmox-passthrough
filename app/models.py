@@ -228,6 +228,25 @@ class Job(BaseModel):
         default=None,
         description="Actual engine used (may differ from requested if fallback occurred)"
     )
+    
+    # === SPRINT-02: Engine Fallback Tracking ===
+    tts_engine_requested: Optional[str] = Field(
+        default=None,
+        description="Engine requested by user (for fallback transparency)"
+    )
+    engine_fallback: bool = Field(
+        default=False,
+        description="True if engine fallback occurred (requested != used)"
+    )
+    fallback_reason: Optional[str] = Field(
+        default=None,
+        description="Reason for engine fallback (if applicable)"
+    )
+    quality_profile_mapped: bool = Field(
+        default=False,
+        description="True if quality profile was auto-mapped during fallback"
+    )
+    
     ref_text: Optional[str] = Field(
         default=None,
         description="Reference audio transcription (REQUIRED for F5-TTS voice cloning, auto-transcribed if None)"

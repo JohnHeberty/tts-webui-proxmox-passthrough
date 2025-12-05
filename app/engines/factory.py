@@ -143,17 +143,36 @@ def create_engine_with_fallback(
         TTSEngineException: If all engines fail
     """
     try:
-        return create_engine(engine_type, settings)
+        engine = create_engine(engine_type, settings)
+        logger.info(f"✅ Successfully loaded {engine_type} engine")
+        return engine
     except Exception as e:
         if engine_type != fallback_engine:
+            # === SPRINT-02: More explicit fallback logging ===
             logger.warning(
-                f"Failed to load {engine_type}, falling back to {fallback_engine}: {e}"
+                f"⚠️  Failed to load {engine_type} engine: {str(e)[:100]}",
+                extra={
+                    "requested_engine": engine_type,
+                    "fallback_engine": fallback_engine,
+                    "error_type": type(e).__name__
+                }
             )
+            logger.warning(f"⚠️  Falling back to {fallback_engine} engine")
+            
             try:
-                return create_engine(fallback_engine, settings)
+                fallback = create_engine(fallback_engine, settings)
+                logger.warning(
+                    f"⚠️  Using {fallback_engine} instead of {engine_type} (fallback successful)",
+                    extra={
+                        "requested": engine_type,
+                        "actual": fallback_engine,
+                        "fallback_successful": True
+                    }
+                )
+                return fallback
             except Exception as fallback_error:
                 logger.error(
-                    f"Fallback engine {fallback_engine} also failed: {fallback_error}",
+                    f"❌ Fallback engine {fallback_engine} also failed: {fallback_error}",
                     exc_info=True
                 )
                 raise TTSEngineException(

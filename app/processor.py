@@ -1,6 +1,7 @@
 """
 Processor para jobs de dublagem e clonagem de voz
 Sprint 4: Multi-Engine Support (XTTS + F5-TTS)
+SPRINT-03: Quality Profile Mapping for Engine Fallback
 """
 import logging
 from pathlib import Path
@@ -10,6 +11,7 @@ from .models import Job, VoiceProfile, JobMode, JobStatus, RvcModel, RvcParamete
 from .config import get_settings
 from .exceptions import DubbingException, VoiceCloneException
 from .resilience import CircuitBreaker
+from .quality_profile_mapper import map_quality_profile_for_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -98,14 +100,63 @@ class VoiceProcessor:
         """
         try:
             # Determina qual engine usar
-            engine_type = job.tts_engine or self.settings.get('tts_engine_default', 'xtts')
-            logger.info("Processing dubbing job %s: mode=%s, engine=%s", job.id, job.mode, engine_type)
+            engine_type_requested = job.tts_engine or self.settings.get('tts_engine_default', 'xtts')
+            
+            # === SPRINT-02: Track requested engine ===
+            job.tts_engine_requested = engine_type_requested
+            
+            logger.info("Processing dubbing job %s: mode=%s, engine=%s", job.id, job.mode, engine_type_requested)
             
             # Garante que engine esteja carregado (lazy load)
-            engine = self._get_engine(engine_type)
-            
-            # Registra engine usado (pode ser diferente se houve fallback)
-            job.tts_engine_used = engine.engine_name
+            try:
+                engine = self._get_engine(engine_type_requested)
+                
+                # === SPRINT-02: Track actual engine used ===
+                job.tts_engine_used = engine.engine_name
+                job.engine_fallback = (job.tts_engine_requested != job.tts_engine_used)
+                
+                if job.engine_fallback:
+                    job.fallback_reason = f"Failed to load {job.tts_engine_requested}, using {job.tts_engine_used}"
+                    logger.warning(
+                        f"⚠️  Engine fallback occurred: {job.tts_engine_requested} → {job.tts_engine_used}",
+                        extra={
+                            "job_id": job.id,
+                            "requested": job.tts_engine_requested,
+                            "used": job.tts_engine_used,
+                            "fallback": True
+                        }
+                    )
+                    
+                    # === SPRINT-03: Map quality profile for fallback ===
+                    if job.quality_profile:
+                        original_profile = job.quality_profile
+                        mapped_profile = map_quality_profile_for_fallback(
+                            profile_id=original_profile,
+                            requested_engine=job.tts_engine_requested,
+                            actual_engine=job.tts_engine_used
+                        )
+                        
+                        if mapped_profile and mapped_profile != original_profile:
+                            job.quality_profile = mapped_profile
+                            job.quality_profile_mapped = True
+                            logger.info(
+                                f"📊 Quality profile adapted for fallback: {original_profile} → {mapped_profile}"
+                            )
+                        elif not mapped_profile:
+                            # No mapping found, clear profile to use engine default
+                            job.quality_profile = None
+                            job.quality_profile_mapped = True
+                            logger.warning(
+                                f"⚠️  Quality profile '{original_profile}' incompatible with {job.tts_engine_used}, using engine default"
+                            )
+                else:
+                    logger.debug(f"✅ Using requested engine: {job.tts_engine_used}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to load engine {engine_type_requested}: {e}", exc_info=True)
+                job.engine_fallback = True
+                job.fallback_reason = str(e)
+                raise
             
             job.status = JobStatus.PROCESSING
             job.progress = 10.0
@@ -202,16 +253,17 @@ class VoiceProcessor:
         
         try:
             # Determina qual engine usar
-            engine_type = job.tts_engine or self.settings.get('tts_engine_default', 'xtts')
+            engine_type_requested = job.tts_engine or self.settings.get('tts_engine_default', 'xtts')
+            
+            # === SPRINT-02: Track requested engine ===
+            job.tts_engine_requested = engine_type_requested
             
             # 🎬 Logging estruturado inicial
             logger.info(
                 "🎬 Starting voice clone processing",
                 extra={
                     "job_id": job.id,
-                    "engine_requested": job.tts_engine,
-                    "engine_selected": engine_type,
-                    "engine_fallback": engine_type != job.tts_engine,
+                    "engine_requested": engine_type_requested,
                     "voice_name": job.voice_name,
                     "language": job.source_language,
                     "has_ref_text": job.ref_text is not None
@@ -219,10 +271,55 @@ class VoiceProcessor:
             )
             
             # Garante que engine esteja carregado (lazy load)
-            engine = self._get_engine(engine_type)
-            
-            # Registra engine usado
-            job.tts_engine_used = engine.engine_name
+            try:
+                engine = self._get_engine(engine_type_requested)
+                
+                # === SPRINT-02: Track actual engine used ===
+                job.tts_engine_used = engine.engine_name
+                job.engine_fallback = (job.tts_engine_requested != job.tts_engine_used)
+                
+                if job.engine_fallback:
+                    job.fallback_reason = f"Failed to load {job.tts_engine_requested}, using {job.tts_engine_used}"
+                    logger.warning(
+                        f"⚠️  Engine fallback occurred: {job.tts_engine_requested} → {job.tts_engine_used}",
+                        extra={
+                            "job_id": job.id,
+                            "requested": job.tts_engine_requested,
+                            "used": job.tts_engine_used,
+                            "fallback": True
+                        }
+                    )
+                    
+                    # === SPRINT-03: Map quality profile for fallback ===
+                    if job.quality_profile:
+                        original_profile = job.quality_profile
+                        mapped_profile = map_quality_profile_for_fallback(
+                            profile_id=original_profile,
+                            requested_engine=job.tts_engine_requested,
+                            actual_engine=job.tts_engine_used
+                        )
+                        
+                        if mapped_profile and mapped_profile != original_profile:
+                            job.quality_profile = mapped_profile
+                            job.quality_profile_mapped = True
+                            logger.info(
+                                f"📊 Quality profile adapted for fallback: {original_profile} → {mapped_profile}"
+                            )
+                        elif not mapped_profile:
+                            # No mapping found, clear profile to use engine default
+                            job.quality_profile = None
+                            job.quality_profile_mapped = True
+                            logger.warning(
+                                f"⚠️  Quality profile '{original_profile}' incompatible with {job.tts_engine_used}, using engine default"
+                            )
+                else:
+                    logger.debug(f"✅ Using requested engine: {job.tts_engine_used}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to load engine {engine_type_requested}: {e}", exc_info=True)
+                job.engine_fallback = True
+                job.fallback_reason = str(e)
+                raise
             
             # Validação
             logger.debug("  - input_file: %s", job.input_file)
