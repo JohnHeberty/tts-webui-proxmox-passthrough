@@ -172,3 +172,5 @@ voice_profiles/
 # Manter scripts
 !train/scripts/*.py
 !train/utils/*.py
+models/f5tts/
+models/torch/
