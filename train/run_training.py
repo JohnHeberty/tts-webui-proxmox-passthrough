@@ -236,6 +236,59 @@ class F5TTSTrainer:
             logger.error(f"   Erro: {e}")
             return False
     
+    def check_disk_space(self, required_gb: float = 10.0) -> bool:
+        """
+        Verifica se há espaço em disco suficiente
+        
+        Args:
+            required_gb: Espaço mínimo necessário em GB
+            
+        Returns:
+            True se há espaço suficiente
+        """
+        import shutil
+        
+        stat = shutil.disk_usage(str(self.output_dir))
+        available_gb = stat.free / (1024**3)
+        
+        if available_gb < required_gb:
+            logger.warning(f"⚠️  Espaço em disco baixo: {available_gb:.1f}GB disponível (mínimo: {required_gb}GB)")
+            return False
+        
+        return True
+    
+    def cleanup_old_checkpoints(self, keep_last_n: int = None):
+        """
+        Remove checkpoints antigos mantendo apenas os últimos N
+        
+        Args:
+            keep_last_n: Número de checkpoints a manter (usa config se None)
+        """
+        if keep_last_n is None:
+            keep_last_n = self.config.get('keep_last_n_checkpoints', 10)
+        
+        # Listar checkpoints numerados (model_*.pt, exceto model_last.pt)
+        checkpoints = sorted(
+            [f for f in self.output_dir.glob("model_*.pt") if f.name != "model_last.pt"],
+            key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0
+        )
+        
+        if len(checkpoints) <= keep_last_n:
+            return
+        
+        # Remover os mais antigos
+        to_remove = checkpoints[:-keep_last_n]
+        freed_space_gb = 0
+        
+        for ckpt in to_remove:
+            size_gb = ckpt.stat().st_size / (1024**3)
+            ckpt.unlink()
+            freed_space_gb += size_gb
+            logger.info(f"🗑️  Removido checkpoint antigo: {ckpt.name} ({size_gb:.1f}GB)")
+        
+        if freed_space_gb > 0:
+            logger.info(f"✅ Espaço liberado: {freed_space_gb:.1f}GB")
+    
     def setup_environment(self):
         """Configura ambiente e diretórios"""
         logger.info("=" * 80)
@@ -276,6 +329,38 @@ class F5TTSTrainer:
         logger.info(f"Checkpoints: {self.output_dir.relative_to(PROJECT_ROOT)}/")
         logger.info(f"TensorBoard: {self.runs_dir.relative_to(PROJECT_ROOT)}/")
         logger.info(f"Samples: {self.output_dir.relative_to(PROJECT_ROOT)}/samples/ (a cada {self.config['log_samples_per_updates']} updates)")
+        logger.info("=" * 80)
+        logger.info("")
+        
+        # Verificar espaço em disco
+        import shutil
+        stat = shutil.disk_usage(str(self.output_dir))
+        available_gb = stat.free / (1024**3)
+        total_gb = stat.total / (1024**3)
+        used_gb = stat.used / (1024**3)
+        
+        logger.info("💾 ESPAÇO EM DISCO")
+        logger.info("-" * 80)
+        logger.info(f"Total: {total_gb:.1f}GB")
+        logger.info(f"Usado: {used_gb:.1f}GB ({used_gb/total_gb*100:.1f}%)")
+        logger.info(f"Disponível: {available_gb:.1f}GB")
+        
+        # Limpar checkpoints antigos se espaço < 30GB
+        if available_gb < 30.0:
+            logger.warning(f"⚠️  Espaço baixo! Limpando checkpoints antigos...")
+            self.cleanup_old_checkpoints(keep_last_n=3)  # Manter apenas 3
+            
+            # Re-verificar
+            stat = shutil.disk_usage(str(self.output_dir))
+            available_gb = stat.free / (1024**3)
+            logger.info(f"✅ Espaço disponível após limpeza: {available_gb:.1f}GB")
+        
+        if available_gb < 15.0:
+            logger.error(f"❌ ERRO: Espaço insuficiente ({available_gb:.1f}GB)")
+            logger.error("   Necessário pelo menos 15GB para continuar treinamento")
+            logger.error("   Libere espaço ou reduza keep_last_n_checkpoints no .env")
+            sys.exit(1)
+        
         logger.info("=" * 80)
         logger.info("")
         
