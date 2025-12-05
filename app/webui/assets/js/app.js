@@ -2738,6 +2738,12 @@ console.log('💡 Para debug, execute: debugApp()');
 
 document.addEventListener('DOMContentLoaded', () => {
     app.init();
+    
+    // Initialize Bootstrap tooltips (for bug fix indicators)
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
 });
 
 /**

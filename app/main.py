@@ -715,7 +715,7 @@ async def clone_voice(
     name: str = Form(...),
     language: str = Form(...),
     description: Optional[str] = Form(None),
-    tts_engine_str: str = Form('xtts', description="TTS engine: 'xtts' (default) or 'f5tts' (experimental)"),
+    tts_engine: str = Form('xtts', description="TTS engine: 'xtts' (default) or 'f5tts' (experimental)"),
     ref_text: Optional[str] = Form(None, description="Reference transcription for F5-TTS (auto-transcribed if None)")
 ):
     """
@@ -741,9 +741,9 @@ async def clone_voice(
         
         # Validar tts_engine usando utility (SPRINT-04)
         from app.utils.form_parsers import validate_enum_string
-        tts_engine = validate_enum_string(tts_engine_str, TTSEngine, "tts_engine", case_sensitive=False)
+        tts_engine_enum = validate_enum_string(tts_engine, TTSEngine, "tts_engine", case_sensitive=False)
         
-        logger.info(f"📥 Clone voice request: engine={tts_engine.value}, name={name}, language={language}")
+        logger.info(f"📥 Clone voice request: engine={tts_engine_enum.value}, name={name}, language={language}")
         
         # Lê arquivo
         content = await file.read()
@@ -770,7 +770,7 @@ async def clone_voice(
             voice_name=name,
             voice_description=description,
             source_language=language,
-            tts_engine=tts_engine.value,  # Converter enum para string
+            tts_engine=tts_engine_enum.value,  # Converter enum para string
             ref_text=ref_text
         )
         # IMPORTANTE: Setar input_file ANTES de salvar/enviar

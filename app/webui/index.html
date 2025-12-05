@@ -258,11 +258,20 @@
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">
                                     <i class="bi bi-cpu"></i> Engine de TTS *
+                                    <i class="bi bi-info-circle text-primary" 
+                                       data-bs-toggle="tooltip" 
+                                       data-bs-placement="top"
+                                       title="XTTS: Estável, rápido (padrão). F5-TTS: Experimental, alta qualidade, melhor naturalidade. Seleção agora funciona corretamente!"></i>
                                 </label>
                                 <select class="form-select" id="job-tts-engine" required>
                                     <option value="xtts">XTTS (Estável/Padrão)</option>
                                     <option value="f5tts">F5-TTS (Experimental/Alta Qualidade)</option>
                                 </select>
+                                <div class="form-text">
+                                    <small class="text-success">
+                                        <i class="bi bi-patch-check-fill"></i> Bug de seleção corrigido (2024-12-04)
+                                    </small>
+                                </div>
                             </div>
 
                             <!-- Perfil de Qualidade -->
@@ -526,11 +535,20 @@
                             <div class="col-md-4 mb-3">
                                 <label class="form-label">
                                     <i class="bi bi-cpu"></i> Engine de TTS *
+                                    <i class="bi bi-info-circle text-primary" 
+                                       data-bs-toggle="tooltip" 
+                                       data-bs-placement="top"
+                                       title="XTTS: Estável, rápido, funciona com qualquer áudio. F5-TTS: Experimental, alta qualidade, melhor prosódia (requer mais recursos). Bug de seleção corrigido em 2024-12-04."></i>
                                 </label>
                                 <select class="form-select" id="clone-tts-engine" required>
-                                    <option value="xtts">XTTS (Padrão)</option>
-                                    <option value="f5tts">F5-TTS (Experimental)</option>
+                                    <option value="xtts">XTTS (Padrão - Estável)</option>
+                                    <option value="f5tts">F5-TTS (Experimental - Alta Qualidade)</option>
                                 </select>
+                                <div class="form-text">
+                                    <small class="text-success">
+                                        <i class="bi bi-check-circle-fill"></i> Seleção de engine funcionando corretamente
+                                    </small>
+                                </div>
                             </div>
 
                             <div class="col-md-4 mb-3">
