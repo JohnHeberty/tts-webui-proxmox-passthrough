@@ -25,6 +25,11 @@ f5-tts==1.1.9
 cached-path>=1.6.2
 faster-whisper>=1.0.0  # pra transcrição de ref_text
 
+# Fix pyarrow compatibility issue with datasets
+# pyarrow 22.0.0 removed PyExtensionType, need compatible datasets version
+datasets>=2.20.0  # Compatible with pyarrow 22.x
+pyarrow>=22.0.0   # Latest stable
+
 # === RVC HELPERS (sem tts-with-rvc aqui!) ===
 faiss-cpu>=1.7.4
 praat-parselmouth==0.4.3
