@@ -35,8 +35,14 @@ train/
 
 **Opção A: Pipeline completo (recomendado)**
 ```bash
-# Executar todos os steps
-python -m train.scripts.pipeline
+# Executar todos os steps (com salvamento incremental + resume)
+python -m train.scripts.pipeline_v2
+
+# ✅ Benefícios do pipeline_v2:
+# - Salvamento incremental a cada 10 segmentos (proteção contra crash)
+# - Resume automático (continua de onde parou)
+# - Imports diretos (melhor performance e debug)
+# - Cleanup automático de temporários
 ```
 
 **Opção B: Steps individuais**
@@ -47,7 +53,7 @@ python -m train.scripts.download_youtube
 # 2. Segmentação com VAD (7-12s por segmento)
 python -m train.scripts.segment_audio
 
-# 3. Transcrição com Whisper
+# 3. Transcrição com Whisper (com checkpoint automático)
 python -m train.scripts.transcribe_audio
 
 # 4. Construção do dataset LJSpeech
@@ -57,10 +63,13 @@ python -m train.scripts.build_ljs_dataset
 **Opção C: Pular steps já executados**
 ```bash
 # Se já baixou os vídeos
-python -m train.scripts.pipeline --skip-download
+python -m train.scripts.pipeline_v2 --skip-download
 
 # Se já segmentou
-python -m train.scripts.pipeline --skip-download --skip-segment
+python -m train.scripts.pipeline_v2 --skip-download --skip-segment
+
+# Executar apenas um step específico
+python -m train.scripts.pipeline_v2 --only-step transcribe
 ```
 
 ### 2. Configurar Dataset

@@ -1,13 +1,22 @@
 """
 Pipeline completo de preparação de dataset XTTS-v2
 
+⚠️  DEPRECADO: Use pipeline_v2.py ao invés deste script
+    - pipeline_v2.py tem salvamento incremental (proteção contra crash)
+    - Resume automático (continua de onde parou)
+    - Imports diretos (melhor performance)
+    - Cleanup automático de temporários
+
 Este script orquestra todo o processo de preparação de dados:
   1. Download de áudios do YouTube (download_youtube.py)
   2. Segmentação com VAD (segment_audio.py)
   3. Transcrição com Whisper (transcribe_audio.py)
   4. Construção do dataset LJSpeech (build_ljs_dataset.py)
 
-Uso:
+Uso (RECOMENDADO - use v2):
+    python -m train.scripts.pipeline_v2
+    
+Uso (legado - será removido):
     # Pipeline completo
     python -m train.scripts.pipeline
     
@@ -163,6 +172,23 @@ def run_pipeline(config, skip_download, skip_segment, skip_transcribe, skip_buil
         logger.warning("⚠️  Nenhum step selecionado para executar!")
         logger.info("   Use --help para ver opções disponíveis")
         return
+    
+    # DEPRECATION WARNING
+    logger.warning("\n" + "⚠️ " * 40)
+    logger.warning("⚠️  AVISO: Este script está DEPRECADO!")
+    logger.warning("⚠️  Use 'pipeline_v2.py' ao invés deste script")
+    logger.warning("⚠️  ")
+    logger.warning("⚠️  Benefícios do pipeline_v2:")
+    logger.warning("⚠️  - Salvamento incremental (proteção contra crash)")
+    logger.warning("⚠️  - Resume automático (continua de onde parou)")
+    logger.warning("⚠️  - Melhor performance (imports diretos)")
+    logger.warning("⚠️  ")
+    logger.warning("⚠️  Execute: python -m train.scripts.pipeline_v2")
+    logger.warning("⚠️ " * 40 + "\n")
+    
+    import time
+    logger.info("⏳ Aguardando 5 segundos para ler o aviso...")
+    time.sleep(5)
     
     logger.info(f"📋 Steps a executar: {len(steps)}")
     for i, (name, _) in enumerate(steps, 1):
