@@ -1,8 +1,14 @@
 # Quality Profiles - Guia de Uso
 
+> ⚠️ **PARTIALLY DEPRECATED**: F5-TTS was removed in v2.0 (2025-12-06)
+> 
+> Sections documenting F5-TTS quality profiles (f5tts_*) are obsolete.
+> 
+> **Current stack**: XTTS-v2 only. See [DEPLOYMENT_SUCCESS.md](../DEPLOYMENT_SUCCESS.md)
+
 ## 📋 Visão Geral
 
-O sistema de Quality Profiles permite controlar finamente a qualidade de áudio gerado por cada engine TTS (XTTS e F5-TTS). Existem dois tipos de perfis:
+O sistema de Quality Profiles permite controlar finamente a qualidade de áudio gerado por cada engine TTS ~~(XTTS e F5-TTS)~~ **XTTS apenas**. Existem dois tipos de perfis:
 
 - **🔒 Perfis Padrão (Imutáveis)**: Definidos em código, não podem ser modificados ou deletados
 - **✏️ Perfis Customizados**: Criados via API, armazenados no Redis, podem ser editados/deletados
