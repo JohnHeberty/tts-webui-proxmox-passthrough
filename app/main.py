@@ -24,7 +24,7 @@ from .models import (
 from .quality_profiles import (
     TTSEngine,  # Import principal
     XTTSQualityProfile,
-    F5TTSQualityProfile,
+    # F5TTSQualityProfile removed - F5-TTS has been removed from project
     QualityProfileCreate,
     QualityProfileUpdate,
     QualityProfileList
@@ -1449,6 +1449,7 @@ async def create_quality_profile(
         profile_id = f"{engine_str}_{hashlib.md5(f'{request.name}_{timestamp}'.encode()).hexdigest()[:12]}"
         
         # Criar perfil baseado no engine
+        # F5-TTS removed from project - only XTTS supported
         if request.engine == TTSEngine.XTTS:
             profile = XTTSQualityProfile(
                 id=profile_id,
@@ -1458,14 +1459,11 @@ async def create_quality_profile(
                 is_default=request.is_default,
                 **request.parameters
             )
-        else:  # F5TTS
-            profile = F5TTSQualityProfile(
-                id=profile_id,
-                name=request.name,
-                description=request.description,
-                engine=request.engine,
-                is_default=request.is_default,
-                **request.parameters
+        else:
+            # Reject non-XTTS engines
+            raise HTTPException(
+                status_code=400,
+                detail=f"Engine '{request.engine}' not supported. Only 'xtts' is supported (F5-TTS has been removed)"
             )
         
         # Salvar
@@ -1686,27 +1684,11 @@ async def duplicate_quality_profile(
                 speed=original.speed,
                 enable_text_splitting=original.enable_text_splitting
             )
-        else:  # F5TTS
-            new_profile = F5TTSQualityProfile(
-                id=new_profile_id,
-                name=final_name,
-                description=f"Duplicado de {original.name}",
-                engine=engine,
-                is_default=False,
-                nfe_step=original.nfe_step,
-                cfg_scale=original.cfg_scale,
-                sway_sampling_coef=original.sway_sampling_coef,
-                speed=original.speed,
-                denoise_audio=original.denoise_audio,
-                noise_reduction_strength=original.noise_reduction_strength,
-                apply_normalization=original.apply_normalization,
-                target_loudness=original.target_loudness,
-                apply_declipping=original.apply_declipping,
-                apply_deessing=original.apply_deessing,
-                deessing_frequency=original.deessing_frequency,
-                add_breathing=original.add_breathing,
-                breathing_strength=original.breathing_strength,
-                pause_optimization=original.pause_optimization
+        else:
+            # F5-TTS removed - reject non-XTTS profiles
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot duplicate profile with engine '{engine}'. Only 'xtts' is supported (F5-TTS has been removed)"
             )
         
         # Salvar

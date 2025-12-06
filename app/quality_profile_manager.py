@@ -89,7 +89,7 @@ class QualityProfileManager:
         Cria novo perfil de qualidade.
         
         Args:
-            profile: Perfil (XTTSQualityProfile ou F5TTSQualityProfile)
+            profile: Perfil (XTTSQualityProfile only - F5-TTS removed)
         
         Returns:
             Perfil criado
@@ -228,11 +228,11 @@ class QualityProfileManager:
         profile_dict.update(updates)
         profile_dict['updated_at'] = datetime.now()
         
-        # Recriar objeto
+        # Recriar objeto (only XTTS supported - F5-TTS removed)
         if engine == TTSEngine.XTTS:
             updated_profile = XTTSQualityProfile(**profile_dict)
         else:
-            updated_profile = F5TTSQualityProfile(**profile_dict)
+            raise ValueError(f"Engine '{engine}' not supported. Only 'xtts' is supported (F5-TTS has been removed)")
         
         # Salvar
         profile_key = self._get_profile_key(engine, profile_id)
