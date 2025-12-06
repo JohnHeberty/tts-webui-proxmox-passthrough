@@ -18,24 +18,22 @@ Date: December 6, 2025
 """
 
 from .normalizer import TextNormalizer, normalize_text
-from .qa import check_text_quality, validate_text_for_training, TextQualityReport
-from .vocab import load_vocab, validate_vocab, compute_vocab_hash
+from .qa import TextQualityReport, check_text_quality, validate_text_for_training
+from .vocab import compute_vocab_hash, load_vocab, validate_vocab
+
 
 __all__ = [
     # Normalizer
-    'TextNormalizer',
-    'normalize_text',
-    
+    "TextNormalizer",
+    "normalize_text",
     # Quality Assurance
-    'check_text_quality',
-    'validate_text_for_training',
-    'TextQualityReport',
-    
+    "check_text_quality",
+    "validate_text_for_training",
+    "TextQualityReport",
     # Vocabulary
-    'load_vocab',
-    'validate_vocab',
-    'compute_vocab_hash',
+    "load_vocab",
+    "validate_vocab",
+    "compute_vocab_hash",
 ]
 
-__version__ = '1.0.0'
-
+__version__ = "1.0.0"

@@ -97,6 +97,74 @@ env-check: ## Verifica variáveis de ambiente importantes
 	@echo "🐳 Container Celery:"
 	@docker inspect audio-voice-celery --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E "(LOW_VRAM|F5TTS_DEVICE|XTTS_DEVICE|CUDA)" || echo "   $(YELLOW)⚠️  Variáveis não encontradas$(NC)"
 
+# ============================================================================
+# Training Pipeline Commands
+# ============================================================================
+
+.PHONY: setup format lint typecheck test-unit test-coverage test-e2e train-quick train-resume infer-cli
+
+setup: ## Instala dependências de desenvolvimento (ruff, black, mypy, pytest)
+	@echo "$(YELLOW)📦 Installing dev dependencies...$(NC)"
+	pip install -e ".[dev]"
+	@echo "$(GREEN)✅ Dev dependencies installed!$(NC)"
+
+format: ## Formata código com black
+	@echo "$(YELLOW)✨ Formatting code with black...$(NC)"
+	black train/ tests/ --line-length 100
+	@echo "$(GREEN)✅ Code formatted!$(NC)"
+
+lint: ## Verifica código com ruff (ultra-fast linter)
+	@echo "$(YELLOW)🔍 Linting with ruff...$(NC)"
+	ruff check train/ tests/ --fix
+	@echo "$(GREEN)✅ Linting complete!$(NC)"
+
+typecheck: ## Type checking com mypy
+	@echo "$(YELLOW)🔎 Type checking with mypy...$(NC)"
+	mypy train/ --config-file pyproject.toml || true
+	@echo "$(GREEN)✅ Type checking complete!$(NC)"
+
+test-unit: ## Executa testes unitários
+	@echo "$(YELLOW)🧪 Running unit tests...$(NC)"
+	pytest tests/ -v -m "not slow and not e2e" --tb=short
+	@echo "$(GREEN)✅ Unit tests complete!$(NC)"
+
+test-coverage: ## Testes com coverage report
+	@echo "$(YELLOW)📊 Running tests with coverage...$(NC)"
+	pytest tests/ --cov=train --cov-report=html --cov-report=term-missing
+	@echo "$(GREEN)✅ Coverage report: htmlcov/index.html$(NC)"
+
+test-e2e: ## Executa teste end-to-end completo
+	@echo "$(YELLOW)🚀 Running end-to-end test...$(NC)"
+	pytest tests/ -v -m e2e --tb=short
+	@echo "$(GREEN)✅ E2E test complete!$(NC)"
+
+test-all: ## Executa TODOS os testes (unit + e2e)
+	@echo "$(YELLOW)🧪 Running ALL tests...$(NC)"
+	pytest tests/ -v --tb=short
+	@echo "$(GREEN)✅ All tests complete!$(NC)"
+
+train-quick: ## Quick training test (1 epoch)
+	@echo "$(YELLOW)🚀 Quick training test (1 epoch)...$(NC)"
+	python -m train.run_training --config train/config/config.yaml --epochs 1
+	@echo "$(GREEN)✅ Quick training complete!$(NC)"
+
+train-resume: ## Resume training from checkpoint
+	@echo "$(YELLOW)🔄 Resuming training from checkpoint...$(NC)"
+	python -m train.run_training --config train/config/config.yaml --resume
+	@echo "$(GREEN)✅ Training resumed!$(NC)"
+
+infer-cli: ## Run inference CLI (requires args)
+	@echo "$(YELLOW)🎙️ Running F5-TTS inference CLI...$(NC)"
+	@echo "$(RED)Usage: make infer-cli ARGS='--checkpoint model.pt --vocab vocab.txt --text \"Hello\" --ref-audio ref.wav --output out.wav'$(NC)"
+	python -m train.cli.infer $(ARGS)
+
+check-all: format lint typecheck test-unit ## Run all quality checks (format + lint + typecheck + test)
+	@echo "$(GREEN)✅ All quality checks passed!$(NC)"
+
+# ============================================================================
+# Legacy/Docker Commands
+# ============================================================================
+
 # Atalhos
 c: cleanup ## Atalho para cleanup
 r: rebuild ## Atalho para rebuild

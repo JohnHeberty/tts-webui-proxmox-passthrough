@@ -1,0 +1,187 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "f5tts-training"
+version = "1.0.0"
+description = "F5-TTS Training Pipeline for Portuguese Brazilian"
+authors = [{name = "F5-TTS Training Team"}]
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+    "mypy>=1.7.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "pre-commit>=3.5.0",
+]
+
+[tool.ruff]
+# Configuração do Ruff (linter ultra-rápido, substitui Flake8+isort)
+target-version = "py311"
+line-length = 100
+
+# Diretórios a serem excluídos
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+]
+
+[tool.ruff.lint]
+# Regras habilitadas
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "N",   # pep8-naming
+    "UP",  # pyupgrade (modernize code)
+    "B",   # flake8-bugbear (find likely bugs)
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "RUF", # Ruff-specific rules
+]
+
+# Regras a ignorar
+ignore = [
+    "E501",   # Line too long (handled by black)
+    "B008",   # Do not perform function call in argument defaults (Pydantic Field(default_factory=...))
+    "B904",   # Within except clause, raise exceptions with raise ... from err
+    "N805",   # First argument of method should be self (Pydantic validators)
+    "UP007",  # Use X | Y for type annotations (prefer str | Path for clarity)
+]
+
+# Configurações por arquivo
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Unused imports OK in __init__.py
+"tests/**" = ["S101"]     # Assert OK in tests
+
+[tool.ruff.lint.isort]
+# Configuração de import sorting (compatível com black)
+known-first-party = ["train", "app"]
+force-single-line = false
+force-sort-within-sections = true
+lines-after-imports = 2
+
+[tool.black]
+# Formatador de código automático
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # Diretórios padrão
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+# Type checker estático
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Começar com false, depois mudar para true
+disallow_any_unimported = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+check_untyped_defs = true
+strict_equality = true
+
+# Módulos sem type stubs (ignorar)
+[[tool.mypy.overrides]]
+module = [
+    "torch.*",
+    "torchaudio.*",
+    "f5_tts.*",
+    "pydub.*",
+    "librosa.*",
+    "soundfile.*",
+    "typer.*",
+    "rich.*",
+    "pydantic.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+# Configuração do pytest
+minversion = "7.4"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",                    # Show summary of all test types
+    "--strict-markers",       # Error on unknown markers
+    "--strict-config",        # Error on invalid pytest config
+    "--showlocals",          # Show local variables in tracebacks
+    "-v",                    # Verbose output
+]
+
+# Markers customizados
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "e2e: marks tests as end-to-end tests",
+    "gpu: marks tests requiring GPU",
+]
+
+# Asyncio configuration
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+# Configuração do coverage
+source = ["train"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/.*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+# Relatório de coverage
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

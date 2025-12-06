@@ -10,6 +10,8 @@ Author: F5-TTS Training Pipeline
 Version: 1.0
 Date: 2025-12-06
 """
+
 from train.inference.api import F5TTSInference
 
-__all__ = ['F5TTSInference']
+
+__all__ = ["F5TTSInference"]

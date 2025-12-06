@@ -17,15 +17,16 @@ Dependências:
     - whisper: pip install openai-whisper
     - num2words: pip install num2words
 """
+
 import csv
 import json
 import logging
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
-from typing import Dict, List, Optional
 
 import yaml
+
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -33,12 +34,14 @@ sys.path.insert(0, str(project_root))
 
 # Carregar config do .env
 from train.utils.env_loader import get_training_config
+
+
 env_config = get_training_config()
 
 try:
-    import yt_dlp
     from num2words import num2words
     import whisper
+    import yt_dlp
 except ImportError as e:
     print(f"❌ Dependência não encontrada: {e}")
     print("Instale com: pip install yt-dlp openai-whisper num2words")
@@ -47,11 +50,8 @@ except ImportError as e:
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('train/logs/transcribe.log'),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("train/logs/transcribe.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
@@ -62,49 +62,149 @@ _WHISPER_HP_MODEL = None
 # Vocabulário PT-BR básico embutido (pode ser expandido via arquivo externo)
 _COMMON_PT_WORDS = {
     # Artigos / pronomes / preposições / conjunções
-    "a", "o", "as", "os", "um", "uma", "uns", "umas",
-    "de", "do", "da", "dos", "das",
-    "em", "no", "na", "nos", "nas",
-    "por", "para", "com", "sem", "sobre", "entre",
-    "e", "ou", "mas", "porque", "que", "se", "quando",
-    "eu", "tu", "ele", "ela", "nós", "vos", "eles", "elas",
-    "me", "te", "lhe", "nos", "vos", "lhes",
-    "isso", "isto", "aquilo", "aqui", "ali", "lá",
-
+    "a",
+    "o",
+    "as",
+    "os",
+    "um",
+    "uma",
+    "uns",
+    "umas",
+    "de",
+    "do",
+    "da",
+    "dos",
+    "das",
+    "em",
+    "no",
+    "na",
+    "nos",
+    "nas",
+    "por",
+    "para",
+    "com",
+    "sem",
+    "sobre",
+    "entre",
+    "e",
+    "ou",
+    "mas",
+    "porque",
+    "que",
+    "se",
+    "quando",
+    "eu",
+    "tu",
+    "ele",
+    "ela",
+    "nós",
+    "vos",
+    "eles",
+    "elas",
+    "me",
+    "te",
+    "lhe",
+    "lhes",
+    "isso",
+    "isto",
+    "aquilo",
+    "aqui",
+    "ali",
+    "lá",
     # Verbos comuns
-    "ser", "estar", "ter", "haver", "fazer", "ir", "vir",
-    "poder", "dizer", "ver", "dar", "ficar", "querer",
-    "saber", "dever", "passar", "chegar", "deixar", "precisar",
-
+    "ser",
+    "estar",
+    "ter",
+    "haver",
+    "fazer",
+    "ir",
+    "vir",
+    "poder",
+    "dizer",
+    "ver",
+    "dar",
+    "ficar",
+    "querer",
+    "saber",
+    "dever",
+    "passar",
+    "chegar",
+    "deixar",
+    "precisar",
     # Coisas básicas
-    "sim", "não", "talvez", "claro", "obrigado", "obrigada",
-    "bom", "boa", "melhor", "pior", "grande", "pequeno",
-
+    "sim",
+    "não",
+    "talvez",
+    "claro",
+    "obrigado",
+    "obrigada",
+    "bom",
+    "boa",
+    "melhor",
+    "pior",
+    "grande",
+    "pequeno",
     # Números (coerentes com num2words pt_BR)
-    "zero", "um", "dois", "três", "quatro", "cinco", "seis",
-    "sete", "oito", "nove", "dez", "onze", "doze", "treze",
-    "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove",
-    "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta",
-    "oitenta", "noventa",
-    "cem", "cento", "duzentos", "trezentos", "quatrocentos",
-    "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos",
-    "mil", "milhão", "milhões",
-
+    "zero",
+    "dois",
+    "três",
+    "quatro",
+    "cinco",
+    "seis",
+    "sete",
+    "oito",
+    "nove",
+    "dez",
+    "onze",
+    "doze",
+    "treze",
+    "quatorze",
+    "quinze",
+    "dezesseis",
+    "dezessete",
+    "dezoito",
+    "dezenove",
+    "vinte",
+    "trinta",
+    "quarenta",
+    "cinquenta",
+    "sessenta",
+    "setenta",
+    "oitenta",
+    "noventa",
+    "cem",
+    "cento",
+    "duzentos",
+    "trezentos",
+    "quatrocentos",
+    "quinhentos",
+    "seiscentos",
+    "setecentos",
+    "oitocentos",
+    "novecentos",
+    "mil",
+    "milhão",
+    "milhões",
     # Símbolos falados
-    "arroba", "porcento", "barra", "mais", "menos", "dólar",
+    "arroba",
+    "porcento",
+    "barra",
+    "mais",
+    "menos",
+    "dólar",
 }
 _PT_BR_VOCAB = None  # carregado lazy a partir de _COMMON_PT_WORDS + arquivo, se existir
 
 
 def load_config() -> dict:
     """Carrega configuração do dataset"""
-    config_dir = env_config.get('config_dir', 'train/config')
+    config_dir = env_config.get("config_dir", "train/config")
     config_path = project_root / config_dir / "dataset_config.yaml"
-    with open(config_path, 'r', encoding='utf-8') as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def load_videos_catalog(csv_path: Path) -> Dict[str, dict]:
+def load_videos_catalog(csv_path: Path) -> dict[str, dict]:
     """
     Carrega catálogo de vídeos do CSV
 
@@ -112,38 +212,35 @@ def load_videos_catalog(csv_path: Path) -> Dict[str, dict]:
         Dict mapeando video_id -> info do vídeo
     """
     videos = {}
-    with open(csv_path, 'r', encoding='utf-8') as f:
+    with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row['youtube_url'].strip():
-                videos[row['id']] = row
+            if row["youtube_url"].strip():
+                videos[row["id"]] = row
 
     return videos
 
 
 def download_youtube_subtitles(
-    youtube_url: str,
-    output_dir: Path,
-    video_id: str,
-    config: dict
-) -> Optional[Path]:
+    youtube_url: str, output_dir: Path, video_id: str, config: dict
+) -> Path | None:
     """
     Tenta baixar legendas do YouTube
     """
-    subtitle_config = config['youtube']['subtitles']
+    subtitle_config = config["youtube"]["subtitles"]
 
     # Nome do arquivo de saída
-    output_template = str(output_dir / f'video_{video_id.zfill(5)}')
+    output_template = str(output_dir / f"video_{video_id.zfill(5)}")
 
     # yt-dlp options
     ydl_opts = {
-        'skip_download': True,
-        'writesubtitles': True,
-        'writeautomaticsub': subtitle_config.get('download_auto_subs', True),
-        'subtitleslangs': subtitle_config.get('subtitle_langs', ['pt']),
-        'subtitlesformat': subtitle_config.get('subtitle_formats', ['vtt'])[0],
-        'outtmpl': output_template,
-        'quiet': True,
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": subtitle_config.get("download_auto_subs", True),
+        "subtitleslangs": subtitle_config.get("subtitle_langs", ["pt"]),
+        "subtitlesformat": subtitle_config.get("subtitle_formats", ["vtt"])[0],
+        "outtmpl": output_template,
+        "quiet": True,
     }
 
     try:
@@ -151,8 +248,8 @@ def download_youtube_subtitles(
             ydl.download([youtube_url])
 
         # Procurar arquivo de legendas gerado
-        for ext in subtitle_config.get('subtitle_formats', ['vtt', 'srt']):
-            for lang in subtitle_config.get('subtitle_langs', ['pt']):
+        for ext in subtitle_config.get("subtitle_formats", ["vtt", "srt"]):
+            for lang in subtitle_config.get("subtitle_langs", ["pt"]):
                 subtitle_file = Path(f"{output_template}.{lang}.{ext}")
                 if subtitle_file.exists():
                     logger.info(f"   ✅ Legendas encontradas: {subtitle_file.name}")
@@ -170,36 +267,30 @@ def parse_subtitle_file(subtitle_path: Path) -> str:
     """
     Extrai texto de arquivo de legendas (VTT ou SRT)
     """
-    with open(subtitle_path, 'r', encoding='utf-8') as f:
+    with open(subtitle_path, encoding="utf-8") as f:
         content = f.read()
 
     # Remover cabeçalho VTT
-    content = re.sub(r'WEBVTT.*?\n\n', '', content, flags=re.DOTALL)
+    content = re.sub(r"WEBVTT.*?\n\n", "", content, flags=re.DOTALL)
 
     # Remover números de sequência (linhas só com número)
-    content = re.sub(r'\n\d+\n', '\n', content)
+    content = re.sub(r"\n\d+\n", "\n", content)
 
     # Remover timestamps
     content = re.sub(
-        r'\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}.*?\n',
-        '',
-        content
+        r"\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}.*?\n", "", content
     )
 
     # Remover tags HTML (<c>, <i>, etc.)
-    content = re.sub(r'<[^>]+>', '', content)
+    content = re.sub(r"<[^>]+>", "", content)
 
     # Remover linhas vazias múltiplas
-    content = re.sub(r'\n\n+', '\n', content)
+    content = re.sub(r"\n\n+", "\n", content)
 
     return content.strip()
 
 
-def transcribe_with_whisper(
-    audio_path: Path,
-    config: dict,
-    high_precision: bool = False
-) -> str:
+def transcribe_with_whisper(audio_path: Path, config: dict, high_precision: bool = False) -> str:
     """
     Transcreve áudio usando Whisper.
 
@@ -209,12 +300,12 @@ def transcribe_with_whisper(
     """
     global _WHISPER_MODEL, _WHISPER_HP_MODEL
 
-    asr_config = config['transcription']['asr']
-    device = asr_config.get('device', 'cuda')
+    asr_config = config["transcription"]["asr"]
+    device = asr_config.get("device", "cuda")
 
-    if high_precision and asr_config.get('high_precision_model'):
+    if high_precision and asr_config.get("high_precision_model"):
         # Modelo de alta precisão
-        model_name = asr_config['high_precision_model']
+        model_name = asr_config["high_precision_model"]
         if _WHISPER_HP_MODEL is None:
             logger.info(f"   🎤 Carregando modelo Whisper de alta precisão ({model_name})...")
             try:
@@ -223,13 +314,13 @@ def transcribe_with_whisper(
                 logger.error(f"   ❌ Erro ao carregar modelo Whisper de alta precisão: {e}")
                 return ""
         model = _WHISPER_HP_MODEL
-        beam_size = asr_config.get('hp_beam_size', asr_config.get('beam_size', 5))
-        best_of = asr_config.get('hp_best_of', asr_config.get('best_of', 5))
-        temperature = asr_config.get('hp_temperature', asr_config.get('temperature', 0.0))
+        beam_size = asr_config.get("hp_beam_size", asr_config.get("beam_size", 5))
+        best_of = asr_config.get("hp_best_of", asr_config.get("best_of", 5))
+        temperature = asr_config.get("hp_temperature", asr_config.get("temperature", 0.0))
         logger.info("   🎧 Retranscrevendo com modelo de alta precisão...")
     else:
         # Modelo padrão
-        model_name = asr_config['model']
+        model_name = asr_config["model"]
         if _WHISPER_MODEL is None:
             logger.info(f"   🎤 Carregando modelo Whisper ({model_name})...")
             try:
@@ -238,22 +329,22 @@ def transcribe_with_whisper(
                 logger.error(f"   ❌ Erro ao carregar modelo Whisper: {e}")
                 return ""
         model = _WHISPER_MODEL
-        beam_size = asr_config.get('beam_size', 5)
-        best_of = asr_config.get('best_of', 5)
-        temperature = asr_config.get('temperature', 0.0)
+        beam_size = asr_config.get("beam_size", 5)
+        best_of = asr_config.get("best_of", 5)
+        temperature = asr_config.get("temperature", 0.0)
         if high_precision:
             logger.info("   🎧 Retranscrevendo com mesmo modelo, mas parâmetros mais precisos...")
 
     try:
         result = model.transcribe(
             str(audio_path),
-            language=asr_config.get('language', 'pt'),
-            task=asr_config.get('task', 'transcribe'),
+            language=asr_config.get("language", "pt"),
+            task=asr_config.get("task", "transcribe"),
             beam_size=beam_size,
             best_of=best_of,
             temperature=temperature,
         )
-        return result.get('text', '').strip()
+        return result.get("text", "").strip()
     except Exception as e:
         logger.error(f"   ❌ Erro ao transcrever com Whisper: {e}")
         return ""
@@ -286,7 +377,7 @@ def _normalize_numbers_and_symbols(text: str, text_config: dict) -> str:
         "2025" -> "dois mil e vinte e cinco"
         "email@dominio.com" -> "email arroba dominio ponto com"
     """
-    lang = text_config.get('numbers_lang', 'pt_BR')
+    lang = text_config.get("numbers_lang", "pt_BR")
 
     # 1) Casos especiais: número seguido de %
     def repl_number_percent(match: re.Match) -> str:
@@ -312,7 +403,8 @@ def _normalize_numbers_and_symbols(text: str, text_config: dict) -> str:
     text = re.sub(r"[@%&+\-/#$=]", repl_symbol, text)
 
     # 3) Números "puros": 1 -> um, 2025 -> dois mil e vinte e cinco
-    if text_config.get('convert_numbers_to_words', True):
+    if text_config.get("convert_numbers_to_words", True):
+
         def repl_number(match: re.Match) -> str:
             num_str = match.group(0)
             try:
@@ -391,7 +483,7 @@ def _get_pt_vocab(text_config: dict) -> set:
             vocab_path = project_root / vocab_file
         if vocab_path.exists():
             try:
-                with open(vocab_path, 'r', encoding='utf-8') as f:
+                with open(vocab_path, encoding="utf-8") as f:
                     for line in f:
                         w = line.strip().lower()
                         if w:
@@ -411,7 +503,7 @@ def _should_retry_with_high_precision(text: str, config: dict) -> bool:
     Decide se vale a pena retranscrever com modelo mais preciso,
     baseado em proporção de palavras fora do vocabulário pt-BR.
     """
-    text_config = config['text_preprocessing']
+    text_config = config["text_preprocessing"]
 
     if not text_config.get("retranscribe_on_oov", True):
         return False
@@ -460,44 +552,40 @@ def preprocess_text(text: str, config: dict) -> str:
     - remoção de caracteres especiais (opcional)
     - limpeza de bordas bugadas (segmentos cortados)
     """
-    text_config = config['text_preprocessing']
+    text_config = config["text_preprocessing"]
 
     # 1) Lowercase
-    if text_config.get('lowercase', True):
+    if text_config.get("lowercase", True):
         text = text.lower()
 
     # 2) Normalizar números e símbolos primeiro (para não perder %/@ etc)
     text = _normalize_numbers_and_symbols(text, text_config)
 
     # 3) Normalizar pontuação via tabela de replacements
-    if text_config.get('normalize_punctuation', True):
-        for old, new in text_config.get('replacements', {}).items():
+    if text_config.get("normalize_punctuation", True):
+        for old, new in text_config.get("replacements", {}).items():
             text = text.replace(old, new)
 
     # 4) Remover caracteres especiais não permitidos (se configurado)
-    if text_config.get('remove_special_chars', False):
-        allowed_chars = text_config.get('allowed_chars')
+    if text_config.get("remove_special_chars", False):
+        allowed_chars = text_config.get("allowed_chars")
         if allowed_chars:
             allowed = set(allowed_chars)
-            text = ''.join(c if c in allowed else ' ' for c in text)
+            text = "".join(c if c in allowed else " " for c in text)
 
     # 5) Remover espaços múltiplos
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
 
     # 6) Limpar bordas bugadas de segmento (palavras estranhas no começo/fim)
     text = _cleanup_segment_edges(text, text_config)
 
     # 7) Espaços finais
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
 
     return text
 
 
-def get_subtitle_for_segment(
-    segment_info: dict,
-    subtitles_text: str,
-    config: dict
-) -> str:
+def get_subtitle_for_segment(segment_info: dict, subtitles_text: str, config: dict) -> str:
     """
     Extrai trecho de legenda correspondente a um segmento de áudio.
 
@@ -517,10 +605,10 @@ def main():
     config = load_config()
 
     # Paths (usar .env)
-    data_base = env_config.get('dataset_path', 'train/data/f5_dataset').rsplit('/', 1)[0]
-    processed_data_dir = env_config.get('processed_data_dir', 'train/data/processed')
-    videos_csv_path = env_config.get('videos_csv', 'train/data/videos.csv')
-    
+    data_base = env_config.get("dataset_path", "train/data/f5_dataset").rsplit("/", 1)[0]
+    processed_data_dir = env_config.get("processed_data_dir", "train/data/processed")
+    videos_csv_path = env_config.get("videos_csv", "train/data/videos.csv")
+
     data_dir = project_root / data_base
     processed_dir = project_root / processed_data_dir
     videos_csv = project_root / videos_csv_path
@@ -539,7 +627,7 @@ def main():
         sys.exit(1)
 
     # Carregar mapping de segmentos
-    with open(segments_mapping_file, 'r', encoding='utf-8') as f:
+    with open(segments_mapping_file, encoding="utf-8") as f:
         segments = json.load(f)
 
     logger.info(f"📋 {len(segments)} segmentos para transcrever\n")
@@ -552,17 +640,14 @@ def main():
     logger.info("ETAPA 1: DOWNLOAD DE LEGENDAS DO YOUTUBE")
     logger.info("=" * 80 + "\n")
 
-    subtitles_cache: Dict[str, str] = {}
+    subtitles_cache: dict[str, str] = {}
 
-    if config['transcription'].get('prefer_youtube_subtitles', True):
+    if config["transcription"].get("prefer_youtube_subtitles", True):
         for video_id, video_info in videos_catalog.items():
             logger.info(f"🔍 Buscando legendas para video_{video_id}...")
 
             subtitle_file = download_youtube_subtitles(
-                video_info['youtube_url'],
-                subtitles_dir,
-                video_id,
-                config
+                video_info["youtube_url"], subtitles_dir, video_id, config
             )
 
             if subtitle_file:
@@ -575,28 +660,28 @@ def main():
     logger.info("ETAPA 2: TRANSCRIÇÃO DE SEGMENTOS")
     logger.info("=" * 80 + "\n")
 
-    transcriptions: List[dict] = []
+    transcriptions: list[dict] = []
 
     for i, segment in enumerate(segments, 1):
         logger.info(f"[{i}/{len(segments)}] {segment['audio_path']}")
 
         # Caminho do áudio do segmento
-        audio_path = project_root / "train" / "data" / segment['audio_path']
+        audio_path = project_root / "train" / "data" / segment["audio_path"]
 
         # Extrair video_id do nome do arquivo original (ex: video_00001.wav)
-        original_file = segment['original_file']
+        original_file = segment["original_file"]
         try:
-            video_id_part = original_file.split('_')[1].split('.')[0]
+            video_id_part = original_file.split("_")[1].split(".")[0]
         except IndexError:
             video_id_part = "0"
-        video_id = video_id_part.lstrip('0') or '0'
+        video_id = video_id_part.lstrip("0") or "0"
 
         text = ""
         from_whisper = False
 
         # Tentar usar legendas se disponíveis
         if video_id in subtitles_cache:
-            logger.info(f"   📝 Usando legendas do YouTube")
+            logger.info("   📝 Usando legendas do YouTube")
             text = get_subtitle_for_segment(segment, subtitles_cache[video_id], config)
             from_whisper = False
 
@@ -619,9 +704,9 @@ def main():
                 text = preprocess_text(text_hp_raw, config)
 
         # Validações de comprimento
-        text_config = config['text_preprocessing']
-        min_len = text_config.get('min_text_length', 1)
-        max_len = text_config.get('max_text_length', 10_000)
+        text_config = config["text_preprocessing"]
+        min_len = text_config.get("min_text_length", 1)
+        max_len = text_config.get("max_text_length", 10_000)
 
         if len(text) < min_len:
             logger.warning(f"   ⚠️  Texto muito curto ({len(text)} chars), pulando")
@@ -632,7 +717,7 @@ def main():
             text = text[:max_len]
 
         # Opcional: validar número mínimo de palavras (se configurado)
-        min_word_count = text_config.get('min_word_count')
+        min_word_count = text_config.get("min_word_count")
         if min_word_count is not None:
             word_count = len(text.split())
             if word_count < int(min_word_count):
@@ -643,7 +728,7 @@ def main():
 
         # Filtrar linhas com termos indesejados
         skip = False
-        for term in text_config.get('remove_lines_with', []):
+        for term in text_config.get("remove_lines_with", []):
             if term.lower() in text.lower():
                 logger.warning(f"   ⚠️  Termo indesejado encontrado: {term}, pulando")
                 skip = True
@@ -653,17 +738,13 @@ def main():
             continue
 
         # Adicionar transcrição final
-        transcriptions.append({
-            **segment,
-            'text': text,
-            'char_count': len(text)
-        })
+        transcriptions.append({**segment, "text": text, "char_count": len(text)})
 
         logger.info(f"   ✅ {len(text)} caracteres: {text[:80]}...\n")
 
     # Salvar transcrições
     transcriptions_file = processed_dir / "transcriptions.json"
-    with open(transcriptions_file, 'w', encoding='utf-8') as f:
+    with open(transcriptions_file, "w", encoding="utf-8") as f:
         json.dump(transcriptions, f, indent=2, ensure_ascii=False)
 
     # Summary

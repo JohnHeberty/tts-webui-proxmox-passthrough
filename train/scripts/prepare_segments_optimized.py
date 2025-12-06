@@ -15,17 +15,17 @@ Uso:
     python -m train.scripts.prepare_segments
 """
 
+from collections.abc import Iterable
 import gc
 import json
 import logging
 import math
-import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+import sys
+import warnings
 
 import yaml
 
-import warnings
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -67,10 +67,11 @@ logger = logging.getLogger(__name__)
 # CONFIG
 # ======================
 
+
 def load_config() -> dict:
     """Carrega configuração do dataset (dataset_config.yaml)."""
     config_path = project_root / "train" / "config" / "dataset_config.yaml"
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -78,11 +79,12 @@ def load_config() -> dict:
 # VAD SIMPLES (ENERGIA)
 # ======================
 
+
 def detect_voice_in_chunk(
     audio_chunk: np.ndarray,
     sr: int,
     seg_config: dict,
-) -> List[Tuple[float, float]]:
+) -> list[tuple[float, float]]:
     """
     Detecta regiões com voz em um chunk usando energia RMS em dB.
 
@@ -99,7 +101,7 @@ def detect_voice_in_chunk(
 
     num_frames = max(0, (len(audio_chunk) - frame_size) // hop_size + 1)
 
-    segments: List[Tuple[float, float]] = []
+    segments: list[tuple[float, float]] = []
     in_voice = False
     voice_start = 0.0
 
@@ -148,7 +150,7 @@ def iter_voice_regions(
     seg_config: dict,
     orig_sr: int,
     total_frames: int,
-) -> Iterable[Tuple[float, float]]:
+) -> Iterable[tuple[float, float]]:
     """
     Lê o arquivo em chunks pequenos, aplica VAD e devolve
     REGIÕES DE FALA (start_sec, end_sec) já mescladas.
@@ -220,10 +222,11 @@ def iter_voice_regions(
 # SEGMENTOS FINAIS
 # ======================
 
+
 def iter_final_segments_from_regions(
-    regions: Iterable[Tuple[float, float]],
+    regions: Iterable[tuple[float, float]],
     seg_config: dict,
-) -> Iterable[Tuple[float, float]]:
+) -> Iterable[tuple[float, float]]:
     """
     A partir de regiões de fala (start, end) gera segmentos finais respeitando:
     - min_duration
@@ -274,6 +277,7 @@ def iter_final_segments_from_regions(
 # NORMALIZAÇÃO / RESAMPLE / FADE
 # ======================
 
+
 def normalize_audio_simple(audio: np.ndarray, target_db: float = -20.0) -> np.ndarray:
     """Normalização RMS simples para target_db."""
     eps = 1e-10
@@ -323,7 +327,7 @@ def resample_segment(
     audio: np.ndarray,
     orig_sr: int,
     target_sr: int,
-) -> Tuple[np.ndarray, int]:
+) -> tuple[np.ndarray, int]:
     """
     Resample do segmento:
     - resample_poly (scipy) se disponível
@@ -374,11 +378,12 @@ def apply_fade(audio: np.ndarray, sr: int, fade_ms: float = 5.0) -> np.ndarray:
 # PROCESSAMENTO POR ARQUIVO
 # ======================
 
+
 def process_audio_file(
     input_path: Path,
     output_dir: Path,
     config: dict,
-) -> List[dict]:
+) -> list[dict]:
     """
     Pipeline completo para um arquivo:
     - Descobre regiões de fala via VAD streaming
@@ -425,7 +430,7 @@ def process_audio_file(
         except Exception:
             meter = None
 
-    segment_info_list: List[dict] = []
+    segment_info_list: list[dict] = []
     base_name = input_path.stem
 
     # Passo 3: Extração dos segmentos do arquivo original
@@ -462,7 +467,7 @@ def process_audio_file(
             # Anti-clipping extra
             max_val = float(np.max(np.abs(segment)))
             if max_val > 0.99:
-                segment *= (0.99 / max_val)
+                segment *= 0.99 / max_val
 
             # Salvar
             output_filename = f"{base_name}_seg{idx:04d}.wav"
@@ -477,9 +482,7 @@ def process_audio_file(
 
             seg_duration = len(segment) / current_sr
             segment_info = {
-                "audio_path": str(
-                    output_path.relative_to(project_root / "train" / "data")
-                ),
+                "audio_path": str(output_path.relative_to(project_root / "train" / "data")),
                 "original_file": input_path.name,
                 "segment_index": idx,
                 "duration": seg_duration,
@@ -491,9 +494,7 @@ def process_audio_file(
             # GC ocasional (para longos loops)
             if (idx + 1) % 100 == 0:
                 gc.collect()
-                logger.info(
-                    f"   Progresso: {idx + 1}/{len(final_segments)} segmentos extraídos..."
-                )
+                logger.info(f"   Progresso: {idx + 1}/{len(final_segments)} segmentos extraídos...")
 
     logger.info(f"   ✅ {len(segment_info_list)} segmentos salvos para {input_path.name}\n")
     return segment_info_list
@@ -502,6 +503,7 @@ def process_audio_file(
 # ======================
 # MAIN
 # ======================
+
 
 def main():
     logger.info("=" * 80)
@@ -524,7 +526,7 @@ def main():
 
     logger.info(f"📁 {len(audio_files)} arquivos encontrados em {raw_dir}\n")
 
-    all_segments: List[dict] = []
+    all_segments: list[dict] = []
 
     for i, audio_file in enumerate(audio_files, 1):
         logger.info(f"[{i}/{len(audio_files)}] Processando {audio_file.name}")
@@ -534,6 +536,7 @@ def main():
         except Exception as e:
             logger.error(f"❌ Erro ao processar {audio_file.name}: {e}")
             import traceback
+
             traceback.print_exc()
         gc.collect()
 
