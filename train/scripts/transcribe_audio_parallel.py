@@ -229,6 +229,7 @@ def transcribe_parallel(
     # Process in parallel
     start_time = time.time()
     completed = 0
+    already_done = len(transcriptions)  # Track already completed segments
     
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         # Submit all tasks
@@ -255,15 +256,17 @@ def transcribe_parallel(
                 if result:
                     transcriptions.append(result)
                     
-                    # Progress log
-                    total = len(segments_to_process)
-                    percent = (completed / total) * 100
+                    # Progress log with CORRECT counter (already_done + completed)
+                    current_position = already_done + completed
+                    total_segments = len(segments)
+                    percent = (current_position / total_segments) * 100
                     elapsed = time.time() - start_time
                     rate = completed / elapsed
-                    eta = (total - completed) / rate if rate > 0 else 0
+                    remaining = len(segments_to_process) - completed
+                    eta = remaining / rate if rate > 0 else 0
                     
                     logger.info(
-                        f"[{completed}/{total}] {percent:.1f}% | "
+                        f"[{current_position}/{total_segments}] {percent:.1f}% | "
                         f"{rate:.1f} seg/s | ETA: {eta/60:.1f}min | "
                         f"{result['char_count']} chars"
                     )
