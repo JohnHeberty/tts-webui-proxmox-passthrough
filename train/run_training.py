@@ -547,98 +547,134 @@ class F5TTSTrainer:
             logger.info("")
     
     def run_training(self):
-        """Executa treinamento F5-TTS"""
+        """Executa treinamento F5-TTS com auto-resume inteligente"""
         import sys
         from pathlib import Path
         
-        # Priority 1: Check training output directory for existing checkpoints
-        local_output_dir = self.output_dir
+        # Use intelligent checkpoint resolution
         resume_checkpoint = None
+        pretrained_model = None
         
-        if local_output_dir.exists():
-            # Look for model_last.pt first (most recent)
-            last_ckpt = local_output_dir / "model_last.pt"
-            if last_ckpt.exists() and self.validate_checkpoint(str(last_ckpt)):
-                resume_checkpoint = str(last_ckpt.absolute())
-                logger.info(f"📂 Checkpoint válido encontrado: {last_ckpt.name}")
-            else:
-                if last_ckpt.exists():
-                    logger.warning(f"⚠️  Checkpoint corrompido, ignorando: {last_ckpt.name}")
-                    # Renomear checkpoint corrompido
-                    corrupted_name = last_ckpt.with_suffix('.pt.corrupted')
-                    last_ckpt.rename(corrupted_name)
-                    logger.info(f"   Renomeado para: {corrupted_name.name}")
-                
-                # Look for numbered checkpoints
-                checkpoints = sorted(local_output_dir.glob("model_*.pt"), 
-                                    key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0)
-                for ckpt in reversed(checkpoints):  # Mais recente primeiro
-                    if self.validate_checkpoint(str(ckpt)):
-                        resume_checkpoint = str(ckpt.absolute())
-                        logger.info(f"📂 Checkpoint válido encontrado: {ckpt.name}")
-                        break
-                    else:
-                        logger.warning(f"⚠️  Checkpoint corrompido, pulando: {ckpt.name}")
-                        # Renomear checkpoint corrompido
-                        corrupted_name = ckpt.with_suffix('.pt.corrupted')
-                        ckpt.rename(corrupted_name)
+        try:
+            from train.utils.checkpoint import resolve_checkpoint_path
+            
+            logger.info("🔍 Using intelligent checkpoint resolution...")
+            
+            # Try to resolve existing checkpoint
+            resolved = resolve_checkpoint_path(
+                self.config_obj,
+                checkpoint_name=None,
+                auto_download=False,  # Don't auto-download, we'll handle pretrained separately
+                verbose=True
+            )
+            
+            if resolved:
+                # Check if this is a training checkpoint or pretrained model
+                resolved_path = Path(resolved)
+                if str(self.output_dir) in str(resolved_path):
+                    # It's from our training output - resume
+                    resume_checkpoint = resolved
+                    logger.info(f"✅ Auto-resume from: {resolved_path.name}")
+                else:
+                    # It's a pretrained model - use for fine-tuning
+                    pretrained_model = resolved
+                    logger.info(f"✅ Fine-tune from: {resolved_path.name}")
         
-        # Priority 2: Check F5-TTS ckpts directory
-        if not resume_checkpoint:
-            # Usar F5TTS_CKPTS_DIR do .env ou path padrão
-            f5tts_base = self.config.get('f5tts_ckpts_dir', '/root/.local/lib/python3.11/ckpts')
-            checkpoint_dir = Path(f"{f5tts_base}/{self.config['train_dataset_name']}")
-            if checkpoint_dir.exists():
-                last_ckpt = checkpoint_dir / "model_last.pt"
+        except ImportError:
+            logger.debug("Checkpoint utilities not available, using legacy detection")
+        except Exception as e:
+            logger.warning(f"Checkpoint resolution failed: {e}, using legacy detection")
+        
+        # Fallback to legacy checkpoint detection if intelligent resolution didn't find anything
+        if not resume_checkpoint and not pretrained_model:
+            logger.info("📂 Using legacy checkpoint detection...")
+            
+            # Priority 1: Check training output directory for existing checkpoints
+            local_output_dir = self.output_dir
+        
+            if local_output_dir.exists():
+                # Look for model_last.pt first (most recent)
+                last_ckpt = local_output_dir / "model_last.pt"
                 if last_ckpt.exists() and self.validate_checkpoint(str(last_ckpt)):
                     resume_checkpoint = str(last_ckpt.absolute())
-                    logger.info(f"📂 Checkpoint válido encontrado em ckpts/: {last_ckpt.name}")
-        
-        # Priority 3: Use local pretrained model from models/f5tts/pt-br/
-        pretrained_model = None
-        if not resume_checkpoint:
-            # Usar LOCAL_PRETRAINED_PATH do .env ou path padrão
-            local_pretrained_path = self.config.get('local_pretrained_path', 'models/f5tts/pt-br/model_last.pt')
-            local_pretrained = PROJECT_ROOT / local_pretrained_path
-            if local_pretrained.exists() and self.validate_checkpoint(str(local_pretrained)):
-                pretrained_model = str(local_pretrained.absolute())
-                logger.info(f"📥 Modelo pré-treinado válido: {local_pretrained.relative_to(PROJECT_ROOT)}")
-            elif local_pretrained.exists():
-                logger.warning(f"⚠️  Modelo pré-treinado corrompido: {local_pretrained.relative_to(PROJECT_ROOT)}")
-        
-        # Priority 4: Use pretrained model from .env configuration
-        if not resume_checkpoint and not pretrained_model:
-            pretrained_path_env = self.config.get('pretrained_model_path')
-            if pretrained_path_env and pretrained_path_env.strip():  # Só se não estiver vazio
-                # Caminhos podem ser:
-                # 1. Absolutos: /root/.local/lib/python3.11/ckpts/f5_dataset/model_last.pt
-                # 2. Relativos ao F5-TTS: ckpts/f5_dataset/model_last.pt
-                # 3. Relativos ao workspace: train/pretrained/model.pt
-                
-                pretrained_path = Path(pretrained_path_env)
-                
-                if pretrained_path.is_absolute() and pretrained_path.exists():
-                    # Caminho absoluto
-                    pretrained_model = str(pretrained_path.absolute())
-                    logger.info(f"📥 Usando modelo pré-treinado (absoluto): {pretrained_path.name}")
-                elif pretrained_path_env.startswith('ckpts/'):
-                    # Caminho relativo ao F5-TTS (ckpts/f5_dataset/model_last.pt)
-                    f5tts_base_dir = self.config.get('f5tts_base_dir', '/root/.local/lib/python3.11')
-                    f5tts_base = Path(f5tts_base_dir)
-                    pretrained_full = f5tts_base / pretrained_path_env
-                    if pretrained_full.exists():
-                        pretrained_model = str(pretrained_full.absolute())
-                        logger.info(f"📥 Usando modelo pré-treinado (F5-TTS): {pretrained_full.name}")
-                    else:
-                        logger.warning(f"⚠️  Modelo não encontrado: {pretrained_full}")
+                    logger.info(f"📂 Checkpoint válido encontrado: {last_ckpt.name}")
                 else:
-                    # Caminho relativo ao workspace
-                    pretrained_full = self.train_root / pretrained_path_env.replace('train/', '')
-                    if pretrained_full.exists():
-                        pretrained_model = str(pretrained_full.absolute())
-                        logger.info(f"📥 Usando modelo pré-treinado (workspace): {pretrained_full.name}")
+                    if last_ckpt.exists():
+                        logger.warning(f"⚠️  Checkpoint corrompido, ignorando: {last_ckpt.name}")
+                        # Renomear checkpoint corrompido
+                        corrupted_name = last_ckpt.with_suffix('.pt.corrupted')
+                        last_ckpt.rename(corrupted_name)
+                        logger.info(f"   Renomeado para: {corrupted_name.name}")
+                    
+                    # Look for numbered checkpoints
+                    checkpoints = sorted(local_output_dir.glob("model_*.pt"), 
+                                        key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0)
+                    for ckpt in reversed(checkpoints):  # Mais recente primeiro
+                        if self.validate_checkpoint(str(ckpt)):
+                            resume_checkpoint = str(ckpt.absolute())
+                            logger.info(f"📂 Checkpoint válido encontrado: {ckpt.name}")
+                            break
+                        else:
+                            logger.warning(f"⚠️  Checkpoint corrompido, pulando: {ckpt.name}")
+                            # Renomear checkpoint corrompido
+                            corrupted_name = ckpt.with_suffix('.pt.corrupted')
+                            ckpt.rename(corrupted_name)
+            
+            # Priority 2: Check F5-TTS ckpts directory
+            if not resume_checkpoint:
+                # Usar F5TTS_CKPTS_DIR do .env ou path padrão
+                f5tts_base = self.config.get('f5tts_ckpts_dir', '/root/.local/lib/python3.11/ckpts')
+                checkpoint_dir = Path(f"{f5tts_base}/{self.config['train_dataset_name']}")
+                if checkpoint_dir.exists():
+                    last_ckpt = checkpoint_dir / "model_last.pt"
+                    if last_ckpt.exists() and self.validate_checkpoint(str(last_ckpt)):
+                        resume_checkpoint = str(last_ckpt.absolute())
+                        logger.info(f"📂 Checkpoint válido encontrado em ckpts/: {last_ckpt.name}")
+            
+            # Priority 3: Use local pretrained model from models/f5tts/pt-br/
+            if not resume_checkpoint:
+                # Usar LOCAL_PRETRAINED_PATH do .env ou path padrão
+                local_pretrained_path = self.config.get('local_pretrained_path', 'models/f5tts/pt-br/model_last.pt')
+                local_pretrained = PROJECT_ROOT / local_pretrained_path
+                if local_pretrained.exists() and self.validate_checkpoint(str(local_pretrained)):
+                    pretrained_model = str(local_pretrained.absolute())
+                    logger.info(f"📥 Modelo pré-treinado válido: {local_pretrained.relative_to(PROJECT_ROOT)}")
+                elif local_pretrained.exists():
+                    logger.warning(f"⚠️  Modelo pré-treinado corrompido: {local_pretrained.relative_to(PROJECT_ROOT)}")
+            
+            # Priority 4: Use pretrained model from .env configuration
+            if not resume_checkpoint and not pretrained_model:
+                pretrained_path_env = self.config.get('pretrained_model_path')
+                if pretrained_path_env and pretrained_path_env.strip():  # Só se não estiver vazio
+                    # Caminhos podem ser:
+                    # 1. Absolutos: /root/.local/lib/python3.11/ckpts/f5_dataset/model_last.pt
+                    # 2. Relativos ao F5-TTS: ckpts/f5_dataset/model_last.pt
+                    # 3. Relativos ao workspace: train/pretrained/model.pt
+                    
+                    pretrained_path = Path(pretrained_path_env)
+                    
+                    if pretrained_path.is_absolute() and pretrained_path.exists():
+                        # Caminho absoluto
+                        pretrained_model = str(pretrained_path.absolute())
+                        logger.info(f"📥 Usando modelo pré-treinado (absoluto): {pretrained_path.name}")
+                    elif pretrained_path_env.startswith('ckpts/'):
+                        # Caminho relativo ao F5-TTS (ckpts/f5_dataset/model_last.pt)
+                        f5tts_base_dir = self.config.get('f5tts_base_dir', '/root/.local/lib/python3.11')
+                        f5tts_base = Path(f5tts_base_dir)
+                        pretrained_full = f5tts_base / pretrained_path_env
+                        if pretrained_full.exists():
+                            pretrained_model = str(pretrained_full.absolute())
+                            logger.info(f"📥 Usando modelo pré-treinado (F5-TTS): {pretrained_full.name}")
+                        else:
+                            logger.warning(f"⚠️  Modelo não encontrado: {pretrained_full}")
                     else:
-                        logger.warning(f"⚠️  Modelo não encontrado: {pretrained_full}")
+                        # Caminho relativo ao workspace
+                        pretrained_full = self.train_root / pretrained_path_env.replace('train/', '')
+                        if pretrained_full.exists():
+                            pretrained_model = str(pretrained_full.absolute())
+                            logger.info(f"📥 Usando modelo pré-treinado (workspace): {pretrained_full.name}")
+                        else:
+                            logger.warning(f"⚠️  Modelo não encontrado: {pretrained_full}")
         
         # Preparar argumentos para finetune_cli
         args = [
@@ -685,6 +721,15 @@ class F5TTSTrainer:
         logger.info(f"   Argumentos completos: {args}")
         logger.info("")
         
+        # Start checkpoint metadata monitor in background
+        import threading
+        metadata_thread = threading.Thread(
+            target=self.monitor_checkpoints_and_add_metadata,
+            daemon=True
+        )
+        metadata_thread.start()
+        logger.info("📊 Checkpoint metadata monitor started")
+        
         try:
             # Executar via CLI
             original_argv = sys.argv.copy()
@@ -707,6 +752,89 @@ class F5TTSTrainer:
             traceback.print_exc()
             self.cleanup()
             sys.exit(1)
+    
+    def monitor_checkpoints_and_add_metadata(self):
+        """
+        Monitor checkpoint directory and add metadata to new checkpoints.
+        
+        This runs in background during training to automatically add metadata
+        to model_last.pt whenever it's updated.
+        """
+        import time
+        import hashlib
+        import json
+        from datetime import datetime
+        
+        logger.info("📊 Starting checkpoint metadata monitor...")
+        
+        seen_checkpoints = set()
+        last_metadata_update = {}
+        
+        while True:
+            try:
+                time.sleep(10)  # Check every 10 seconds
+                
+                # Find all checkpoints in output dir
+                if not self.output_dir.exists():
+                    continue
+                
+                checkpoints = list(self.output_dir.glob("model_*.pt"))
+                
+                for ckpt_path in checkpoints:
+                    # Skip if already processed and not modified
+                    ckpt_mtime = ckpt_path.stat().st_mtime
+                    
+                    if str(ckpt_path) in last_metadata_update:
+                        if last_metadata_update[str(ckpt_path)] >= ckpt_mtime:
+                            continue
+                    
+                    # Add metadata
+                    try:
+                        # Calculate checkpoint hash (first 1MB for speed)
+                        hasher = hashlib.sha256()
+                        with open(ckpt_path, 'rb') as f:
+                            hasher.update(f.read(1024 * 1024))
+                        ckpt_hash = hasher.hexdigest()[:16]
+                        
+                        # Build metadata
+                        metadata = {
+                            'checkpoint_name': ckpt_path.name,
+                            'created_at': datetime.fromtimestamp(ckpt_mtime).isoformat(),
+                            'size_bytes': ckpt_path.stat().st_size,
+                            'size_gb': round(ckpt_path.stat().st_size / (1024**3), 2),
+                            'hash_partial': ckpt_hash,
+                            'config': {
+                                'exp_name': self.config.get('exp_name'),
+                                'dataset_name': self.config.get('train_dataset_name'),
+                                'learning_rate': self.config.get('learning_rate'),
+                                'batch_size': self.config.get('batch_size'),
+                                'epochs': self.config.get('epochs'),
+                            },
+                            'training': {
+                                'num_warmup_updates': self.config.get('warmup_steps'),
+                                'max_grad_norm': self.config.get('max_grad_norm'),
+                                'grad_accumulation_steps': self.config.get('grad_accumulation_steps'),
+                            },
+                            'metadata_version': '1.0',
+                        }
+                        
+                        # Save metadata JSON
+                        metadata_path = ckpt_path.parent / f"{ckpt_path.stem}.metadata.json"
+                        with open(metadata_path, 'w') as f:
+                            json.dump(metadata, f, indent=2)
+                        
+                        logger.info(f"💾 Added metadata: {metadata_path.name}")
+                        last_metadata_update[str(ckpt_path)] = ckpt_mtime
+                        
+                    except Exception as e:
+                        logger.warning(f"Failed to add metadata to {ckpt_path.name}: {e}")
+                
+            except KeyboardInterrupt:
+                logger.info("🛑 Checkpoint monitor stopped")
+                break
+            except Exception as e:
+                logger.warning(f"Checkpoint monitor error: {e}")
+                time.sleep(5)
     
     def cleanup(self):
         """Limpa processos em background"""

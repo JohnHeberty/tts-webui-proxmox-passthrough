@@ -207,15 +207,70 @@ class F5TtsEngine(TTSEngine):
     
     def _get_model_ckpt_file(self) -> str:
         """
-        Get checkpoint file path for the model.
+        Get checkpoint file path for the model using intelligent resolution.
         
-        Priority:
-        1. Custom checkpoint path (e.g., /app/train/output/model_last.pt)
-        2. PT-BR model from HuggingFace (firstpixel/F5-TTS-pt-br)
-        3. Default (empty string - uses library's default)
+        Uses checkpoint.resolve_checkpoint_path() for intelligent resolution:
+        1. Custom checkpoint (config.model.custom_checkpoint or self.custom_ckpt_path)
+        2. model_best.pt in output_dir
+        3. model_last.pt in output_dir
+        4. Latest model_XXXXX.pt by update number
+        5. Pretrained model path
+        6. Auto-download from HuggingFace
+        
+        Includes validation, corruption handling, and automatic patching for PT-BR.
         
         Returns:
             str: Path to checkpoint file
+        """
+        # Try to use unified checkpoint resolution from Sprint 2
+        try:
+            from train.config.loader import load_config
+            from train.utils.checkpoint import resolve_checkpoint_path, validate_checkpoint
+            
+            # Load config (will use defaults if not available)
+            config = load_config()
+            
+            # Override custom_checkpoint with __init__ parameter if provided
+            if self.custom_ckpt_path:
+                config.model.custom_checkpoint = self.custom_ckpt_path
+            
+            # Resolve checkpoint with intelligent priority fallback
+            resolved_path = resolve_checkpoint_path(
+                config,
+                checkpoint_name=None,
+                auto_download=True,
+                verbose=True
+            )
+            
+            if resolved_path:
+                # Validate resolved checkpoint
+                info = validate_checkpoint(resolved_path, verbose=False)
+                
+                if info.is_valid:
+                    logger.info(f"✅ Using resolved checkpoint: {resolved_path}")
+                    logger.info(f"   Size: {info.size_gb:.2f}GB, Keys: {info.num_keys}")
+                    
+                    # Check if PT-BR patching needed
+                    if self._needs_ptbr_patching(resolved_path):
+                        return self._apply_ptbr_patch(resolved_path)
+                    
+                    return resolved_path
+                else:
+                    logger.warning(f"Resolved checkpoint invalid: {info.error}")
+        
+        except ImportError:
+            logger.debug("Checkpoint utilities not available, using legacy resolution")
+        except Exception as e:
+            logger.warning(f"Checkpoint resolution failed: {e}, using legacy method")
+        
+        # Fallback to legacy resolution
+        return self._legacy_get_model_ckpt_file()
+    
+    def _legacy_get_model_ckpt_file(self) -> str:
+        """
+        Legacy checkpoint resolution (pre-Sprint 2).
+        
+        Kept for backward compatibility if new utilities unavailable.
         """
         # Priority 1: Custom trained checkpoint
         if self.custom_ckpt_path:
@@ -229,7 +284,6 @@ class F5TtsEngine(TTSEngine):
         # Priority 2: PT-BR model from HuggingFace
         if 'firstpixel' in self.hf_model_name.lower() or 'pt-br' in self.hf_model_name.lower():
             from huggingface_hub import hf_hub_download
-            from safetensors.torch import load_file, save_file
             from pathlib import Path
             
             logger.info(f"Downloading PT-BR model checkpoint from {self.hf_model_name}...")
@@ -242,103 +296,123 @@ class F5TtsEngine(TTSEngine):
             )
             logger.info(f"✅ PT-BR checkpoint downloaded: {ckpt_path}")
             
-            # Check if patching is needed
-            patched_path = ckpt_path.replace('.safetensors', '_patched.safetensors')
+            # Apply patching if needed
+            if self._needs_ptbr_patching(ckpt_path):
+                return self._apply_ptbr_patch(ckpt_path)
             
-            if not Path(patched_path).exists():
-                logger.info("🔧 Patching PT-BR checkpoint keys: ema. → ema_model.")
-                logger.info("   This is a one-time operation (cached for future use)")
-                
-                try:
-                    # Load original checkpoint
-                    logger.debug(f"Loading checkpoint from: {ckpt_path}")
-                    state_dict = load_file(ckpt_path)
-                    logger.debug(f"Loaded {len(state_dict)} keys from checkpoint")
-                    
-                    # Inspect checkpoint structure
-                    sample_keys = list(state_dict.keys())[:3]
-                    logger.info(f"   Sample keys from checkpoint: {sample_keys}")
-                    
-                    # CRITICAL FIX: PT-BR checkpoint has BOTH wrong prefixes:
-                    # 1. "ema." instead of "ema_model."
-                    # 2. "model." wrapping all transformer keys
-                    # 
-                    # Example wrong key: "ema.model.transformer.input_embed.proj.weight"
-                    # Should become: "ema_model.transformer.input_embed.proj.weight"
-                    # 
-                    # We need to:
-                    # - Replace "ema." → "ema_model."
-                    # - Remove "model." prefix from transformer keys
-                    
-                    logger.info("   Patching checkpoint keys for F5-TTS compatibility...")
-                    
-                    # Get model_state_dict if wrapped
-                    if 'model_state_dict' in state_dict:
-                        logger.info("   Found 'model_state_dict' wrapper, extracting...")
-                        checkpoint_dict = state_dict['model_state_dict']
-                    else:
-                        checkpoint_dict = state_dict
-                    
-                    # Patch all keys
-                    fixed_state_dict = {}
-                    patch_count = 0
-                    for k, v in checkpoint_dict.items():
-                        # Skip non-model keys (step, initted, etc)
-                        if k in ['step', 'initted', 'optimizer_state_dict', 'lr_scheduler_state_dict']:
-                            continue
-                        
-                        original_key = k
-                        
-                        # Step 1: Fix ema. → ema_model.
-                        if k.startswith('ema.'):
-                            k = k.replace('ema.', 'ema_model.', 1)
-                            patch_count += 1
-                        
-                        # Step 2: Remove "model." prefix from transformer architecture
-                        # CFM expects: "ema_model.transformer.xxx" NOT "ema_model.model.transformer.xxx"
-                        if '.model.transformer.' in k:
-                            k = k.replace('.model.transformer.', '.transformer.', 1)
-                            patch_count += 1
-                        elif k.startswith('model.'):
-                            # Also handle bare "model.transformer.xxx" (no ema prefix)
-                            k = k.replace('model.', '', 1)
-                            patch_count += 1
-                        
-                        fixed_state_dict[k] = v
-                    
-                    logger.info(f"   Patched {patch_count} keys")
-                    
-                    # Verify patching worked
-                    patched_samples = list(fixed_state_dict.keys())[:3]
-                    logger.info(f"   Sample patched keys: {patched_samples}")
-                    
-                    # CRITICAL: F5-TTS library expects checkpoint["model_state_dict"]
-                    # We need to wrap our patched dict with this structure
-                    checkpoint_to_save = {"model_state_dict": fixed_state_dict}
-                    
-                    # Save patched checkpoint
-                    logger.info(f"   Saving patched checkpoint to: {patched_path}")
-                    save_file(checkpoint_to_save, patched_path)
-                    
-                    # Verify file was created
-                    if Path(patched_path).exists():
-                        file_size_gb = Path(patched_path).stat().st_size / (1024**3)
-                        logger.info(f"✅ Patched checkpoint saved successfully ({file_size_gb:.2f} GB)")
-                    else:
-                        raise RuntimeError(f"Failed to create patched checkpoint: {patched_path}")
-                    
-                except Exception as e:
-                    logger.error(f"Failed to patch checkpoint: {e}", exc_info=True)
-                    logger.warning("Falling back to original checkpoint (may fail to load)")
-                    return ckpt_path
-            else:
-                logger.info(f"✅ Using cached patched checkpoint: {patched_path}")
-            
-            return patched_path
+            return ckpt_path
         else:
             # Use default SWivid repo (leave ckpt_file empty)
             logger.debug("Using default F5-TTS model (SWivid repo)")
             return ''
+    
+    def _needs_ptbr_patching(self, ckpt_path: str) -> bool:
+        """Check if checkpoint needs PT-BR key patching."""
+        from pathlib import Path
+        
+        # Only safetensors from firstpixel need patching
+        path = Path(ckpt_path)
+        if path.suffix != '.safetensors':
+            return False
+        
+        if 'firstpixel' not in str(path) and 'pt-br' not in str(path).lower():
+            return False
+        
+        # Skip if already patched
+        if '_patched' in path.name:
+            return False
+        
+        return True
+    
+    def _apply_ptbr_patch(self, ckpt_path: str) -> str:
+        """
+        Apply PT-BR checkpoint key patching.
+        
+        Fixes incompatible key names:
+        - "ema." → "ema_model."
+        - Removes "model." wrapper from transformer keys
+        
+        Args:
+            ckpt_path: Path to original checkpoint
+            
+        Returns:
+            Path to patched checkpoint
+        """
+        from pathlib import Path
+        from safetensors.torch import load_file, save_file
+        
+        ckpt_path = Path(ckpt_path)
+        patched_path = ckpt_path.parent / f"{ckpt_path.stem}_patched{ckpt_path.suffix}"
+        
+        # Return cached if already exists
+        if patched_path.exists():
+            logger.info(f"✅ Using cached patched checkpoint: {patched_path}")
+            return str(patched_path)
+        
+        logger.info("🔧 Patching PT-BR checkpoint keys for F5-TTS compatibility...")
+        logger.info("   This is a one-time operation (cached for future use)")
+        
+        try:
+            # Load original checkpoint
+            logger.debug(f"Loading checkpoint from: {ckpt_path}")
+            state_dict = load_file(str(ckpt_path))
+            logger.debug(f"Loaded {len(state_dict)} keys from checkpoint")
+            
+            # Inspect checkpoint structure
+            sample_keys = list(state_dict.keys())[:3]
+            logger.info(f"   Sample keys: {sample_keys}")
+            
+            # Get model_state_dict if wrapped
+            if 'model_state_dict' in state_dict:
+                logger.info("   Found 'model_state_dict' wrapper")
+                checkpoint_dict = state_dict['model_state_dict']
+            else:
+                checkpoint_dict = state_dict
+            
+            # Patch all keys
+            fixed_state_dict = {}
+            patch_count = 0
+            for k, v in checkpoint_dict.items():
+                # Skip non-model keys
+                if k in ['step', 'initted', 'optimizer_state_dict', 'lr_scheduler_state_dict']:
+                    continue
+                
+                # Fix ema. → ema_model.
+                if k.startswith('ema.'):
+                    k = k.replace('ema.', 'ema_model.', 1)
+                    patch_count += 1
+                
+                # Remove "model." wrapper from transformer
+                if '.model.transformer.' in k:
+                    k = k.replace('.model.transformer.', '.transformer.', 1)
+                    patch_count += 1
+                elif k.startswith('model.'):
+                    k = k.replace('model.', '', 1)
+                    patch_count += 1
+                
+                fixed_state_dict[k] = v
+            
+            logger.info(f"   Patched {patch_count} keys")
+            
+            # Wrap with model_state_dict (required by F5-TTS library)
+            checkpoint_to_save = {"model_state_dict": fixed_state_dict}
+            
+            # Save patched checkpoint
+            logger.info(f"   Saving to: {patched_path}")
+            save_file(checkpoint_to_save, str(patched_path))
+            
+            # Verify
+            if patched_path.exists():
+                file_size_gb = patched_path.stat().st_size / (1024**3)
+                logger.info(f"✅ Patched checkpoint saved ({file_size_gb:.2f}GB)")
+                return str(patched_path)
+            else:
+                raise RuntimeError(f"Failed to create patched checkpoint")
+        
+        except Exception as e:
+            logger.error(f"Patching failed: {e}", exc_info=True)
+            logger.warning("Falling back to original checkpoint (may fail to load)")
+            return str(ckpt_path)
     
     def _select_device(self, device: Optional[str], fallback_to_cpu: bool) -> str:
         """Select computation device with fallback logic"""
