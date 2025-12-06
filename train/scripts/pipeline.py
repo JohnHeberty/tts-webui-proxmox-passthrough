@@ -1,0 +1,208 @@
+"""
+Pipeline completo de preparação de dataset XTTS-v2
+
+Este script orquestra todo o processo de preparação de dados:
+  1. Download de áudios do YouTube (download_youtube.py)
+  2. Segmentação com VAD (segment_audio.py)
+  3. Transcrição com Whisper (transcribe_audio.py)
+  4. Construção do dataset LJSpeech (build_ljs_dataset.py)
+
+Uso:
+    # Pipeline completo
+    python -m train.scripts.pipeline
+    
+    # Pular etapas (se já executou antes)
+    python -m train.scripts.pipeline --skip-download
+    python -m train.scripts.pipeline --skip-download --skip-segment
+    
+    # Executar apenas uma etapa
+    python -m train.scripts.pipeline --only-step download
+    python -m train.scripts.pipeline --only-step segment
+    python -m train.scripts.pipeline --only-step transcribe
+    python -m train.scripts.pipeline --only-step build
+
+Dependências:
+    - yt-dlp: pip install yt-dlp
+    - whisper: pip install openai-whisper
+    - num2words: pip install num2words
+    - pyyaml: pip install pyyaml
+    - numpy, soundfile, scipy (para processamento de áudio)
+"""
+
+import logging
+from pathlib import Path
+import sys
+import subprocess
+
+import click
+import yaml
+
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(project_root / "train" / "logs" / "pipeline.log"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger(__name__)
+
+
+def load_config(config_path: Path) -> dict:
+    """Carrega configuração do dataset"""
+    with open(config_path, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def run_step(step_name: str, script_path: str) -> bool:
+    """
+    Executa um step do pipeline
+    
+    Args:
+        step_name: Nome do step (para logging)
+        script_path: Path relativo ao script Python (ex: "train.scripts.download_youtube")
+    
+    Returns:
+        True se sucesso, False se falhou
+    """
+    logger.info("=" * 80)
+    logger.info(f"STEP: {step_name}")
+    logger.info("=" * 80)
+    
+    try:
+        # Executar script como módulo Python
+        result = subprocess.run(
+            [sys.executable, "-m", script_path],
+            cwd=project_root,
+            check=True,
+            capture_output=False,  # Mostrar output em tempo real
+        )
+        
+        logger.info(f"✅ {step_name} completado com sucesso!\n")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"❌ {step_name} falhou com código de saída {e.returncode}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Erro ao executar {step_name}: {e}")
+        return False
+
+
+@click.command()
+@click.option(
+    "--config",
+    type=click.Path(exists=True),
+    default="train/config/dataset_config.yaml",
+    help="Path para o arquivo de configuração",
+)
+@click.option("--skip-download", is_flag=True, help="Pular download (usar raw/ existente)")
+@click.option("--skip-segment", is_flag=True, help="Pular segmentação")
+@click.option("--skip-transcribe", is_flag=True, help="Pular transcrição")
+@click.option("--skip-build", is_flag=True, help="Pular construção do dataset")
+@click.option(
+    "--only-step",
+    type=click.Choice(["download", "segment", "transcribe", "build"]),
+    help="Executar apenas um step específico",
+)
+def run_pipeline(config, skip_download, skip_segment, skip_transcribe, skip_build, only_step):
+    """
+    Executa pipeline completo de preparação de dataset XTTS-v2
+    
+    Pipeline:
+      1. download_youtube.py   → train/data/raw/
+      2. segment_audio.py      → train/data/processed/
+      3. transcribe_audio.py   → train/data/processed/transcriptions.json
+      4. build_ljs_dataset.py  → train/data/MyTTSDataset/metadata.csv
+    """
+    logger.info("\n")
+    logger.info("╔" + "═" * 78 + "╗")
+    logger.info("║" + " " * 20 + "XTTS-v2 DATASET PIPELINE" + " " * 34 + "║")
+    logger.info("╚" + "═" * 78 + "╝")
+    logger.info("\n")
+    
+    # Carregar config
+    config_path = project_root / config
+    cfg = load_config(config_path)
+    logger.info(f"📝 Config carregada: {config_path}")
+    logger.info(f"   Sample rate: {cfg['audio']['target_sample_rate']}Hz")
+    logger.info(f"   Duração: {cfg['segmentation']['min_duration']}-{cfg['segmentation']['max_duration']}s")
+    logger.info(f"   Whisper: {cfg['transcription']['whisper_model']}\n")
+    
+    # Definir steps a executar
+    steps = []
+    
+    if only_step:
+        # Executar apenas um step
+        if only_step == "download":
+            steps = [("Download YouTube", "train.scripts.download_youtube")]
+        elif only_step == "segment":
+            steps = [("Segmentação VAD", "train.scripts.segment_audio")]
+        elif only_step == "transcribe":
+            steps = [("Transcrição Whisper", "train.scripts.transcribe_audio")]
+        elif only_step == "build":
+            steps = [("Build LJSpeech Dataset", "train.scripts.build_ljs_dataset")]
+    else:
+        # Pipeline completo (com skips)
+        if not skip_download:
+            steps.append(("Download YouTube", "train.scripts.download_youtube"))
+        if not skip_segment:
+            steps.append(("Segmentação VAD", "train.scripts.segment_audio"))
+        if not skip_transcribe:
+            steps.append(("Transcrição Whisper", "train.scripts.transcribe_audio"))
+        if not skip_build:
+            steps.append(("Build LJSpeech Dataset", "train.scripts.build_ljs_dataset"))
+    
+    if not steps:
+        logger.warning("⚠️  Nenhum step selecionado para executar!")
+        logger.info("   Use --help para ver opções disponíveis")
+        return
+    
+    logger.info(f"📋 Steps a executar: {len(steps)}")
+    for i, (name, _) in enumerate(steps, 1):
+        logger.info(f"   {i}. {name}")
+    logger.info("\n")
+    
+    # Executar pipeline
+    success_count = 0
+    failed_count = 0
+    
+    for i, (step_name, script_path) in enumerate(steps, 1):
+        logger.info(f"\n[{i}/{len(steps)}] Iniciando: {step_name}...\n")
+        
+        success = run_step(step_name, script_path)
+        
+        if success:
+            success_count += 1
+        else:
+            failed_count += 1
+            logger.error(f"❌ Pipeline interrompido no step: {step_name}")
+            break
+    
+    # Summary final
+    logger.info("\n")
+    logger.info("╔" + "═" * 78 + "╗")
+    logger.info("║" + " " * 30 + "RESUMO FINAL" + " " * 36 + "║")
+    logger.info("╚" + "═" * 78 + "╝")
+    logger.info(f"✅ Steps completados: {success_count}/{len(steps)}")
+    if failed_count > 0:
+        logger.info(f"❌ Steps falhados: {failed_count}")
+    logger.info("=" * 80)
+    
+    if failed_count == 0:
+        logger.info("\n🎉 Pipeline completado com sucesso!")
+        logger.info("   Dataset pronto em: train/data/MyTTSDataset/")
+        logger.info("   Próximo passo: python -m train.scripts.train_xtts")
+    else:
+        logger.error("\n❌ Pipeline falhou. Verifique os logs acima.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    run_pipeline()

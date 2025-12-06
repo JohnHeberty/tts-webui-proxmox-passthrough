@@ -1,0 +1,19 @@
+# Ignore large files
+data/raw/*
+data/processed/*
+data/MyTTSDataset/wavs/*
+output/checkpoints/*
+output/samples/*
+logs/*.log
+
+# Keep structure
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/MyTTSDataset/wavs/.gitkeep
+!output/checkpoints/.gitkeep
+!output/samples/.gitkeep
+
+# Keep important files
+!data/videos.csv
+!data/MyTTSDataset/metadata*.csv
+!data/processed/transcriptions.json

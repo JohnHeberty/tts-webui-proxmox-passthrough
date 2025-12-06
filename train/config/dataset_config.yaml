@@ -1,0 +1,76 @@
+# Dataset Preparation Configuration for XTTS-v2
+# ================================================
+# This config defines parameters for the complete data pipeline:
+#   1. YouTube download (download_youtube.py)
+#   2. Audio segmentation with VAD (segment_audio.py)
+#   3. Transcription with Whisper (transcribe_audio.py)
+#   4. LJSpeech dataset builder (build_ljs_dataset.py)
+
+# Audio format settings
+audio:
+  target_sample_rate: 22050  # XTTS-v2 requirement (NOT 24000!)
+  channels: 1                # mono
+  bit_depth: 16
+  format: wav
+
+# YouTube download settings
+youtube:
+  audio_format: "bestaudio/best"
+  max_retries: 3
+  retry_delay: 5  # seconds
+  
+  # Subtitle settings (fallback antes de usar Whisper)
+  subtitles:
+    languages: ["pt", "pt-BR"]
+    format: "vtt"
+    auto_generated: true  # aceitar legendas auto-geradas
+
+# Audio segmentation settings
+segmentation:
+  # Voice Activity Detection (VAD)
+  use_vad: true
+  vad_threshold: -40.0        # dB, energia RMS threshold
+  vad_frame_size: 512         # samples
+  vad_chunk_duration: 10.0    # seconds, streaming chunk size
+  min_silence_duration: 0.3   # seconds, split on silence
+  
+  # Segment duration (XTTS-v2 ideal range: 7-12s)
+  min_duration: 7.0           # minimum segment length (seconds)
+  max_duration: 12.0          # maximum segment length
+  target_duration: 10.0       # ideal target length
+  segment_overlap: 0.5        # overlap between segments (seconds)
+  
+  # Audio processing
+  fade_duration: 0.05         # fade in/out duration (seconds)
+  normalization_method: "rms" # "rms" or "loudnorm"
+  target_rms_db: -20.0        # target RMS level
+
+# Transcription settings
+transcription:
+  whisper_model: "base"       # base, small, medium, large
+  whisper_hp_model: "medium"  # high-precision fallback model
+  language: "pt"              # Portuguese
+  temperature: 0.0            # deterministic (0.0) or creative (0.2-1.0)
+  oov_threshold: 0.15         # out-of-vocab ratio trigger for HP model
+
+# Text processing
+text_processing:
+  expand_numbers: true        # "123" → "cento e vinte e três"
+  lowercase: true             # XTTS works better with lowercase
+  normalize_whitespace: true
+  remove_extra_punctuation: false  # manter pontuação para prosódia
+
+# Quality filters (opcional, pode desabilitar comentando)
+quality_filters:
+  enabled: true
+  min_words: 3
+  max_words: 50
+  # min_snr_db: 15.0          # descomentar se quiser filtrar por SNR
+  # max_silence_ratio: 0.3    # descomentar se quiser filtrar por silêncio
+
+# Dataset split
+dataset:
+  train_split: 0.9            # 90% train
+  val_split: 0.1              # 10% validation
+  shuffle: true
+  seed: 42
