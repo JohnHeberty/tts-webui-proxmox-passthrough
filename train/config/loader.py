@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from train.config.schemas import F5TTSConfig
 
 
-def load_yaml_config(config_path: str) -> Dict[str, Any]:
+def load_yaml_config(config_path: str | Path) -> Dict[str, Any]:
     """
     Load YAML configuration file.
     
@@ -35,12 +35,12 @@ def load_yaml_config(config_path: str) -> Dict[str, Any]:
         FileNotFoundError: If config file doesn't exist
         yaml.YAMLError: If YAML is malformed
     """
-    config_path = Path(config_path)
+    config_path_obj = Path(config_path) if isinstance(config_path, str) else config_path
     
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+    if not config_path_obj.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path_obj}")
     
-    with open(config_path, 'r', encoding='utf-8') as f:
+    with open(config_path_obj, 'r', encoding='utf-8') as f:
         config_data = yaml.safe_load(f)
     
     return config_data or {}
@@ -70,96 +70,96 @@ def load_env_overrides() -> Dict[str, Any]:
     # Map environment variables to config structure
     env_overrides = {}
     
-    # Training hyperparameters
-    if os.getenv("LEARNING_RATE"):
-        env_overrides.setdefault("training", {})["learning_rate"] = float(os.getenv("LEARNING_RATE"))
+    # Training parameters
+    if (lr := os.getenv("LEARNING_RATE")):
+        env_overrides.setdefault("training", {})["learning_rate"] = float(lr)
     
-    if os.getenv("BATCH_SIZE_PER_GPU"):
-        env_overrides.setdefault("training", {})["batch_size_per_gpu"] = int(os.getenv("BATCH_SIZE_PER_GPU"))
+    if (bs := os.getenv("BATCH_SIZE_PER_GPU")):
+        env_overrides.setdefault("training", {})["batch_size_per_gpu"] = int(bs)
     
-    if os.getenv("GRAD_ACCUMULATION_STEPS"):
-        env_overrides.setdefault("training", {})["grad_accumulation_steps"] = int(os.getenv("GRAD_ACCUMULATION_STEPS"))
+    if (gas := os.getenv("GRAD_ACCUMULATION_STEPS")):
+        env_overrides.setdefault("training", {})["grad_accumulation_steps"] = int(gas)
     
-    if os.getenv("MAX_GRAD_NORM"):
-        env_overrides.setdefault("training", {})["max_grad_norm"] = float(os.getenv("MAX_GRAD_NORM"))
+    if (mgn := os.getenv("MAX_GRAD_NORM")):
+        env_overrides.setdefault("training", {})["max_grad_norm"] = float(mgn)
     
-    if os.getenv("EPOCHS"):
-        env_overrides.setdefault("training", {})["epochs"] = int(os.getenv("EPOCHS"))
+    if (epochs := os.getenv("EPOCHS")):
+        env_overrides.setdefault("training", {})["epochs"] = int(epochs)
     
     # Warmup
-    if os.getenv("NUM_WARMUP_UPDATES"):
-        env_overrides.setdefault("training", {})["num_warmup_updates"] = int(os.getenv("NUM_WARMUP_UPDATES"))
+    if (nwu := os.getenv("NUM_WARMUP_UPDATES")):
+        env_overrides.setdefault("training", {})["num_warmup_updates"] = int(nwu)
     
-    if os.getenv("WARMUP_START_LR"):
-        env_overrides.setdefault("training", {})["warmup_start_lr"] = float(os.getenv("WARMUP_START_LR"))
+    if (wsl := os.getenv("WARMUP_START_LR")):
+        env_overrides.setdefault("training", {})["warmup_start_lr"] = float(wsl)
     
-    if os.getenv("WARMUP_END_LR"):
-        env_overrides.setdefault("training", {})["warmup_end_lr"] = float(os.getenv("WARMUP_END_LR"))
+    if (wel := os.getenv("WARMUP_END_LR")):
+        env_overrides.setdefault("training", {})["warmup_end_lr"] = float(wel)
     
     # Optimizer
-    if os.getenv("WEIGHT_DECAY"):
-        env_overrides.setdefault("optimizer", {})["weight_decay"] = float(os.getenv("WEIGHT_DECAY"))
+    if (wd := os.getenv("WEIGHT_DECAY")):
+        env_overrides.setdefault("optimizer", {})["weight_decay"] = float(wd)
     
     # Checkpoints
-    if os.getenv("SAVE_PER_UPDATES"):
-        env_overrides.setdefault("checkpoints", {})["save_per_updates"] = int(os.getenv("SAVE_PER_UPDATES"))
+    if (spu := os.getenv("SAVE_PER_UPDATES")):
+        env_overrides.setdefault("checkpoints", {})["save_per_updates"] = int(spu)
     
-    if os.getenv("LAST_PER_UPDATES"):
-        env_overrides.setdefault("checkpoints", {})["last_per_updates"] = int(os.getenv("LAST_PER_UPDATES"))
+    if (lpu := os.getenv("LAST_PER_UPDATES")):
+        env_overrides.setdefault("checkpoints", {})["last_per_updates"] = int(lpu)
     
     # Hardware
-    if os.getenv("NUM_WORKERS"):
-        env_overrides.setdefault("hardware", {})["num_workers"] = int(os.getenv("NUM_WORKERS"))
+    if (nw := os.getenv("NUM_WORKERS")):
+        env_overrides.setdefault("hardware", {})["num_workers"] = int(nw)
     
-    if os.getenv("DATALOADER_WORKERS"):
-        env_overrides.setdefault("hardware", {})["dataloader_workers"] = int(os.getenv("DATALOADER_WORKERS"))
+    if (dlw := os.getenv("DATALOADER_WORKERS")):
+        env_overrides.setdefault("hardware", {})["dataloader_workers"] = int(dlw)
     
     # Mixed precision
-    if os.getenv("MIXED_PRECISION"):
-        enabled = os.getenv("MIXED_PRECISION").lower() in ("true", "1", "yes")
+    if (mp := os.getenv("MIXED_PRECISION")):
+        enabled = mp.lower() in ("true", "1", "yes")
         env_overrides.setdefault("mixed_precision", {})["enabled"] = enabled
     
-    if os.getenv("MIXED_PRECISION_DTYPE"):
-        env_overrides.setdefault("mixed_precision", {})["dtype"] = os.getenv("MIXED_PRECISION_DTYPE")
+    if (mpdt := os.getenv("MIXED_PRECISION_DTYPE")):
+        env_overrides.setdefault("mixed_precision", {})["dtype"] = mpdt
     
     # Logging
-    if os.getenv("LOGGER"):
-        env_overrides.setdefault("logging", {})["logger"] = os.getenv("LOGGER")
+    if (logger := os.getenv("LOGGER")):
+        env_overrides.setdefault("logging", {})["logger"] = logger
     
-    if os.getenv("LOG_EVERY_N_STEPS"):
-        env_overrides.setdefault("logging", {})["log_every_n_steps"] = int(os.getenv("LOG_EVERY_N_STEPS"))
+    if (lens := os.getenv("LOG_EVERY_N_STEPS")):
+        env_overrides.setdefault("logging", {})["log_every_n_steps"] = int(lens)
     
     # WandB
-    if os.getenv("WANDB_ENABLED"):
-        enabled = os.getenv("WANDB_ENABLED").lower() in ("true", "1", "yes")
+    if (wb := os.getenv("WANDB_ENABLED")):
+        enabled = wb.lower() in ("true", "1", "yes")
         env_overrides.setdefault("logging", {}).setdefault("wandb", {})["enabled"] = enabled
     
-    if os.getenv("WANDB_PROJECT"):
-        env_overrides.setdefault("logging", {}).setdefault("wandb", {})["project"] = os.getenv("WANDB_PROJECT")
+    if (wbp := os.getenv("WANDB_PROJECT")):
+        env_overrides.setdefault("logging", {}).setdefault("wandb", {})["project"] = wbp
     
-    if os.getenv("WANDB_ENTITY"):
-        env_overrides.setdefault("logging", {}).setdefault("wandb", {})["entity"] = os.getenv("WANDB_ENTITY")
+    if (wbe := os.getenv("WANDB_ENTITY")):
+        env_overrides.setdefault("logging", {}).setdefault("wandb", {})["entity"] = wbe
     
     # Paths
-    if os.getenv("DATASET_NAME"):
-        env_overrides.setdefault("paths", {})["dataset_name"] = os.getenv("DATASET_NAME")
+    if (dn := os.getenv("DATASET_NAME")):
+        env_overrides.setdefault("paths", {})["dataset_name"] = dn
     
-    if os.getenv("OUTPUT_DIR"):
-        env_overrides.setdefault("paths", {})["output_dir"] = os.getenv("OUTPUT_DIR")
+    if (od := os.getenv("OUTPUT_DIR")):
+        env_overrides.setdefault("paths", {})["output_dir"] = od
     
-    if os.getenv("PRETRAINED_MODEL_PATH"):
-        env_overrides.setdefault("paths", {})["pretrained_model_path"] = os.getenv("PRETRAINED_MODEL_PATH")
+    if (pmp := os.getenv("PRETRAINED_MODEL_PATH")):
+        env_overrides.setdefault("paths", {})["pretrained_model_path"] = pmp
     
     # Experiment name
-    if os.getenv("EXP_NAME"):
-        env_overrides.setdefault("training", {})["exp_name"] = os.getenv("EXP_NAME")
+    if (en := os.getenv("EXP_NAME")):
+        env_overrides.setdefault("training", {})["exp_name"] = en
     
     # Advanced
-    if os.getenv("SEED"):
-        env_overrides.setdefault("advanced", {})["seed"] = int(os.getenv("SEED"))
+    if (seed := os.getenv("SEED")):
+        env_overrides.setdefault("advanced", {})["seed"] = int(seed)
     
-    if os.getenv("GRADIENT_CHECKPOINTING"):
-        enabled = os.getenv("GRADIENT_CHECKPOINTING").lower() in ("true", "1", "yes")
+    if (gc := os.getenv("GRADIENT_CHECKPOINTING")):
+        enabled = gc.lower() in ("true", "1", "yes")
         env_overrides.setdefault("advanced", {})["gradient_checkpointing"] = enabled
     
     return env_overrides
@@ -264,8 +264,9 @@ def load_config(
             print(e, file=sys.stderr)
             raise
     else:
-        # Return unvalidated dict (for debugging)
-        return final_config
+        # Return unvalidated config (still as F5TTSConfig for type safety)
+        config = F5TTSConfig(**final_config)
+        return config
 
 
 def print_config_summary(config: F5TTSConfig):
@@ -321,7 +322,7 @@ def print_config_summary(config: F5TTSConfig):
     print("=" * 80)
 
 
-def save_config_to_yaml(config: F5TTSConfig, output_path: str):
+def save_config_to_yaml(config: F5TTSConfig, output_path: str | Path):
     """
     Save validated config to YAML file.
     
@@ -331,16 +332,20 @@ def save_config_to_yaml(config: F5TTSConfig, output_path: str):
         config: Validated config object
         output_path: Path to save YAML
     """
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path_obj = Path(output_path) if isinstance(output_path, str) else output_path
+    output_path_obj.parent.mkdir(parents=True, exist_ok=True)
     
     # Convert Pydantic model to dict
     config_dict = config.dict()
     
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path_obj, 'w', encoding='utf-8') as f:
         yaml.dump(config_dict, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     
-    print(f"✅ Config saved to: {output_path}")
+    print(f"✅ Config saved to: {output_path_obj}")
+
+
+# Alias for compatibility
+save_config = save_config_to_yaml
 
 
 # ========================================

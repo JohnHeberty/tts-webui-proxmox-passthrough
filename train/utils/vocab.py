@@ -29,7 +29,7 @@ CANONICAL_VOCAB_HASH = "2a05f992e00af9b0bd3800a8d23e78d520dbd705284ed2eedb5f4bd2
 # HASH UTILITIES
 # ========================================
 
-def compute_vocab_hash(vocab_path: str) -> str:
+def compute_vocab_hash(vocab_path: str | Path) -> str:
     """
     Compute SHA256 hash of vocabulary file.
     
@@ -57,7 +57,7 @@ def compute_vocab_hash(vocab_path: str) -> str:
     return sha256.hexdigest()
 
 
-def load_vocab(vocab_path: str) -> List[str]:
+def load_vocab(vocab_path: str | Path) -> List[str]:
     """
     Load vocabulary from file.
     
