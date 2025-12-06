@@ -59,28 +59,12 @@ class FeatureFlagManager:
     
     def _load_flags_from_env(self):
         """Carrega configuração de feature flags de variáveis de ambiente."""
-        # F5-TTS engine rollout
-        f5tts_enabled = os.getenv('FEATURE_F5TTS_ENABLED', 'false').lower() == 'true'
-        f5tts_phase = os.getenv('FEATURE_F5TTS_PHASE', 'disabled').lower()
-        f5tts_percentage = int(os.getenv('FEATURE_F5TTS_PERCENTAGE', '0'))
-        
-        # Auto transcription (F5-TTS)
-        auto_transcription_enabled = os.getenv('FEATURE_AUTO_TRANSCRIPTION_ENABLED', 'false').lower() == 'true'
-        auto_transcription_phase = os.getenv('FEATURE_AUTO_TRANSCRIPTION_PHASE', 'disabled').lower()
+        # F5-TTS foi removido - flags deprecadas
         
         # Quality profiles
         quality_profiles_enabled = os.getenv('FEATURE_QUALITY_PROFILES_ENABLED', 'true').lower() == 'true'
         
         self._config_from_env = {
-            'f5tts_engine': {
-                'enabled': f5tts_enabled,
-                'phase': f5tts_phase,
-                'percentage': f5tts_percentage
-            },
-            'auto_transcription': {
-                'enabled': auto_transcription_enabled,
-                'phase': auto_transcription_phase
-            },
             'quality_profiles': {
                 'enabled': quality_profiles_enabled
             }
@@ -88,14 +72,13 @@ class FeatureFlagManager:
     
     def _initialize_default_flags(self):
         """Inicializa feature flags padrão."""
-        # F5-TTS Engine
-        f5tts_config = self._config_from_env.get('f5tts_engine', {})
+        # F5-TTS Engine (REMOVIDO - manter para compatibilidade com código legacy)
         self.flags['f5tts_engine'] = FeatureFlag(
             name='f5tts_engine',
-            enabled=f5tts_config.get('enabled', False),
-            phase=RolloutPhase(f5tts_config.get('phase', 'disabled')),
-            description='F5-TTS engine (alternativa ao XTTS)',
-            percentage=f5tts_config.get('percentage', 0)
+            enabled=False,  # Sempre desabilitado
+            phase=RolloutPhase('disabled'),
+            description='F5-TTS engine (REMOVIDO - use apenas XTTS)',
+            percentage=0
         )
         
         # Auto-transcription (F5-TTS)

@@ -2,13 +2,11 @@
 Factory for creating TTS engines with singleton caching
 
 This module implements the Factory pattern with singleton caching to efficiently
-manage TTS engine instances. It supports multiple engines (XTTS, F5-TTS) and 
-provides graceful fallback mechanisms.
+manage TTS engine instances. Supports XTTS engine with graceful fallback mechanisms.
 
 Key Features:
     - Singleton caching: Engines are created once and reused
     - Lazy imports: Engine modules loaded only when needed
-    - Graceful fallback: Automatic fallback to XTTS if requested engine fails
     - Easy testing: Cache can be cleared for unit tests
 
 Example:
@@ -18,8 +16,7 @@ Example:
     >>> audio, duration = await engine.generate_dubbing("Hello", "en")
 
 Author: Audio Voice Service Team
-Date: November 27, 2025
-Sprint: 1 - Multi-Engine Foundation
+Date: December 6, 2025
 """
 import logging
 from typing import Dict, Optional, Type
@@ -34,8 +31,6 @@ _ENGINE_CACHE: Dict[str, TTSEngine] = {}
 # Engine registry for lazy loading (populated on first use)
 _ENGINE_REGISTRY: Dict[str, Optional[Type[TTSEngine]]] = {
     'xtts': None,        # Loaded lazily: XttsEngine
-    'f5tts': None,       # Loaded lazily: F5TtsEngine
-    'f5tts-ptbr': None   # Loaded lazily: F5TtsPtBrEngine (TESTE)
 }
 
 
@@ -48,7 +43,7 @@ def create_engine(
     Factory method to create TTS engines with caching.
     
     Args:
-        engine_type: Engine identifier ('xtts', 'f5tts')
+        engine_type: Engine identifier ('xtts')
         settings: Application settings dict
         force_recreate: If True, recreate even if cached
     
@@ -80,41 +75,10 @@ def create_engine(
                 fallback_to_cpu=xtts_config.get('fallback_to_cpu', True),
                 model_name=xtts_config.get('model_name', 'tts_models/multilingual/multi-dataset/xtts_v2')
             )
-        elif engine_type == 'f5tts':
-            if _ENGINE_REGISTRY['f5tts'] is None:
-                from .f5tts_engine import F5TtsEngine
-                _ENGINE_REGISTRY['f5tts'] = F5TtsEngine
-            
-            engine_class = _ENGINE_REGISTRY['f5tts']
-            f5tts_config = settings.get('tts_engines', {}).get('f5tts', {})
-            
-            # Custom checkpoint from environment variable
-            custom_ckpt = f5tts_config.get('custom_checkpoint')
-            if custom_ckpt:
-                logger.info(f"🎯 Using custom F5-TTS checkpoint: {custom_ckpt}")
-            
-            engine = engine_class(
-                device=f5tts_config.get('device'),
-                fallback_to_cpu=f5tts_config.get('fallback_to_cpu', True),
-                model_name=f5tts_config.get('model_name'),
-                custom_ckpt_path=custom_ckpt  # NEW: Pass custom checkpoint
-            )
-        elif engine_type == 'f5tts-ptbr':
-            if _ENGINE_REGISTRY['f5tts-ptbr'] is None:
-                from .f5tts_ptbr_engine import F5TtsPtBrEngine
-                _ENGINE_REGISTRY['f5tts-ptbr'] = F5TtsPtBrEngine
-            
-            engine_class = _ENGINE_REGISTRY['f5tts-ptbr']
-            f5tts_config = settings.get('tts_engines', {}).get('f5tts', {})  # Usar mesmas configs do f5tts
-            engine = engine_class(
-                device=f5tts_config.get('device'),
-                fallback_to_cpu=f5tts_config.get('fallback_to_cpu', True),
-                whisper_model=f5tts_config.get('whisper_model', 'base')
-            )
         else:
             raise ValueError(
                 f"Unknown engine type: {engine_type}. "
-                f"Supported: {', '.join(_ENGINE_REGISTRY.keys())}"
+                f"Only 'xtts' is supported (F5-TTS has been removed)"
             )
         
         # Cache engine

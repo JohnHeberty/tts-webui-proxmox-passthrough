@@ -235,8 +235,8 @@ async def create_job(
     voice_id: Optional[str] = Form(None, description="ID de voz clonada (apenas para mode=dubbing_with_clone)"),
     target_language: Optional[str] = Form(None, description="Idioma de destino (padrão: mesmo que source_language)"),
     # TTS Engine Selection (Sprint 4 + SPRINT-06 fix)
-    tts_engine: str = Form('xtts', description="TTS engine: 'xtts' (default/stable) or 'f5tts' (experimental/high-quality)"),
-    ref_text: Optional[str] = Form(None, description="Reference transcription for F5-TTS voice cloning (auto-transcribed if None)"),
+    tts_engine: str = Form('xtts', description="TTS engine: only 'xtts' is supported (F5-TTS has been removed)"),
+    ref_text: Optional[str] = Form(None, description="Reference transcription (deprecated, not used by XTTS)"),
     # Quality Profile (NEW - usa sistema de profiles por engine)
     quality_profile_id: Optional[str] = Form(None, description="Quality profile ID (ex: 'xtts_balanced', 'f5tts_ultra_quality'). Se None, usa padrão do engine."),
     # RVC Parameters (Sprint 7 + SPRINT-06 fix)
@@ -260,16 +260,15 @@ async def create_job(
     - **voice_id**: ID de voz clonada (obrigatório se mode=dubbing_with_clone)
     - **target_language**: Idioma de destino (opcional, padrão=source_language)
     
-    **TTS Engine Selection (Sprint 4):**
-    - **tts_engine**: 'xtts' (default/stable) or 'f5tts' (experimental/high-quality) - DROPDOWN
-    - **ref_text**: Reference transcription for F5-TTS (auto-transcribed if None)
+    **TTS Engine:**
+    - **tts_engine**: Apenas 'xtts' é suportado (F5-TTS foi removido)
     
-    **Quality Profile (NEW):**
-    - **quality_profile_id**: ID do perfil de qualidade (ex: 'xtts_balanced', 'f5tts_ultra_quality')
-    - Se None, usa perfil padrão do engine selecionado
+    **Quality Profile:**
+    - **quality_profile_id**: ID do perfil de qualidade XTTS (ex: 'xtts_balanced', 'xtts_stable')
+    - Se None, usa perfil padrão XTTS
     - Use GET /quality-profiles para listar perfis disponíveis
     
-    **RVC Parameters (Sprint 7):**
+    **RVC Parameters:**
     - **enable_rvc**: Enable RVC voice conversion (default: False)
     - **rvc_model_id**: RVC model ID (required if enable_rvc=True)
     - **rvc_pitch**: Pitch shift in semitones (-12 to +12, default: 0)
@@ -293,6 +292,13 @@ async def create_job(
         
         # Validar tts_engine
         tts_engine_enum = validate_enum_string(tts_engine, TTSEngine, "tts_engine", case_sensitive=False)
+        
+        # BLOQUEIO: Rejeitar F5-TTS (removido do projeto)
+        if tts_engine_enum.value == "f5tts":
+            raise HTTPException(
+                status_code=400,
+                detail="F5-TTS engine has been removed from this service. Please use 'xtts' instead."
+            )
         
         # Validar rvc_f0_method
         rvc_f0_method_enum = validate_enum_string(rvc_f0_method, RvcF0Method, "rvc_f0_method", case_sensitive=False)
@@ -715,8 +721,8 @@ async def clone_voice(
     name: str = Form(...),
     language: str = Form(...),
     description: Optional[str] = Form(None),
-    tts_engine: str = Form('xtts', description="TTS engine: 'xtts' (default) or 'f5tts' (experimental)"),
-    ref_text: Optional[str] = Form(None, description="Reference transcription for F5-TTS (auto-transcribed if None)")
+    tts_engine: str = Form('xtts', description="TTS engine: only 'xtts' is supported"),
+    ref_text: Optional[str] = Form(None, description="Reference transcription (deprecated, not used)")
 ):
     """
     Clona voz a partir de amostra de áudio (ASYNC)
@@ -727,8 +733,7 @@ async def clone_voice(
     - **name**: Nome do perfil
     - **language**: Idioma base da voz
     - **description**: Descrição opcional
-    - **tts_engine**: 'xtts' (default) or 'f5tts' (experimental)
-    - **ref_text**: Reference transcription for F5-TTS (auto-transcribed if None)
+    - **tts_engine**: Apenas 'xtts' é suportado
     
     **Response:** HTTP 202 com job_id
     **Polling:** GET /jobs/{job_id} até status="completed"
@@ -742,6 +747,13 @@ async def clone_voice(
         # Validar tts_engine usando utility (SPRINT-04)
         from app.utils.form_parsers import validate_enum_string
         tts_engine_enum = validate_enum_string(tts_engine, TTSEngine, "tts_engine", case_sensitive=False)
+        
+        # BLOQUEIO: Rejeitar F5-TTS (removido do projeto)
+        if tts_engine_enum.value == "f5tts":
+            raise HTTPException(
+                status_code=400,
+                detail="F5-TTS engine has been removed from this service. Please use 'xtts' instead."
+            )
         
         logger.info(f"📥 Clone voice request: engine={tts_engine_enum.value}, name={name}, language={language}")
         

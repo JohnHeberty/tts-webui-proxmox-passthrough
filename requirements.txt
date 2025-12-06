@@ -19,17 +19,6 @@ soundfile==0.12.1
 # === XTTS (Coqui TTS - PRIMARY TTS ENGINE) ===
 coqui-tts>=0.27.0
 
-# === F5-TTS / E2-TTS (EMOTION MODEL) ===
-# Versão nova, já com pyproject declarando pydantic<=2.10.6 
-f5-tts==1.1.9
-cached-path>=1.6.2
-faster-whisper>=1.0.0  # pra transcrição de ref_text
-
-# Fix pyarrow compatibility issue with datasets
-# pyarrow 22.0.0 removed PyExtensionType, need compatible datasets version
-datasets>=4.4.1  # CRITICAL: Version 4.4.1+ required for pyarrow 22.x compatibility
-pyarrow>=22.0.0   # Latest stable
-
 # === RVC HELPERS (sem tts-with-rvc aqui!) ===
 faiss-cpu>=1.7.4
 praat-parselmouth==0.4.3

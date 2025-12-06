@@ -10,10 +10,8 @@ from datetime import datetime
 from .quality_profiles import (
     TTSEngine,
     XTTSQualityProfile,
-    F5TTSQualityProfile,
     QualityProfile,
-    DEFAULT_XTTS_PROFILES,
-    DEFAULT_F5TTS_PROFILES
+    DEFAULT_XTTS_PROFILES
 )
 from .config import get_settings
 import redis
@@ -29,15 +27,12 @@ class QualityProfileManager:
     """
     Gerenciador de perfis de qualidade com Redis.
     
-    Armazena perfis separados por engine:
+    Armazena perfis XTTS:
     - quality_profiles:xtts:{profile_id} -> XTTSQualityProfile
-    - quality_profiles:f5tts:{profile_id} -> F5TTSQualityProfile
     - quality_profiles:xtts:list -> List[profile_ids]
-    - quality_profiles:f5tts:list -> List[profile_ids]
     """
     
     REDIS_PREFIX_XTTS = "quality_profiles:xtts"
-    REDIS_PREFIX_F5TTS = "quality_profiles:f5tts"
     REDIS_LIST_SUFFIX = "list"
     
     def __init__(self):
@@ -53,23 +48,16 @@ class QualityProfileManager:
         """Remove perfis padrão do Redis (não devem ser persistidos)."""
         try:
             default_xtts_ids = {p.id for p in DEFAULT_XTTS_PROFILES.values()}
-            default_f5_ids = {p.id for p in DEFAULT_F5TTS_PROFILES.values()}
 
             # Deletar chaves individuais dos padrões
             for pid in default_xtts_ids:
                 _redis_client.delete(f"{self.REDIS_PREFIX_XTTS}:{pid}")
-            for pid in default_f5_ids:
-                _redis_client.delete(f"{self.REDIS_PREFIX_F5TTS}:{pid}")
 
             # Remover IDs padrão das listas
             xtts_list_key = self._get_list_key(TTSEngine.XTTS)
-            f5_list_key = self._get_list_key(TTSEngine.F5TTS)
             if _redis_client.exists(xtts_list_key):
                 for pid in default_xtts_ids:
                     _redis_client.srem(xtts_list_key, pid)
-            if _redis_client.exists(f5_list_key):
-                for pid in default_f5_ids:
-                    _redis_client.srem(f5_list_key, pid)
         except Exception as e:
             logger.warning(f"Falha ao limpar perfis padrão do Redis: {e}")
 
@@ -77,7 +65,7 @@ class QualityProfileManager:
         """Verifica se o ID pertence ao conjunto embutido de perfis padrão."""
         if engine == TTSEngine.XTTS:
             return profile_id in {p.id for p in DEFAULT_XTTS_PROFILES.values()}
-        return profile_id in {p.id for p in DEFAULT_F5TTS_PROFILES.values()}
+        return False  # F5-TTS foi removido
     
     def _get_prefix(self, engine: TTSEngine) -> str:
         """Retorna prefixo Redis para engine"""
@@ -155,20 +143,14 @@ class QualityProfileManager:
                 for p in DEFAULT_XTTS_PROFILES.values():
                     if p.id == profile_id:
                         return p
-            else:
-                for p in DEFAULT_F5TTS_PROFILES.values():
-                    if p.id == profile_id:
-                        return p
 
         # Buscar apenas no Redis (custom)
         profile_key = self._get_profile_key(engine, profile_id)
         profile_data = _redis_client.get(profile_key)
         if not profile_data:
             return None
-        if engine == TTSEngine.XTTS:
-            return XTTSQualityProfile.parse_raw(profile_data)
-        else:
-            return F5TTSQualityProfile.parse_raw(profile_data)
+        # Apenas XTTS suportado
+        return XTTSQualityProfile.parse_raw(profile_data)
     
     def list_profiles(
         self,
@@ -178,7 +160,7 @@ class QualityProfileManager:
         Lista todos os perfis de um engine.
         
         Args:
-            engine: Engine (xtts ou f5tts)
+            engine: Engine (apenas xtts)
         
         Returns:
             Lista de perfis
@@ -188,8 +170,6 @@ class QualityProfileManager:
         # Adicionar perfis padrão embutidos
         if engine == TTSEngine.XTTS:
             profiles.extend(DEFAULT_XTTS_PROFILES.values())
-        else:
-            profiles.extend(DEFAULT_F5TTS_PROFILES.values())
 
         # Adicionar customizados do Redis
         list_key = self._get_list_key(engine)
@@ -208,14 +188,13 @@ class QualityProfileManager:
     
     def list_all_profiles(self) -> Dict[str, List[QualityProfile]]:
         """
-        Lista todos os perfis de todos os engines.
+        Lista todos os perfis XTTS.
         
         Returns:
-            Dict com chaves 'xtts' e 'f5tts'
+            Dict com chave 'xtts'
         """
         return {
-            "xtts": self.list_profiles(TTSEngine.XTTS),
-            "f5tts": self.list_profiles(TTSEngine.F5TTS)
+            "xtts": self.list_profiles(TTSEngine.XTTS)
         }
     
     def update_profile(
