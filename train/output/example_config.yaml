@@ -1,0 +1,210 @@
+paths:
+  train_root: train
+  dataset_base: train/data
+  dataset_name: f5_dataset
+  dataset_path: train/data/f5_dataset
+  raw_data_dir: train/data/raw
+  processed_data_dir: train/data/processed
+  videos_csv: train/data/videos.csv
+  vocab_file: train/config/vocab.txt
+  pretrained_dir: train/pretrained
+  output_dir: train/output/ptbr_finetuned2
+  pretrained_model_path: train/pretrained/F5-TTS-pt-br/pt-br/model_200000_fixed.pt
+  log_dir: train/logs
+  tensorboard_dir: train/runs
+  cache_dir: train/data/cache
+  config_dir: train/config
+model:
+  base_model: firstpixel/F5-TTS-pt-br
+  custom_checkpoint: null
+  auto_download_pretrained: true
+  model_filename: pt-br/model_200000.pt
+  model_type: DiT
+  dim: 1024
+  depth: 22
+  heads: 16
+  ff_mult: 2
+  text_dim: 512
+  conv_layers: 4
+  use_ema: true
+  ema_decay: 0.9999
+  ema_update_every: 10
+  ema_update_after_step: 100
+mel_spec:
+  target_sample_rate: 24000
+  n_mel_channels: 100
+  hop_length: 256
+  win_length: 1024
+  n_fft: 1024
+  mel_spec_type: vocos
+vocoder:
+  name: vocos
+  is_local: false
+  local_path: null
+training:
+  exp_name: saved_experiment
+  dataset_name: f5_dataset
+  learning_rate: 0.0003
+  batch_size_per_gpu: 2
+  batch_size_type: sample
+  max_samples: 32
+  grad_accumulation_steps: 8
+  max_grad_norm: 1.0
+  num_warmup_updates: 200
+  warmup_start_lr: 1.0e-06
+  warmup_end_lr: 0.0001
+  epochs: 1000
+  max_steps: null
+  early_stop_patience: 1000
+  early_stop_min_delta: 0.001
+  use_finetune_flag: true
+optimizer:
+  type: AdamW
+  betas:
+  - 0.9
+  - 0.95
+  weight_decay: 0.0
+  eps: 1.0e-08
+  use_8bit_adam: false
+mixed_precision:
+  enabled: false
+  dtype: fp16
+checkpoints:
+  save_per_updates: 500
+  save_per_epochs: 1
+  keep_last_n_checkpoints: 3
+  last_per_updates: 100
+  resume_from_checkpoint: null
+  log_samples: true
+  log_samples_per_updates: 500
+  log_samples_per_epochs: 1
+logging:
+  logger: tensorboard
+  log_every_n_steps: 10
+  wandb:
+    enabled: false
+    project: f5tts-ptbr-finetune
+    entity: null
+    run_name: null
+  tensorboard_port: 6006
+hardware:
+  device: cuda
+  num_gpus: 1
+  num_workers: 2
+  dataloader_workers: 8
+  pin_memory: true
+  persistent_workers: true
+validation:
+  enabled: false
+  val_dataset_path: null
+  val_every_n_updates: 1000
+  num_val_samples: 100
+advanced:
+  gradient_checkpointing: true
+  seed: 666
+  compile_model: false
+  f5tts_base_dir: null
+  f5tts_ckpts_dir: null
+audio:
+  target_sample_rate: 24000
+  format: wav
+  channels: 1
+  bit_depth: 16
+  normalize_audio: true
+  target_lufs: -23.0
+  headroom_db: -1.0
+  fade_ms: 5.0
+segmentation:
+  min_duration: 3.0
+  max_duration: 10.0
+  target_duration: 7.0
+  segment_overlap: 0.1
+  use_vad: true
+  vad_threshold: -40.0
+  vad_frame_size: 512
+  vad_chunk_duration: 10.0
+  remove_silence: true
+  silence_threshold_db: -40.0
+  min_silence_duration: 0.3
+transcription:
+  prefer_youtube_subtitles: true
+  asr:
+    model: base
+    high_precision_model: base
+    device: cuda
+    language: pt
+    task: transcribe
+    beam_size: 5
+    best_of: 5
+    temperature: 0.0
+    hp_beam_size: 8
+    hp_best_of: 8
+    hp_temperature: 0.0
+    use_vad_filter: true
+    vad_filter_min_silence_duration: 0.5
+text_preprocessing:
+  lowercase: true
+  convert_numbers_to_words: true
+  numbers_lang: pt_BR
+  normalize_punctuation: true
+  remove_special_chars: true
+  allowed_chars: abcdefghijklmnopqrstuvwxyzáàâãéêíóôõúçABCDEFGHIJKLMNOPQRSTUVWXYZÁÀÂÃÉÊÍÓÔÕÚÇ0123456789
+    .,!?;:-'"()
+  replacements:
+    '...': .
+    '!!': '!'
+    ??: '?'
+    '  ': ' '
+  min_text_length: 10
+  max_text_length: 500
+  min_word_count: 2
+  cleanup_segment_edges: true
+  retranscribe_on_oov: true
+  oov_ratio_threshold: 0.6
+  oov_min_unknowns: 4
+  oov_min_total_words: 8
+  remove_lines_with:
+  - '[música]'
+  - '[aplausos]'
+  - '[risos]'
+  - ♪
+  - �
+youtube:
+  audio_format: bestaudio
+  audio_quality: best
+  rate_limit: 1M
+  max_retries: 3
+  retry_delay: 5
+  subtitles:
+    download_auto_subs: true
+    subtitle_formats:
+    - vtt
+    - srt
+    subtitle_langs:
+    - pt
+    - pt-BR
+split:
+  train_ratio: 0.95
+  val_ratio: 0.05
+  shuffle: true
+  random_seed: 42
+quality_filters:
+  min_snr_db: 10.0
+  skip_too_short: true
+  skip_too_long: true
+  min_speech_rate: 5.0
+  max_speech_rate: 25.0
+  skip_music: true
+  music_detection_threshold: 0.3
+output:
+  format: arrow
+  metadata_filename: metadata.csv
+  metadata_separator: '|'
+  wavs_subdir: wavs
+  generate_vocab: false
+  save_duration_json: true
+data_preparation:
+  num_workers: 4
+  chunk_size: 100
+  cache_downloads: true
+  verbose: true

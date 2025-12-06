@@ -10,13 +10,13 @@
 model:
   # Modelo base para fine-tuning
   base_model: "firstpixel/F5-TTS-pt-br"
-  checkpoint_path: "./models/f5tts/pt-br/model_last.safetensors"
+  checkpoint_path: "./models/f5tts/models--firstpixel--F5-TTS-pt-br/snapshots/5ebc6913f2d92e4c0cb5396a9867aa1c0c1c4281/pt-br/model_last.safetensors"
   
   # Usar checkpoint local ou baixar do HuggingFace
   use_local_checkpoint: true
   
   # Vocab file (mesmo do modelo base pt-br)
-  vocab_file: "./models/f5tts/pt-br/vocab.txt"
+  vocab_file: "/home/tts-webui-proxmox-passthrough/train/config/vocab.txt"
   
   # Model architecture
   model_type: "DiT"  # DiT ou UNetT

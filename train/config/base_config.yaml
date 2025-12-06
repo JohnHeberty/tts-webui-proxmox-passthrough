@@ -1,0 +1,445 @@
+# ========================================
+# F5-TTS UNIFIED CONFIGURATION
+# ========================================
+# Configuração unificada para fine-tuning do modelo F5-TTS PT-BR
+# 
+# HIERARQUIA DE CONFIGURAÇÃO:
+#   1. Este arquivo (defaults e configuração base)
+#   2. Overrides via train/.env (deploy-specific)
+#   3. Overrides via argumentos CLI (runtime)
+#
+# SOURCE OF TRUTH: Este arquivo é a fonte de verdade.
+# Apenas edite .env para overrides específicos de ambiente/deploy.
+#
+# Versão: 1.0
+# Data: 2025-12-06
+
+# ========================================
+# PATHS - Configuração centralizada de caminhos
+# ========================================
+paths:
+  # Diretório raiz do projeto de treino (relativo à raiz do repo)
+  train_root: "train"
+  
+  # Dataset
+  dataset_base: "train/data"
+  dataset_name: "f5_dataset"
+  dataset_path: "train/data/f5_dataset"  # Concatenado automaticamente
+  
+  # Dataset preparation
+  raw_data_dir: "train/data/raw"
+  processed_data_dir: "train/data/processed"
+  videos_csv: "train/data/videos.csv"
+  
+  # Vocabulário (SOURCE OF TRUTH)
+  vocab_file: "train/config/vocab.txt"
+  
+  # Model checkpoints
+  pretrained_dir: "train/pretrained"
+  output_dir: "train/output/ptbr_finetuned2"
+  
+  # Checkpoints pré-treinados
+  pretrained_model_path: "train/pretrained/F5-TTS-pt-br/pt-br/model_200000_fixed.pt"
+  
+  # Logging e monitoring
+  log_dir: "train/logs"
+  tensorboard_dir: "train/runs"
+  
+  # Cache
+  cache_dir: "train/data/cache"
+  
+  # Config directory
+  config_dir: "train/config"
+
+# ========================================
+# MODEL CONFIGURATION
+# ========================================
+model:
+  # Modelo base para fine-tuning
+  base_model: "firstpixel/F5-TTS-pt-br"
+  
+  # Checkpoint customizado (se vazio, usa pretrained_model_path)
+  # Pode ser sobrescrito por F5TTS_CUSTOM_CHECKPOINT no .env
+  custom_checkpoint: null
+  
+  # Auto-download do HuggingFace se checkpoint local não existir
+  auto_download_pretrained: true
+  model_filename: "pt-br/model_200000.pt"
+  
+  # Model architecture (DiT - Diffusion Transformer)
+  model_type: "DiT"  # DiT ou UNetT
+  dim: 1024
+  depth: 22
+  heads: 16
+  ff_mult: 2
+  text_dim: 512
+  conv_layers: 4
+  
+  # EMA (Exponential Moving Average)
+  use_ema: true
+  ema_decay: 0.9999
+  ema_update_every: 10
+  ema_update_after_step: 100
+
+# ========================================
+# MEL SPECTROGRAM CONFIGURATION
+# ========================================
+mel_spec:
+  target_sample_rate: 24000
+  n_mel_channels: 100
+  hop_length: 256
+  win_length: 1024
+  n_fft: 1024
+  mel_spec_type: "vocos"  # vocos ou bigvgan
+
+# ========================================
+# VOCODER CONFIGURATION
+# ========================================
+vocoder:
+  name: "vocos"
+  is_local: false
+  local_path: null
+
+# ========================================
+# TRAINING HYPERPARAMETERS
+# ========================================
+training:
+  # Experiment name
+  exp_name: "F5TTS_Base"
+  
+  # Dataset (usa paths.dataset_name)
+  dataset_name: "f5_dataset"
+  
+  # Optimization
+  learning_rate: 1.0e-4
+  batch_size_per_gpu: 2  # Ajustado para GPUs menores (era 4)
+  batch_size_type: "sample"  # "sample" ou "frame"
+  max_samples: 32  # Máximo de samples por batch (para batch_size_type="frame")
+  grad_accumulation_steps: 8  # Gradient accumulation para simular batch maior
+  max_grad_norm: 1.0
+  
+  # Scheduler
+  num_warmup_updates: 200  # Warmup steps
+  warmup_start_lr: 1.0e-6
+  warmup_end_lr: 1.0e-4
+  
+  # Training duration
+  epochs: 1000  # Treina até 1000 epochs ou até early stopping
+  max_steps: null  # Se null, usa epochs; se definido, limita por steps
+  
+  # Early Stopping
+  early_stop_patience: 1000  # Para se loss não melhorar por N epochs (0 = desabilitado)
+  early_stop_min_delta: 0.001  # Melhora mínima considerada significativa
+  
+  # Finetune flag (se começar de checkpoint pré-treinado)
+  use_finetune_flag: true
+
+# ========================================
+# OPTIMIZER CONFIGURATION
+# ========================================
+optimizer:
+  type: "AdamW"  # AdamW ou Adam8bit
+  betas: [0.9, 0.95]
+  weight_decay: 0.0
+  eps: 1.0e-8
+  
+  # 8-bit optimizer (economiza VRAM)
+  use_8bit_adam: false
+
+# ========================================
+# MIXED PRECISION
+# ========================================
+mixed_precision:
+  enabled: true
+  dtype: "fp16"  # fp16, bf16, ou null
+
+# ========================================
+# CHECKPOINT MANAGEMENT
+# ========================================
+checkpoints:
+  # Salvamento
+  save_per_updates: 500  # Salvar a cada N updates
+  save_per_epochs: 1     # Salvar a cada epoch também
+  keep_last_n_checkpoints: 3  # Manter N últimos checkpoints
+  last_per_updates: 100  # Salvar checkpoint "last" a cada N updates
+  
+  # Resume training
+  resume_from_checkpoint: null  # Path para checkpoint, ou null para novo treino
+  
+  # Logging de samples de áudio
+  log_samples: true
+  log_samples_per_updates: 500  # Gerar samples a cada N updates
+  log_samples_per_epochs: 1     # Gerar samples a cada N epochs
+
+# ========================================
+# LOGGING & MONITORING
+# ========================================
+logging:
+  # Logger type
+  logger: "tensorboard"  # tensorboard, wandb, ou null
+  
+  # Logging frequency
+  log_every_n_steps: 10
+  
+  # Weights & Biases (opcional)
+  wandb:
+    enabled: false
+    project: "f5tts-ptbr-finetune"
+    entity: null  # Seu username do W&B
+    run_name: null  # Auto-gerado se null
+  
+  # TensorBoard
+  tensorboard_port: 6006
+
+# ========================================
+# HARDWARE CONFIGURATION
+# ========================================
+hardware:
+  # Device
+  device: "cuda"  # cuda, cpu, ou auto
+  
+  # Multi-GPU (se disponível)
+  num_gpus: 1
+  
+  # DataLoader workers (auto-ajustado se > CPU count - 4)
+  num_workers: 2
+  dataloader_workers: 8  # Pode ser auto-ajustado
+  pin_memory: true
+  persistent_workers: true
+
+# ========================================
+# VALIDATION
+# ========================================
+validation:
+  enabled: false  # Desabilitado por padrão (dataset pequeno)
+  val_dataset_path: null
+  val_every_n_updates: 1000
+  num_val_samples: 100
+
+# ========================================
+# ADVANCED OPTIONS
+# ========================================
+advanced:
+  # Gradient checkpointing (economiza VRAM)
+  gradient_checkpointing: true
+  
+  # Seed para reproducibilidade
+  seed: 666
+  
+  # Compile model (PyTorch 2.0+)
+  compile_model: false
+  
+  # F5-TTS paths customizados (geralmente não precisa alterar)
+  f5tts_base_dir: null  # Auto-detectado se null
+  f5tts_ckpts_dir: null  # Auto-detectado se null
+
+# ========================================
+# AUDIO PROCESSING (Dataset Preparation)
+# ========================================
+audio:
+  # Sample rate (F5-TTS usa 24kHz)
+  target_sample_rate: 24000
+  
+  # Audio format
+  format: "wav"
+  channels: 1  # mono
+  bit_depth: 16
+  
+  # Audio normalization
+  normalize_audio: true
+  target_lufs: -23.0  # Loudness target em LUFS
+  
+  # Clipping prevention
+  headroom_db: -1.0  # Headroom para evitar clipping
+  
+  # Fade in/out
+  fade_ms: 5.0   # milissegundos de fade-in/fade-out em cada segmento
+
+# ========================================
+# SEGMENTATION (Dataset Preparation)
+# ========================================
+segmentation:
+  # Duração dos segmentos (em segundos)
+  min_duration: 3.0
+  max_duration: 10.0
+  target_duration: 7.0  # Duração ideal
+  
+  # Overlap entre segmentos (para evitar cortes bruscos)
+  segment_overlap: 0.1  # 100ms de overlap entre segmentos
+  
+  # Voice Activity Detection (VAD)
+  use_vad: true
+  vad_threshold: -40  # Threshold em dB para considerar silêncio
+  vad_frame_size: 512  # Frame size para VAD
+  vad_chunk_duration: 10.0  # Chunk duration para processar em streaming
+  
+  # Silence removal
+  remove_silence: true
+  silence_threshold_db: -40
+  min_silence_duration: 0.3  # Mínimo de silêncio para cortar (segundos)
+
+# ========================================
+# TRANSCRIPTION (Dataset Preparation)
+# ========================================
+transcription:
+  # Método primário: legendas do YouTube ou ASR
+  prefer_youtube_subtitles: true
+  
+  # ASR (Automatic Speech Recognition - Whisper)
+  asr:
+    # Modelo Whisper principal (rápido)
+    model: "base"  # tiny, base, small, medium, large, large-v2
+    
+    # Modelo para retranscrição de alta precisão (quando necessário)
+    high_precision_model: "base"
+    
+    device: "cuda"  # "cuda" ou "cpu"
+    language: "pt"
+    task: "transcribe"  # "transcribe" ou "translate"
+    
+    # Parâmetros padrão do Whisper
+    beam_size: 5
+    best_of: 5
+    temperature: 0.0
+    
+    # Parâmetros para modo de alta precisão
+    hp_beam_size: 8
+    hp_best_of: 8
+    hp_temperature: 0.0
+    
+    # VAD filter (opcional)
+    use_vad_filter: true
+    vad_filter_min_silence_duration: 0.5
+
+# ========================================
+# TEXT PREPROCESSING (Dataset Preparation)
+# ========================================
+text_preprocessing:
+  # Normalização básica
+  lowercase: true
+  
+  # Conversão de números para palavras
+  convert_numbers_to_words: true
+  numbers_lang: "pt_BR"
+  
+  # Normalização de pontuação
+  normalize_punctuation: true
+  
+  # Remover caracteres especiais/ruídos
+  remove_special_chars: true
+  allowed_chars: "abcdefghijklmnopqrstuvwxyzáàâãéêíóôõúçABCDEFGHIJKLMNOPQRSTUVWXYZÁÀÂÃÉÊÍÓÔÕÚÇ0123456789 .,!?;:-'\"()"
+  
+  # Substituições específicas
+  replacements:
+    "...": "."
+    "!!": "!"
+    "??": "?"
+    "  ": " "
+  
+  # Filtros de qualidade por tamanho
+  min_text_length: 10    # caracteres
+  max_text_length: 500   # caracteres
+  min_word_count: 2
+  
+  # Limpeza de bordas bugadas
+  cleanup_segment_edges: true
+  
+  # Retranscrição quando muitas palavras OOV (Out of Vocabulary)
+  retranscribe_on_oov: true
+  oov_ratio_threshold: 0.6  # 60%
+  oov_min_unknowns: 4
+  oov_min_total_words: 8
+  
+  # Remover linhas com termos/ruídos indesejados
+  remove_lines_with:
+    - "[música]"
+    - "[aplausos]"
+    - "[risos]"
+    - "♪"
+    - "�"
+
+# ========================================
+# YOUTUBE DOWNLOAD (Dataset Preparation)
+# ========================================
+youtube:
+  # Download options (yt-dlp)
+  audio_format: "bestaudio"
+  audio_quality: "best"
+  
+  # Rate limiting
+  rate_limit: "1M"  # 1MB/s para evitar bloqueios
+  
+  # Retry logic
+  max_retries: 3
+  retry_delay: 5  # segundos
+  
+  # Subtitles
+  subtitles:
+    download_auto_subs: true
+    subtitle_formats: ["vtt", "srt"]
+    subtitle_langs: ["pt", "pt-BR"]
+
+# ========================================
+# DATASET SPLIT (Dataset Preparation)
+# ========================================
+split:
+  # Train/Val split
+  train_ratio: 0.95
+  val_ratio: 0.05
+  
+  # Shuffle antes do split
+  shuffle: true
+  random_seed: 42
+
+# ========================================
+# QUALITY FILTERS (Dataset Preparation)
+# ========================================
+quality_filters:
+  # Audio quality
+  min_snr_db: 10.0  # Signal-to-Noise Ratio mínimo
+  
+  # Duração
+  skip_too_short: true
+  skip_too_long: true
+  
+  # Taxa de fala (caracteres por segundo)
+  min_speech_rate: 5.0
+  max_speech_rate: 25.0
+  
+  # Detecção de música/ruído
+  skip_music: true
+  music_detection_threshold: 0.3
+
+# ========================================
+# OUTPUT (Dataset Preparation)
+# ========================================
+output:
+  # Formato do dataset (Arrow/Parquet)
+  format: "arrow"
+  
+  # Metadata CSV (formato F5-TTS: path|text)
+  metadata_filename: "metadata.csv"
+  metadata_separator: "|"
+  
+  # Organização de arquivos
+  wavs_subdir: "wavs"
+  
+  # Vocab file
+  generate_vocab: false  # Usar vocab do modelo base pt-br
+  
+  # Duration JSON
+  save_duration_json: true
+
+# ========================================
+# ADVANCED (Dataset Preparation)
+# ========================================
+data_preparation:
+  # Multiprocessing
+  num_workers: 4
+  chunk_size: 100  # Processar N arquivos por vez
+  
+  # Caching
+  cache_downloads: true
+  
+  # Logging
+  verbose: true

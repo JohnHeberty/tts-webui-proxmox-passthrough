@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script consolidado de treinamento F5-TTS com todas as funcionalidades:
-- Configuração via .env
+- Configuração unificada via config system (base_config.yaml + .env + CLI)
 - Early stopping automático  
 - TensorBoard em background
 - Geração de samples a cada N updates (configurável)
@@ -9,7 +9,7 @@ Script consolidado de treinamento F5-TTS com todas as funcionalidades:
 - Auto-resume de checkpoints
 
 Uso:
-    python3 -m train.run_training
+    python3 -m train.run_training [--lr 2e-4] [--batch-size 4] [--epochs 500]
 """
 import os
 import sys
@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 import logging
 import yaml
+import argparse
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
@@ -27,8 +28,8 @@ TRAIN_ROOT = PROJECT_ROOT / "train"
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Carregar config do .env
-from train.utils.env_loader import get_training_config
+# Carregar config unificado
+from train.config.loader import load_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,32 +42,152 @@ logger = logging.getLogger(__name__)
 class F5TTSTrainer:
     """Treinador F5-TTS completo com todas as funcionalidades"""
     
-    def __init__(self):
-        self.config = get_training_config()
+    def __init__(self, cli_overrides=None):
+        # Carregar config unificado (base + .env + CLI)
+        self.config_obj = load_config(cli_overrides=cli_overrides)
+        
+        # Para compatibilidade com código legado, criar dict de acesso rápido
+        self.config = self._build_legacy_config_dict()
+        
         self.train_root = TRAIN_ROOT
-        # Usar paths do .env
-        self.runs_dir = PROJECT_ROOT / self.config['tensorboard_dir']
-        self.output_dir = PROJECT_ROOT / self.config['output_dir']
-        self.data_dir = PROJECT_ROOT / self.config['dataset_path'].rsplit('/', 1)[0]
+        # Usar paths do config
+        self.runs_dir = PROJECT_ROOT / self.config_obj.paths.tensorboard_dir
+        self.output_dir = PROJECT_ROOT / self.config_obj.paths.output_dir
+        self.data_dir = PROJECT_ROOT / Path(self.config_obj.paths.dataset_path).parent
         
         # Ajustar workers baseado no sistema
         import multiprocessing
         cpu_count = multiprocessing.cpu_count()
         max_workers = max(1, cpu_count - 4)  # Deixa 4 cores livres
-        if 'dataloader_workers' not in self.config or self.config['dataloader_workers'] > max_workers:
-            logger.warning(f"⚠️  Ajustando workers: {self.config.get('dataloader_workers', 16)} → {max_workers}")
+        actual_workers = self.config_obj.hardware.dataloader_workers
+        if actual_workers > max_workers:
+            logger.warning(f"⚠️  Ajustando workers: {actual_workers} → {max_workers}")
+            # Note: config é imutável, mas podemos ajustar no dict legado
             self.config['dataloader_workers'] = max_workers
+        
         self.pretrained_dir = self.train_root / "pretrained"
         self.tensorboard_process = None
         
         # 🔒 Garantia: se nada foi configurado, baixa e usa o F5-TTS-pt-br como base
-        if not self.config.get("pretrained_model_path") and not self.config.get("auto_download_pretrained"):
+        if not self.config_obj.model.custom_checkpoint and self.config_obj.model.auto_download_pretrained:
             logger.info(
-                "Nenhum PRETRAIN_MODEL_PATH definido e AUTO_DOWNLOAD_PRETRAINED=False. "
-                "Habilitando download automático do modelo 'firstpixel/F5-TTS-pt-br'."
+                f"Auto-download habilitado para modelo base: {self.config_obj.model.base_model}"
             )
-            self.config["auto_download_pretrained"] = True
-            self.config["base_model"] = self.config.get("base_model", "firstpixel/F5-TTS-pt-br")
+    
+    def _build_legacy_config_dict(self):
+        """
+        Constrói dict de config no formato legado para compatibilidade.
+        Mapeia F5TTSConfig (Pydantic) → dict flat.
+        """
+        cfg = self.config_obj
+        
+        return {
+            # Training
+            'epochs': cfg.training.epochs,
+            'batch_size': cfg.training.batch_size_per_gpu,
+            'batch_size_type': cfg.training.batch_size_type,
+            'max_samples': cfg.training.max_samples,
+            'learning_rate': cfg.training.learning_rate,
+            'grad_accumulation_steps': cfg.training.grad_accumulation_steps,
+            'max_grad_norm': cfg.training.max_grad_norm,
+            'num_warmup_updates': cfg.training.num_warmup_updates,
+            'warmup_start_lr': cfg.training.warmup_start_lr,
+            'warmup_end_lr': cfg.training.warmup_end_lr,
+            'early_stop_patience': cfg.training.early_stop_patience,
+            'early_stop_min_delta': cfg.training.early_stop_min_delta,
+            'exp_name': cfg.training.exp_name,
+            'train_dataset_name': cfg.training.dataset_name,
+            
+            # Model
+            'base_model': cfg.model.base_model,
+            'custom_checkpoint': cfg.model.custom_checkpoint,
+            'auto_download_pretrained': cfg.model.auto_download_pretrained,
+            'model_filename': cfg.model.model_filename,
+            'pretrained_model_path': cfg.paths.pretrained_model_path,
+            'model_type': cfg.model.model_type,
+            'dim': cfg.model.dim,
+            'depth': cfg.model.depth,
+            'heads': cfg.model.heads,
+            'ff_mult': cfg.model.ff_mult,
+            'text_dim': cfg.model.text_dim,
+            'conv_layers': cfg.model.conv_layers,
+            
+            # EMA
+            'use_ema': cfg.model.use_ema,
+            'ema_decay': cfg.model.ema_decay,
+            'ema_update_every': cfg.model.ema_update_every,
+            'ema_update_after_step': cfg.model.ema_update_after_step,
+            
+            # Optimizer
+            'optimizer_type': cfg.optimizer.type,
+            'betas': cfg.optimizer.betas,
+            'weight_decay': cfg.optimizer.weight_decay,
+            'eps': cfg.optimizer.eps,
+            'use_8bit_adam': cfg.optimizer.use_8bit_adam,
+            
+            # Mel Spec
+            'target_sample_rate': cfg.mel_spec.target_sample_rate,
+            'n_mel_channels': cfg.mel_spec.n_mel_channels,
+            'hop_length': cfg.mel_spec.hop_length,
+            'win_length': cfg.mel_spec.win_length,
+            'n_fft': cfg.mel_spec.n_fft,
+            'mel_spec_type': cfg.mel_spec.mel_spec_type,
+            
+            # Vocoder
+            'vocoder_name': cfg.vocoder.name,
+            'is_local': cfg.vocoder.is_local,
+            'local_path': cfg.vocoder.local_path,
+            
+            # Checkpoints
+            'save_per_updates': cfg.checkpoints.save_per_updates,
+            'save_per_epochs': cfg.checkpoints.save_per_epochs,
+            'keep_last_n_checkpoints': cfg.checkpoints.keep_last_n_checkpoints,
+            'last_per_updates': cfg.checkpoints.last_per_updates,
+            'resume_from_checkpoint': cfg.checkpoints.resume_from_checkpoint,
+            'log_samples': cfg.checkpoints.log_samples,
+            'log_samples_per_updates': cfg.checkpoints.log_samples_per_updates,
+            'log_samples_per_epochs': cfg.checkpoints.log_samples_per_epochs,
+            
+            # Logging
+            'logger': cfg.logging.logger,
+            'log_every_n_steps': cfg.logging.log_every_n_steps,
+            'wandb_enabled': cfg.logging.wandb.enabled,
+            'wandb_project': cfg.logging.wandb.project,
+            'wandb_entity': cfg.logging.wandb.entity,
+            'wandb_run_name': cfg.logging.wandb.run_name,
+            'tensorboard_port': cfg.logging.tensorboard_port,
+            
+            # Hardware
+            'device': cfg.hardware.device,
+            'num_gpus': cfg.hardware.num_gpus,
+            'num_workers': cfg.hardware.num_workers,
+            'dataloader_workers': cfg.hardware.dataloader_workers,
+            'pin_memory': cfg.hardware.pin_memory,
+            'persistent_workers': cfg.hardware.persistent_workers,
+            
+            # Mixed Precision
+            'mixed_precision': cfg.mixed_precision.enabled,
+            'mixed_precision_dtype': cfg.mixed_precision.dtype,
+            
+            # Validation
+            'validation_enabled': cfg.validation.enabled,
+            'val_dataset_path': cfg.validation.val_dataset_path,
+            'val_every_n_updates': cfg.validation.val_every_n_updates,
+            'num_val_samples': cfg.validation.num_val_samples,
+            
+            # Advanced
+            'gradient_checkpointing': cfg.advanced.gradient_checkpointing,
+            'seed': cfg.advanced.seed,
+            'compile_model': cfg.advanced.compile_model,
+            'f5tts_base_dir': cfg.advanced.f5tts_base_dir,
+            'f5tts_ckpts_dir': cfg.advanced.f5tts_ckpts_dir,
+            
+            # Paths
+            'dataset_path': cfg.paths.dataset_path,
+            'output_dir': cfg.paths.output_dir,
+            'tensorboard_dir': cfg.paths.tensorboard_dir,
+            'vocab_file': cfg.paths.vocab_file,
+        }
 
         
     def download_pretrained_model(self):
@@ -450,7 +571,7 @@ class F5TTSTrainer:
                 
                 # Look for numbered checkpoints
                 checkpoints = sorted(local_output_dir.glob("model_*.pt"), 
-                                   key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0)
+                                    key=lambda x: int(x.stem.split('_')[1]) if x.stem.split('_')[1].isdigit() else 0)
                 for ckpt in reversed(checkpoints):  # Mais recente primeiro
                     if self.validate_checkpoint(str(ckpt)):
                         resume_checkpoint = str(ckpt.absolute())
@@ -612,8 +733,139 @@ class F5TTSTrainer:
 
 
 def main():
-    """Entry point"""
-    trainer = F5TTSTrainer()
+    """Entry point with CLI argument support"""
+    
+    # Parse CLI arguments
+    parser = argparse.ArgumentParser(
+        description='F5-TTS Training with Unified Config System',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic training with defaults
+  python -m train.run_training
+  
+  # Override learning rate and batch size
+  python -m train.run_training --lr 2e-4 --batch-size 4
+  
+  # Full custom experiment
+  python -m train.run_training --lr 3e-4 --batch-size 8 --epochs 500 --exp-name my_exp
+  
+  # Resume from specific checkpoint
+  python -m train.run_training --resume train/output/model_100000.pt
+        """
+    )
+    
+    # Training hyperparameters
+    parser.add_argument('--lr', '--learning-rate', type=float, dest='learning_rate',
+                        help='Learning rate (default: from config)')
+    parser.add_argument('--batch-size', type=int, dest='batch_size',
+                        help='Batch size per GPU (default: from config)')
+    parser.add_argument('--epochs', type=int,
+                        help='Number of epochs (default: from config)')
+    parser.add_argument('--grad-accum', type=int, dest='grad_accumulation_steps',
+                        help='Gradient accumulation steps (default: from config)')
+    
+    # Experiment
+    parser.add_argument('--exp-name', type=str, dest='exp_name',
+                        help='Experiment name (default: from config)')
+    parser.add_argument('--output-dir', type=str, dest='output_dir',
+                        help='Output directory (default: from config)')
+    
+    # Hardware
+    parser.add_argument('--device', type=str, choices=['cuda', 'cpu', 'auto'],
+                        help='Device (default: from config)')
+    parser.add_argument('--workers', type=int, dest='dataloader_workers',
+                        help='DataLoader workers (default: from config)')
+    
+    # Checkpoints
+    parser.add_argument('--resume', type=str, dest='resume_from_checkpoint',
+                        help='Resume from checkpoint path')
+    parser.add_argument('--save-every', type=int, dest='save_per_updates',
+                        help='Save checkpoint every N updates (default: from config)')
+    
+    # Logging
+    parser.add_argument('--wandb', action='store_true', dest='wandb_enabled',
+                        help='Enable W&B logging')
+    parser.add_argument('--wandb-project', type=str, dest='wandb_project',
+                        help='W&B project name')
+    
+    # Advanced
+    parser.add_argument('--seed', type=int,
+                        help='Random seed (default: from config)')
+    parser.add_argument('--no-tensorboard', action='store_true',
+                        help='Disable TensorBoard (use logger=null)')
+    
+    args = parser.parse_args()
+    
+    # Convert CLI args to config overrides
+    cli_overrides = {}
+    
+    # Training overrides
+    training_overrides = {}
+    if args.learning_rate is not None:
+        training_overrides['learning_rate'] = args.learning_rate
+    if args.batch_size is not None:
+        training_overrides['batch_size_per_gpu'] = args.batch_size
+    if args.epochs is not None:
+        training_overrides['epochs'] = args.epochs
+    if args.grad_accumulation_steps is not None:
+        training_overrides['grad_accumulation_steps'] = args.grad_accumulation_steps
+    if args.exp_name is not None:
+        training_overrides['exp_name'] = args.exp_name
+    
+    if training_overrides:
+        cli_overrides['training'] = training_overrides
+    
+    # Hardware overrides
+    hardware_overrides = {}
+    if args.device is not None:
+        hardware_overrides['device'] = args.device
+    if args.dataloader_workers is not None:
+        hardware_overrides['dataloader_workers'] = args.dataloader_workers
+    
+    if hardware_overrides:
+        cli_overrides['hardware'] = hardware_overrides
+    
+    # Paths overrides
+    paths_overrides = {}
+    if args.output_dir is not None:
+        paths_overrides['output_dir'] = args.output_dir
+    
+    if paths_overrides:
+        cli_overrides['paths'] = paths_overrides
+    
+    # Checkpoints overrides
+    checkpoints_overrides = {}
+    if args.resume_from_checkpoint is not None:
+        checkpoints_overrides['resume_from_checkpoint'] = args.resume_from_checkpoint
+    if args.save_per_updates is not None:
+        checkpoints_overrides['save_per_updates'] = args.save_per_updates
+    
+    if checkpoints_overrides:
+        cli_overrides['checkpoints'] = checkpoints_overrides
+    
+    # Logging overrides
+    logging_overrides = {}
+    if args.wandb_enabled:
+        logging_overrides.setdefault('wandb', {})['enabled'] = True
+    if args.wandb_project is not None:
+        logging_overrides.setdefault('wandb', {})['project'] = args.wandb_project
+    if args.no_tensorboard:
+        logging_overrides['logger'] = 'null'
+    
+    if logging_overrides:
+        cli_overrides['logging'] = logging_overrides
+    
+    # Advanced overrides
+    advanced_overrides = {}
+    if args.seed is not None:
+        advanced_overrides['seed'] = args.seed
+    
+    if advanced_overrides:
+        cli_overrides['advanced'] = advanced_overrides
+    
+    # Create trainer with CLI overrides
+    trainer = F5TTSTrainer(cli_overrides=cli_overrides if cli_overrides else None)
     
     # Setup signal handlers
     def signal_handler(sig, frame):
