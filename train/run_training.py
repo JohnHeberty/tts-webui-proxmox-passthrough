@@ -243,7 +243,12 @@ class F5TTSTrainer:
         3. runs -> train/runs (TensorBoard logs)
         """
         # 1. Symlink de checkpoints
-        f5_ckpts_base = self.config.get("f5tts_ckpts_dir", "/root/.local/lib/python3.11/ckpts")
+        f5_ckpts_base = self.config.get("f5tts_ckpts_dir")
+        
+        # Se null/None, usar default
+        if not f5_ckpts_base:
+            f5_ckpts_base = "/root/.local/lib/python3.11/ckpts"
+            
         f5_ckpt_dir = Path(f5_ckpts_base) / self.config["train_dataset_name"]
         target_dir = self.output_dir
 
@@ -296,7 +301,12 @@ class F5TTSTrainer:
             )
 
         # 2. Symlink de data (automático)
-        f5_base_dir = self.config.get("f5tts_base_dir", "/root/.local/lib/python3.11")
+        f5_base_dir = self.config.get("f5tts_base_dir")
+        
+        # Se null/None, usar default
+        if not f5_base_dir:
+            f5_base_dir = "/root/.local/lib/python3.11"
+            
         data_link = Path(f5_base_dir) / "data"
         if not data_link.exists():
             data_link.symlink_to(self.data_dir.absolute(), target_is_directory=True)
@@ -739,7 +749,7 @@ class F5TTSTrainer:
             "--epochs",
             str(self.config["epochs"]),
             "--num_warmup_updates",
-            str(self.config["warmup_steps"]),
+            str(self.config["num_warmup_updates"]),
             "--save_per_updates",
             str(self.config["save_per_updates"]),
             "--last_per_updates",
@@ -868,7 +878,7 @@ class F5TTSTrainer:
                                 "epochs": self.config.get("epochs"),
                             },
                             "training": {
-                                "num_warmup_updates": self.config.get("warmup_steps"),
+                                "num_warmup_updates": self.config.get("num_warmup_updates"),
                                 "max_grad_norm": self.config.get("max_grad_norm"),
                                 "grad_accumulation_steps": self.config.get(
                                     "grad_accumulation_steps"

@@ -157,18 +157,18 @@ mixed_precision:
 # CHECKPOINT MANAGEMENT
 # ========================================
 checkpoints:
-  # Salvamento
-  save_per_updates: 500  # Salvar a cada N updates
+  # Salvamento (Opção Balanced - samples a cada ~7min)
+  save_per_updates: 200  # Salvar checkpoint numerado a cada 200 updates (~7min)
   save_per_epochs: 1     # Salvar a cada epoch também
-  keep_last_n_checkpoints: 3  # Manter N últimos checkpoints
-  last_per_updates: 100  # Salvar checkpoint "last" a cada N updates
+  keep_last_n_checkpoints: 5  # Manter 5 últimos checkpoints (~35min histórico)
+  last_per_updates: 50   # Salvar model_last.pt a cada 50 updates (~1.7min backup)
   
   # Resume training
   resume_from_checkpoint: null  # Path para checkpoint, ou null para novo treino
   
   # Logging de samples de áudio
   log_samples: true
-  log_samples_per_updates: 500  # Gerar samples a cada N updates
+  log_samples_per_updates: 200  # Gerar samples a cada 200 updates (~7min)
   log_samples_per_epochs: 1     # Gerar samples a cada N epochs
 
 # ========================================

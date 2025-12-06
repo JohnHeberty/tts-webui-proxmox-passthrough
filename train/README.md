@@ -4,6 +4,48 @@
 
 ---
 
+## 🚨 INVESTIGAÇÃO: Problema de Inferência (ATUALIZADO 06/12/2024)
+
+### Status Atual
+- ✅ **Treinamento funciona**: Samples perfeitos durante treinamento
+- ❌ **Inferência quebrada**: Áudio ininteligível ao usar modelo treinado
+- ⚠️ **Solução parcial**: Pipeline de reconstrução funciona
+
+### Scripts de Diagnóstico Criados
+
+1. **`teste_ok.py`** ✅ - Pipeline que FUNCIONA
+   ```bash
+   python3 train/teste_ok.py --audio <INPUT.wav>
+   ```
+   - Testa reconstrução MEL → vocoder
+   - Resultado: PERFEITO
+   - Limitação: Não gera texto novo
+
+2. **`teste_comparativo.py`** 🔬 - Teste completo
+   ```bash
+   python3 train/teste_comparativo.py
+   ```
+   - Testa TODAS as abordagens
+   - Gera relatório comparativo
+
+3. **`iniciar_novo_treinamento.sh`** 🚀 - Novo treinamento
+   ```bash
+   ./train/iniciar_novo_treinamento.sh
+   ```
+   - Config validada
+   - Pré-requisitos verificados
+   - Logs completos
+
+### Documentação da Investigação
+- **`RESUMO_EXECUTIVO.txt`** - Resumo geral
+- **`README_INVESTIGACAO.md`** - Documentação completa
+- **`PROXIMOS_PASSOS.md`** - Guia de ação
+- **`config_novo_validado.yaml`** - Config testada
+
+**Ver detalhes completos em**: `train/RESUMO_EXECUTIVO.txt`
+
+---
+
 ## 📋 Índice
 
 - [Visão Geral](#-visão-geral)

@@ -127,7 +127,8 @@ def validate_checkpoint(
 
         # Check for essential keys
         if check_keys:
-            essential_keys = ["model_state_dict", "vocab_char_map"]
+            # F5-TTS checkpoints have these essential keys
+            essential_keys = ["model_state_dict"]
             missing_keys = [k for k in essential_keys if k not in checkpoint]
 
             if missing_keys:

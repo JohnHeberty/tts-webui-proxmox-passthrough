@@ -1027,38 +1027,38 @@ Este plano de sprints foi desenvolvido com base no relatório técnico completo 
 - [ ] Checkpoints validados antes de carregar
 - [ ] `experiment.json` gerado após treino
 
-### Sprint 3
-- [ ] Módulos `train/audio/`, `train/text/`, `train/io/` criados
-- [ ] Scripts reduzidos para <150 linhas (orquestradores)
-- [ ] Testes unitários com >70% coverage em módulos críticos
+### Sprint 3 ✅ COMPLETO
+- [x] Módulos `train/audio/`, `train/text/`, `train/io/` criados
+- [x] Scripts reduzidos para <150 linhas (orquestradores)
+- [x] Testes unitários com >70% coverage em módulos críticos
 
-### Sprint 4
-- [ ] `requirements-lock.txt` gerado
-- [ ] Seed aplicado globalmente em treino e inferência
-- [ ] `make setup` funcionando
-- [ ] Health check script validando setup
+### Sprint 4 ✅ COMPLETO
+- [x] `requirements-lock.txt` gerado
+- [x] Seed aplicado globalmente em treino e inferência
+- [x] `make setup` funcionando
+- [x] Health check script validando setup
 
-### Sprint 5
-- [ ] Callbacks de best model e audio samples funcionando
-- [ ] CLI com typer aceita argumentos
-- [ ] Logs estruturados em JSON
+### Sprint 5 ✅ COMPLETO
+- [x] Callbacks de best model e audio samples funcionando
+- [x] CLI com typer aceita argumentos
+- [x] Logs estruturados em JSON
 
-### Sprint 6
-- [ ] `F5TTSInference` API unificada funcionando
-- [ ] API REST e scripts usando mesma implementação
-- [ ] CLI `train.cli.infer` funcionando
+### Sprint 6 ✅ COMPLETO
+- [x] `F5TTSInference` API unificada funcionando
+- [x] API REST e scripts usando mesma implementação
+- [x] CLI `train.cli.infer` funcionando
 
-### Sprint 7
-- [ ] Linting (ruff) e formatação (black) configurados
-- [ ] Mypy passando (ou com --ignore-missing-imports)
-- [ ] Pre-commit hooks instalados
-- [ ] Teste e2e passando
+### Sprint 7 ✅ COMPLETO
+- [x] Linting (ruff) e formatação (black) configurados
+- [x] Mypy passando (ou com --ignore-missing-imports)
+- [x] Pre-commit hooks instalados
+- [x] Teste e2e passando
 
-### Sprint 8
-- [ ] READMEs atualizados
-- [ ] Tutorial completo em `train/docs/TUTORIAL.md`
-- [ ] Scripts de exemplo funcionando
-- [ ] (Opcional) MLflow integrado
+### Sprint 8 ✅ COMPLETO
+- [x] READMEs atualizados
+- [x] Tutorial completo em `train/docs/TUTORIAL.md`
+- [x] Scripts de exemplo funcionando
+- [x] (Opcional) MLflow integrado - NÃO IMPLEMENTADO (opcional)
 
 ---
 

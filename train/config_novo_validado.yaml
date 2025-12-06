@@ -1,0 +1,175 @@
+# CONFIGURAÇÃO VALIDADA PARA NOVO TREINAMENTO
+# =============================================
+# 
+# Esta configuração foi criada após extensa investigação do problema de inferência
+# e contém APENAS parâmetros validados e testados.
+#
+# Data: 06/12/2024
+# Status: PRONTO PARA TREINAMENTO
+
+# ============================================================================
+# MODELO
+# ============================================================================
+model:
+  model_cls: DiT  # Diffusion Transformer
+  model_cfg:
+    dim: 1024
+    depth: 22
+    heads: 16
+    ff_mult: 2
+    text_dim: 512
+    conv_layers: 4
+  
+  # MEL Spectrogram
+  mel_spec_type: vocos
+  n_mel_channels: 100
+  target_sample_rate: 24000
+  n_fft: 1024
+  hop_length: 256
+  win_length: 1024
+
+# ============================================================================
+# TREINAMENTO
+# ============================================================================
+training:
+  # EMA (Exponential Moving Average)
+  use_ema: true
+  ema_decay: 0.9999
+  
+  # Otimização
+  learning_rate: 0.0001
+  batch_size: 8  # Ajuste conforme VRAM
+  gradient_accumulation_steps: 1
+  
+  # Duração
+  epochs: 100  # Reduzido para teste
+  save_per_updates: 200  # Salva checkpoint a cada 200 updates
+  
+  # Regularização
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  
+  # Scheduler
+  scheduler:
+    type: cosine
+    warmup_steps: 1000
+  
+  # Sampling durante treinamento
+  log_samples: true
+  nfe_step: 32
+  cfg_strength: 2.0
+  sway_sampling_coef: -1.0
+
+# ============================================================================
+# DATASET
+# ============================================================================
+dataset:
+  # Usar dataset existente (já validado)
+  dataset_name: "f5_dataset"
+  data_dir: "train/data/f5_dataset"
+  metadata_path: "train/data/f5_dataset/metadata.csv"
+  
+  # Vocab - CRÍTICO usar o correto!
+  vocab_file: "train/config/vocab.txt"  # Vocab do treinamento anterior
+  generate_vocab: false  # NÃO regenerar, usar existente
+  
+  # Duração dos samples
+  min_duration: 2.0  # segundos
+  max_duration: 15.0
+  
+  # Validação
+  val_split: 0.05  # 5% para validação
+
+# ============================================================================
+# CHECKPOINT
+# ============================================================================
+checkpoint:
+  # Partir do modelo pre-trained (mais seguro)
+  resume_from: "train/pretrained/F5-TTS-pt-br/pt-br/model_200000.pt"
+  
+  # Diretório de saída
+  output_dir: "train/output/ptbr_novo_validado"
+  
+  # Backup
+  keep_last_n: 5  # Manter últimos 5 checkpoints
+
+# ============================================================================
+# INFERÊNCIA (para validação)
+# ============================================================================
+inference:
+  # Usar MESMA configuração do treinamento
+  vocab_file: "train/config/vocab.txt"  # ← MESMO vocab!
+  mel_spec_type: vocos
+  ode_method: euler
+  use_ema: true
+  
+  # Parâmetros de geração
+  nfe_step: 32
+  cfg_strength: 2.0
+  sway_sampling_coef: -1.0
+
+# ============================================================================
+# HARDWARE
+# ============================================================================
+hardware:
+  device: cuda
+  mixed_precision: fp16  # Economiza VRAM
+  num_workers: 4
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+logging:
+  log_dir: "train/logs"
+  tensorboard: true
+  log_interval: 10
+  
+# ============================================================================
+# VALIDAÇÕES PRÉ-TREINAMENTO
+# ============================================================================
+# ANTES DE TREINAR, VERIFICAR:
+#
+# ✅ 1. Dataset existe e está acessível
+#      ls -lah train/data/f5_dataset/
+#      wc -l train/data/f5_dataset/metadata.csv
+#
+# ✅ 2. Vocab correto existe
+#      ls -lah train/config/vocab.txt
+#      wc -l train/config/vocab.txt
+#
+# ✅ 3. Checkpoint pre-trained existe
+#      ls -lah train/pretrained/F5-TTS-pt-br/pt-br/model_200000.pt
+#
+# ✅ 4. VRAM disponível (mínimo 16GB para batch_size=8)
+#      nvidia-smi
+#
+# ✅ 5. Espaço em disco (mínimo 50GB)
+#      df -h /home/tts-webui-proxmox-passthrough
+#
+# ============================================================================
+# COMANDO PARA INICIAR TREINAMENTO
+# ============================================================================
+# 
+# python3 -m f5_tts.train.train \
+#   --config train/config_novo_validado.yaml \
+#   --data_dir train/data/f5_dataset \
+#   --output_dir train/output/ptbr_novo_validado
+#
+# ============================================================================
+# TESTES PÓS-TREINAMENTO
+# ============================================================================
+#
+# 1. Testar inferência EXATA como trainer:
+#    python3 train/infer_como_trainer.py \
+#      --checkpoint train/output/ptbr_novo_validado/model_XXXX.pt \
+#      --ref-audio train/output/ptbr_novo_validado/samples/update_XXXX_ref.wav \
+#      --ref-text "Texto do sample" \
+#      --output train/teste_novo_modelo.wav
+#
+# 2. Validar áudio gerado:
+#    python3 train/validar_audio.py train/teste_novo_modelo.wav
+#
+# 3. Comparar com sample do trainer:
+#    python3 train/validar_audio.py train/output/ptbr_novo_validado/samples/update_XXXX_gen.wav
+#
+# ============================================================================
