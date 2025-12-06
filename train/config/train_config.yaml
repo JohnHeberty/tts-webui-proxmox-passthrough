@@ -1,0 +1,100 @@
+# Training Configuration for XTTS-v2 Fine-tuning
+# ================================================
+# This config defines hyperparameters for fine-tuning XTTS-v2
+
+# Model settings
+model:
+  name: "xtts_v2"
+  pretrained_model: "tts_models/multilingual/multi-dataset/xtts_v2"
+  language: "pt"  # Portuguese
+  
+  # LoRA (Low-Rank Adaptation) settings
+  use_lora: true
+  lora_config:
+    rank: 16              # LoRA rank (4, 8, 16, 32)
+    alpha: 32             # LoRA alpha (usually 2x rank)
+    dropout: 0.1          # Dropout rate
+    target_modules:       # Modules to apply LoRA
+      - "q_proj"
+      - "v_proj"
+      - "k_proj"
+      - "out_proj"
+
+# Dataset paths
+data:
+  dataset_dir: "train/data/MyTTSDataset"
+  train_metadata: "metadata_train.csv"
+  val_metadata: "metadata_val.csv"
+  wavs_dir: "wavs"
+  
+  # Data loading
+  num_workers: 4
+  batch_size: 4           # Adjust based on VRAM
+  pin_memory: true
+  prefetch_factor: 2
+
+# Training hyperparameters
+training:
+  # Optimization
+  learning_rate: 1.0e-5   # Lower for fine-tuning
+  weight_decay: 1.0e-6
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  
+  # Learning rate schedule
+  lr_scheduler: "cosine_with_warmup"
+  warmup_steps: 500
+  max_steps: 10000        # Total training steps
+  
+  # Gradient clipping
+  max_grad_norm: 1.0
+  
+  # Mixed precision training
+  use_amp: true           # Automatic Mixed Precision (FP16)
+  
+  # Gradient accumulation
+  gradient_accumulation_steps: 1  # Increase if OOM
+
+# Checkpointing
+checkpointing:
+  save_every_n_steps: 500
+  keep_last_n_checkpoints: 5
+  output_dir: "train/output/checkpoints"
+  
+  # Best checkpoint tracking
+  monitor_metric: "val_loss"
+  monitor_mode: "min"     # "min" for loss, "max" for accuracy
+
+# Logging
+logging:
+  log_every_n_steps: 10
+  log_dir: "train/output/tensorboard"
+  
+  # TensorBoard
+  use_tensorboard: true
+  
+  # Validation
+  val_every_n_steps: 500
+  num_val_samples: 10     # Number of audio samples to generate
+
+# Audio generation (for validation samples)
+generation:
+  temperature: 0.75
+  length_penalty: 1.0
+  repetition_penalty: 2.0
+  top_k: 50
+  top_p: 0.8
+
+# Hardware
+hardware:
+  device: "cuda"          # "cuda" or "cpu"
+  cuda_device_id: 0
+  
+  # Memory optimization
+  enable_gradient_checkpointing: true
+  cpu_offload: false      # Set true if VRAM < 12GB
+
+# Reproducibility
+seed: 42
+deterministic: false      # Set true for reproducible results (slower)
