@@ -214,9 +214,6 @@ def transcribe_parallel(
         except Exception as e:
             logger.warning(f"⚠️ Erro ao carregar checkpoint: {e}")
     
-    # Create mapping of audio_path to correct global segment_index
-    segment_index_map = {seg["audio_path"]: i for i, seg in enumerate(segments)}
-    
     # Filter segments to process
     segments_to_process = [
         s for s in segments
@@ -246,12 +243,13 @@ def transcribe_parallel(
         future_to_segment = {}
         for i, segment in enumerate(segments_to_process):
             worker_id = i % num_workers
-            correct_idx = segment_index_map[segment["audio_path"]]  # Get correct global index
+            # Sequential index: already_done + order in this batch
+            sequential_idx = already_done + i
             future = executor.submit(
                 transcribe_segment_worker,
                 worker_id,
                 segment,
-                correct_idx,  # Pass correct index
+                sequential_idx,  # Sequential index in transcriptions array
                 config,
                 False
             )
