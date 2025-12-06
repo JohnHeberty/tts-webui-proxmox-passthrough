@@ -148,8 +148,10 @@ def log_environment_info() -> dict:
         >>> env_info = log_environment_info()
         >>> print(f"PyTorch: {env_info['torch_version']}")
     """
+    import sys
+    
     env_info = {
-        'python_version': os.sys.version,
+        'python_version': sys.version,
         'torch_version': torch.__version__,
         'numpy_version': np.__version__,
         'cuda_available': torch.cuda.is_available(),

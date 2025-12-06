@@ -168,7 +168,7 @@ def get_dependencies_info() -> Dict[str, str]:
     # Try to get F5-TTS version
     try:
         import f5_tts
-        deps['f5_tts'] = f5_tts.__version__ if hasattr(f5_tts, '__version__') else 'unknown'
+        deps['f5_tts'] = f5_tts.__version__ if hasattr(f5_tts, '__version__') else 'unknown'  # type: ignore
     except ImportError:
         pass
     
@@ -191,7 +191,7 @@ def get_hardware_info() -> Dict[str, Any]:
     """
     import torch
     
-    info = {
+    info: Dict[str, Any] = {
         'cuda_available': torch.cuda.is_available(),
     }
     
