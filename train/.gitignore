@@ -17,3 +17,4 @@ logs/*.log
 !data/videos.csv
 !data/MyTTSDataset/metadata*.csv
 !data/processed/transcriptions.json
+.env
