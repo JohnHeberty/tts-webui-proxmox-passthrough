@@ -1,271 +1,163 @@
-# 🚀 Status do Projeto XTTS-v2 Training Pipeline
+# 📊 STATUS DO PROJETO - TTS XTTS-v2 Pipeline
 
-**Data**: 2025-12-06  
+**Última atualização**: 2025-12-06 16:58  
 **Tech Lead**: Claude Sonnet 4.5  
-**Objetivo**: Pipeline completo de fine-tuning XTTS-v2 para português brasileiro
+**Fase atual**: Sprint 1 completando transcrição paralela (50%)
 
 ---
 
-## 📊 Progresso Geral
+## 🎯 RESUMO EXECUTIVO
 
-| Sprint | Status | Progresso | Tempo |
-|--------|--------|-----------|-------|
-| Sprint 0 | ✅ Completo | 100% | 1h |
-| Sprint 1 | ✅ Completo | 100% | 4h |
-| Sprint 2 | 🔄 Em progresso | 60% | 2h |
-| Sprint 3 | ⏳ Pendente | 0% | - |
-| Sprint 4 | ⏳ Pendente | 0% | - |
-| Sprint 5 | ⏳ Pendente | 0% | - |
+**Progresso Global**: 49% (2.5/5 sprints)
 
-**Total**: 3/6 sprints | **Horas gastas**: 7h | **Estimativa restante**: 13-21h
+| Sprint | Status | % | Tempo | Próximo |
+|--------|--------|---|-------|---------|
+| Sprint 0 | ✅ COMPLETO | 100% | 1h | - |
+| Sprint 1 | 🔄 85% | Dataset quase pronto | 5h | Aguardar transcrição (13min) |
+| Sprint 2 | ⏸️ 60% | Template criado | - | Implementar TODOs TTS |
+| Sprint 3 | ⏳ 0% | Não iniciado | - | Após Sprint 2 |
+| Sprint 4-5 | ⏳ 0% | Não iniciado | - | Após Sprint 3 |
 
----
-
-## ✅ Sprint 0: Segurança & Cleanup (COMPLETO)
-
-**Objetivos**: Garantir segurança e limpar referências F5-TTS
-
-**Entregáveis**:
-- ✅ Auditoria de secrets (nenhum exposto)
-- ✅ Docs F5-TTS marcadas como deprecated
-- ✅ Git commit com análise completa (MORE.md, SPRINTS.md)
-
-**Arquivos**:
-- `MORE.md` (66KB) - Análise técnica completa
-- `SPRINTS.md` (25KB) - Plano de 6 sprints
-- `SPRINT0_REPORT.md` (3KB) - Relatório de segurança
-
-**Commit**: `5cd4abd` - "docs: Add MORE.md & SPRINTS.md + Sprint 0 security audit"
+**Transcrição em andamento**: 4583/9173 (50%) - ETA: 13min - Speed: 5.9 seg/s 🚀
 
 ---
 
-## ✅ Sprint 1: Estrutura train/ + Pipeline de Dados (COMPLETO)
+## ✅ COMPLETO
 
-**Objetivos**: Criar infraestrutura de preparação de dados XTTS-v2
+### Sprint 0: Segurança (100%)
+- ✅ `.env` no gitignore
+- ✅ Docs F5-TTS deprecated
+- ✅ Estrutura analisada
 
-**Entregáveis**:
+### Sprint 1: Dataset Pipeline (85%)
 - ✅ Estrutura `train/` completa
-- ✅ `dataset_config.yaml` (22050Hz, 7-12s, VAD streaming)
-- ✅ 4 scripts migrados de `scripts/not_remove/`:
-  1. `download_youtube.py` - Download YouTube → 22050Hz WAV
-  2. `segment_audio.py` - VAD streaming (7-12s)
-  3. `transcribe_audio.py` - Whisper + legendas YT
-  4. `build_ljs_dataset.py` - LJSpeech format
-- ✅ `pipeline.py` - Orquestrador completo
-- ✅ 15 vídeos Flow Podcast em `videos.csv`
-- ✅ README.md completo
+- ✅ 15 vídeos baixados (~30-40h)
+- ✅ 9173 segmentos gerados (22050Hz, 7-12s)
+- 🔄 **Transcrição paralela 15x faster** (50% done)
+  - Speedup: 0.4 → 5.9 seg/s
+  - Workers: 6 paralelos (auto-detect VRAM)
+  - Checkpoint: incremental a cada 10 seg
+- ⏳ Build metadata (após transcrição)
 
-**Estrutura Criada**:
-```
-train/
-├── config/dataset_config.yaml
-├── data/
-│   ├── videos.csv (15 vídeos, ~30-40h)
-│   ├── raw/          (áudios baixados)
-│   ├── processed/    (segmentos VAD)
-│   └── MyTTSDataset/ (LJSpeech format)
-├── scripts/ (5 scripts)
-├── output/ (checkpoints, samples)
-└── logs/
-```
-
-**Commits**:
-- `f1ebaec` - "docs: Update Sprint 1 based on existing scripts"
-- `9ffd011` - "feat: Complete Sprint 1 - XTTS-v2 train/ structure + data pipeline"
-
-**Arquivos**: 16 files, 2381 lines
+**Bugs corrigidos**:
+- ✅ Contador reset ao retomar
+- ✅ segment_index sequencial (0,1,2...)
+- ✅ Data loss (save incremental)
+- ✅ WebM orphans
 
 ---
 
-## 🔄 Sprint 2: Treinamento XTTS-v2 (60% COMPLETO)
+## 🔄 EM ANDAMENTO
 
-**Objetivos**: Implementar fine-tuning com LoRA
+### Transcrição Paralela (50%)
+```
+Progresso: [4583/9173] 50.0%
+Speed:     5.9 seg/s (15x faster!)  
+ETA:       ~13 minutos
+Workers:   6 paralelos
+VRAM:      5.6GB / 24GB (23%)
+```
 
-**Entregáveis**:
-- ✅ `train_config.yaml` (94 linhas)
-  - LoRA config (rank 16, alpha 32)
-  - Training hyperparams (lr 1e-5, 10k steps)
-  - Checkpointing (save every 500 steps)
-  - TensorBoard logging
-- ✅ `train_xtts.py` (373 linhas) - TEMPLATE
-  - Estrutura completa de training loop
-  - LoRA integration (PEFT)
-  - Mixed precision (AMP)
-  - Checkpoint management
-  - TensorBoard hooks
-- ⏳ Implementação TTS API (pendente)
-- ⏳ Dataset loader (pendente)
-- ⏳ Training loop real (pendente)
-
-**Commit**: `bed4287` - "feat: Sprint 2 (partial) - XTTS-v2 training template with LoRA"
-
-**Próximos Passos**:
-1. Integrar com `app/engines/xtts_engine.py` (já existe!)
-2. Usar TTS.tts.models.xtts.Xtts para loading
-3. Implementar custom dataset para metadata.csv
-4. Testar training com dataset pequeno
+**Após completar (~13min)**:
+1. Executar `build_ljs_dataset.py`
+2. Validar metadata CSV
+3. Iniciar Sprint 2
 
 ---
 
-## 🔄 Pipeline de Dados - STATUS ATUAL
+## ⏸️ PRÓXIMAS AÇÕES
 
-**Processo em Background**: `PID 380097`
+### Sprint 2: Treinamento (60% template)
 
-**Progresso Download**:
-- ✅ Vídeo 1: video_00001.wav (✓ completo)
-- ✅ Vídeo 2: video_00002.wav (✓ completo)
-- ✅ Vídeo 3: video_00003.wav (✓ completo)
-- 🔄 Vídeo 4: Em download...
-- ⏳ Vídeos 5-15: Aguardando
+**Arquivos prontos**:
+- ✅ `train_config.yaml` (LoRA, hiperparâmetros)
+- ⏸️ `train_xtts.py` (60% - 6 TODOs pendentes)
 
-**Tempo Estimado**:
-- Download: ~2-3h (15 vídeos × 10-15min cada)
-- Segmentação: ~1-2h (VAD streaming)
-- Transcrição: ~3-4h (Whisper base)
-- Build dataset: ~10min
+**TODOs críticos**:
+1. `load_pretrained_model()` - Carregar XTTS-v2
+2. `create_dataset()` - TTSDataset
+3. `create_scheduler()` - Warmup + cosine
+4. `train_step()` - Forward pass
+5. `validate()` - Métricas
+6. Training loop - Integração
 
-**Total**: ~7-10 horas para completar pipeline
+**Referência**: `app/engines/xtts_engine.py` (já funciona!)
 
-**Logs**:
-- `train/logs/pipeline_full.log` (acompanhamento)
-- `train/logs/download_youtube.log`
-- `train/logs/segment_audio.log` (quando iniciar)
-- `train/logs/transcribe_audio.log` (quando iniciar)
-- `train/logs/build_metadata.log` (quando iniciar)
-
-**Comando para acompanhar**:
+**Steps**:
 ```bash
-tail -f train/logs/pipeline_full.log
+# 1. Instalar deps
+pip install TTS peft tensorboard
+
+# 2. Implementar TODOs (usar xtts_engine.py como ref)
+
+# 3. Smoke test
+head -100 train/data/MyTTSDataset/metadata_train.csv > test_metadata.csv
+python -m train.scripts.train_xtts --config train/config/train_config.yaml --max-steps 10
+
+# 4. Full training (50 epochs)
+python -m train.scripts.train_xtts --config train/config/train_config.yaml
 ```
 
 ---
 
-## 📁 Arquivos do Projeto
+## 📊 MÉTRICAS
 
-**Configuração**:
-- `train/config/dataset_config.yaml` (73 linhas)
-- `train/config/train_config.yaml` (94 linhas)
+### Dataset
+- Vídeos: 15 episódios Flow Podcast
+- Áudio total: ~30-40h
+- Segmentos: 9173 (7-12s avg)
+- Transcritos: 4583 (50%)
+- Format: 22050Hz mono 16-bit WAV
 
-**Scripts**:
-- `train/scripts/download_youtube.py` (265 linhas)
-- `train/scripts/segment_audio.py` (572 linhas)
-- `train/scripts/transcribe_audio.py` (831 linhas)
-- `train/scripts/build_ljs_dataset.py` (204 linhas)
-- `train/scripts/pipeline.py` (243 linhas)
-- `train/scripts/train_xtts.py` (373 linhas)
+### Performance
+- Transcrição: **15x speedup** (0.4 → 5.9 seg/s)
+- VRAM: 23% uso (eficiente)
+- Workers: 6 auto-detectados
 
-**Documentação**:
-- `train/README.md` (195 linhas)
-- `MORE.md` (66KB)
-- `SPRINTS.md` (25KB)
-- `SPRINT0_REPORT.md` (3KB)
-
-**Total**: ~3500 linhas de código + 94KB de docs
+### Qualidade
+- VAD: Alta precision
+- Text: pt-BR normalizado (num2words, lowercase)
+- OOV handling: Retry com modelo HP
 
 ---
 
-## 🔧 Dependências Instaladas
+## 🎯 ROADMAP
 
-**Essenciais**:
-- ✅ yt-dlp (2025.11.12) - Download YouTube
-- ✅ openai-whisper (20250625) - Transcrição
-- ✅ num2words (0.5.14) - Expansão de números pt-BR
-- ✅ soundfile (0.13.1) - Audio I/O
-- ✅ scipy (1.16.3) - Resample, filters
-- ✅ pyloudnorm (0.1.1) - Normalização loudness
-- ✅ click (8.3.1) - CLI
-- ✅ pyyaml (6.0.3) - Config files
+### Hoje (~13min + 3h)
+1. ⏳ **Aguardar transcrição** (13min)
+2. ⏳ **Build metadata** (5min)
+3. ⏳ **Instalar TTS** (10min)
+4. ⏳ **Implementar TODOs** (2h)
+5. ⏳ **Smoke test** (30min)
 
-**PyTorch**:
-- ✅ torch (2.9.1) - Deep learning
-- ✅ tqdm (4.67.1) - Progress bars
-
-**Treinamento (para Sprint 2)**:
-- ⏳ TTS (coqui-tts) - Modelo XTTS-v2
-- ⏳ peft - LoRA implementation
-- ⏳ tensorboard - Logging
+### Próximos dias (~8-10h)
+6. ⏳ Full training (4-6h)
+7. ⏳ API integration (2-3h)
+8. ⏳ Testes (2h)
 
 ---
 
-## 🎯 Próximas Ações
+## 📁 ARQUIVOS CHAVE
 
-### Imediato (enquanto pipeline roda)
-1. ✅ Instalar dependências faltantes: `pip install TTS peft tensorboard`
-2. ✅ Implementar integração real com Coqui TTS
-3. ✅ Testar carregamento de modelo XTTS-v2
-4. ✅ Criar custom dataset loader
+### Configuração
+- `train/config/dataset_config.yaml` ✅
+- `train/config/train_config.yaml` ✅
+- `train/.env.example` ✅
+- `train/env_config.py` ✅
 
-### Quando Pipeline Completar
-1. Validar dataset gerado
-2. Verificar metadata.csv
-3. Calcular estatísticas (duração, distribuição)
-4. Executar primeiro teste de training
+### Scripts
+- `train/scripts/download_youtube.py` ✅
+- `train/scripts/segment_audio.py` ✅
+- `train/scripts/transcribe_audio_parallel.py` ✅ (ATUAL)
+- `train/scripts/build_ljs_dataset.py` ⏸️
+- `train/scripts/train_xtts.py` ⏸️ (60%)
 
-### Sprint 3 (Integração API)
-1. Modificar `app/engines/xtts_engine.py`
-2. Adicionar suporte a custom checkpoints
-3. Criar endpoint de inferência
-4. Testar voz clonada
-
----
-
-## 📈 Métricas de Sucesso
-
-**Dataset**:
-- ✅ Estrutura LJSpeech criada
-- 🔄 15 vídeos sendo processados (~30-40h áudio bruto)
-- ⏳ Esperado: ~3-5h áudio limpo (500-1000 segmentos 7-12s)
-
-**Training (quando implementado)**:
-- [ ] Modelo carrega sem erros
-- [ ] Training loop executa
-- [ ] Checkpoints são salvos
-- [ ] Validação gera samples
-- [ ] Loss diminui consistentemente
-
-**API (Sprint 3)**:
-- [ ] Custom checkpoint carrega
-- [ ] Inferência funciona
-- [ ] Voice cloning preserva características
-- [ ] Latência aceitável (<5s para 10s áudio)
+### Dados
+- `train/data/raw/*.wav` ✅ (15 vídeos)
+- `train/data/processed/wavs/*.wav` ✅ (9173)
+- `train/data/processed/transcriptions.json` 🔄 (50%)
+- `train/data/MyTTSDataset/metadata_*.csv` ⏳
 
 ---
 
-## 🐛 Problemas Conhecidos
-
-1. **yt-dlp warnings**: JavaScript runtime não encontrado
-   - **Solução**: Warnings apenas, downloads funcionam
-   - **Opção**: `pip install yt-dlp[default]` se quiser resolver
-
-2. **Template train_xtts.py**: Requer implementação TTS
-   - **Status**: Estrutura completa, precisa integrar API
-   - **Próximo**: Usar código de `app/engines/xtts_engine.py`
-
-3. **Pipeline em background**: Pode demorar 7-10h
-   - **Status**: Normal, processar 30-40h de áudio
-   - **Monitoramento**: `tail -f train/logs/pipeline_full.log`
-
----
-
-## 📝 Notas Técnicas
-
-**XTTS-v2 Specs**:
-- Sample rate: 22050Hz (não 24000!)
-- Duration ideal: 7-12s por segmento
-- Format: WAV mono 16-bit
-- Metadata: LJSpeech format (`path|text`)
-
-**Diferenças F5-TTS → XTTS-v2**:
-- ✅ Sample rate: 24000 → 22050Hz
-- ✅ Duration: 3-30s → 7-12s
-- ✅ Text norm: Case-sensitive → Lowercase
-- ✅ Dataset path: f5_dataset → MyTTSDataset
-
-**Hardware**:
-- GPU: RTX 3090 (23GB VRAM)
-- RAM: Suficiente para VAD streaming
-- Storage: ~50GB necessário (dataset + checkpoints)
-
----
-
-**Última atualização**: 2025-12-06 15:40 (Pipeline rodando, Sprint 2 em progresso)
+**Ver detalhes completos**: [SPRINTS.md](../SPRINTS.md)
