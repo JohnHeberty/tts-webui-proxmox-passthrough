@@ -105,17 +105,26 @@
 
 ## 🏗️ Sprint 1: Estrutura `train/` + Pipeline de Dados
 
-**Objetivo**: Criar infraestrutura completa para preparar dataset XTTS-v2 em formato LJSpeech.
+**Objetivo**: Adaptar scripts existentes em `scripts/not_remove/` para estrutura `train/` com foco em XTTS-v2 (formato LJSpeech).
 
 **Duração**: 4-6 horas  
 **Prioridade**: P0 (CRÍTICO - bloqueia Sprint 2)
+
+**ATUALIZAÇÃO**: Scripts já existem em `scripts/not_remove/`! Pipeline completo:
+1. `download_youtube.py` → Baixa de `videos.csv` para `raw/`
+2. `prepare_segments_optimized.py` → VAD + segmentação → `processed/wavs/`
+3. `transcribe_or_subtitles.py` → Whisper + legendas YT → `transcriptions.json`
+4. `build_metadata_csv.py` → Gera LJSpeech `metadata.csv`
+
+**Nova abordagem**: Migrar e adaptar para XTTS-v2 (não F5-TTS)!
 
 ### Tasks
 
 #### 1.1 Criar Estrutura de Diretórios
 - [ ] Criar árvore de pastas:
   ```bash
-  mkdir -p train/{config,data/{raw,processed/wavs,MyTTSDataset/wavs},scripts,output/{checkpoints,samples}}
+  mkdir -p train/{config,data/{raw,processed},scripts,output/{checkpoints,samples},logs}
+  mkdir -p train/data/MyTTSDataset/wavs  # LJSpeech format
   ```
 - [ ] Adicionar `.gitkeep` em pastas vazias
 - [ ] Criar `.gitignore` para `train/data/raw/*` e `train/output/*` (não commitar datasets/checkpoints grandes)
@@ -131,225 +140,277 @@
 ---
 
 #### 1.2 Criar `train/config/dataset_config.yaml`
-- [ ] Implementar configuração:
+- [ ] Implementar configuração adaptada para XTTS-v2:
   ```yaml
   # Dataset preparation config for XTTS-v2
   audio:
-    sample_rate: 22050  # XTTS-v2 requirement
-    channels: 1         # mono
+    target_sample_rate: 22050  # XTTS-v2 requirement (não 24000!)
+    channels: 1                # mono
     bit_depth: 16
     format: wav
   
+  youtube:
+    audio_format: "bestaudio/best"
+    max_retries: 3
+    retry_delay: 5
+    subtitles:
+      languages: ["pt", "pt-BR"]
+      format: "vtt"
+  
   segmentation:
-    min_duration_sec: 5.0    # minimum viable segment
-    max_duration_sec: 12.0   # XTTS-v2 limit
-    target_duration_sec: 8.0 # ideal length
-    vad_threshold_db: -40    # voice activity detection
-    min_silence_duration_ms: 500
-    padding_ms: 100          # before/after speech
+    use_vad: true
+    vad_threshold: -40.0        # dB, voice activity detection
+    vad_frame_size: 512
+    vad_chunk_duration: 10.0    # streaming chunks
+    min_silence_duration: 0.3   # seconds to split
+    
+    min_duration: 7.0           # XTTS-v2: 7-12s ideal range!
+    max_duration: 12.0
+    target_duration: 10.0
+    segment_overlap: 0.5        # overlap between segments
+    
+    fade_duration: 0.05         # fade in/out to avoid clicks
+    normalization_method: "rms" # or "loudnorm"
+    target_rms_db: -20.0
   
   transcription:
-    model: openai/whisper-base  # or whisper-small
-    language: pt              # Portuguese
-    task: transcribe
-    temperature: 0.0          # deterministic
+    whisper_model: "base"       # base, small, medium
+    whisper_hp_model: "medium"  # high-precision fallback
+    language: "pt"
+    temperature: 0.0            # deterministic
+    oov_threshold: 0.15         # out-of-vocab trigger for HP model
   
-  text_normalization:
-    expand_numbers: true      # "123" → "cento e vinte e três"
-    lowercase: false          # preserve case
-    remove_punctuation: false # keep for prosody
+  text_processing:
+    expand_numbers: true        # "123" → "cento e vinte e três"
+    lowercase: true             # XTTS works better with lowercase
+    normalize_whitespace: true
+    remove_extra_punctuation: false
   
   quality_filters:
-    min_snr_db: 15.0          # signal-to-noise ratio
-    max_silence_ratio: 0.3    # max 30% silence in segment
-    min_words: 3              # minimum words per segment
-    max_words: 40             # maximum words per segment
+    min_words: 3
+    max_words: 50
+    # Adicionar filtros específicos se necessário
   
   dataset:
-    train_split: 0.9          # 90% train
-    val_split: 0.1            # 10% validation
+    train_split: 0.9
+    val_split: 0.1
     shuffle: true
     seed: 42
   ```
 
 **Critérios de Aceitação**:
-- ✅ YAML válido e bem documentado
-- ✅ Valores alinhados com boas práticas XTTS-v2
-- ✅ Fácil modificar para experimentar
+- ✅ YAML válido com valores XTTS-v2 corretos (22050Hz, 7-12s)
+- ✅ Configuração de VAD streaming (otimizado para memória)
+- ✅ Parâmetros de transcrição (Whisper + fallback HP)
+- ✅ Normalização de texto para pt-BR
 
 **Riscos**:
 - 🟢 **BAIXO**: Apenas arquivo de configuração
 
 ---
 
-#### 1.3 Refatorar `download_youtube.py`
-- [ ] Mover de `scripts/dataset/download_youtube.py` para `train/scripts/download_youtube.py`
-- [ ] Adicionar suporte a batch download via CSV:
+#### 1.3 Migrar e Adaptar `download_youtube.py`
+- [ ] Copiar `scripts/not_remove/download_youtube.py` → `train/scripts/download_youtube.py`
+- [ ] **MANTER**: Leitura de `videos.csv` (formato já funcional)
+- [ ] **AJUSTAR**: Sample rate de 24000 → **22050Hz** (XTTS-v2)
   ```python
-  # Input: train/data/sources.csv
-  # url,title,duration
-  # https://youtube.com/watch?v=xxx,Podcast 1,3600
+  # Antes
+  "-ar", "24000",
+  # Depois
+  "-ar", str(config["audio"]["target_sample_rate"]),  # 22050
   ```
-- [ ] Converter para 22050Hz mono durante download (economizar processamento depois)
-- [ ] Salvar em `train/data/raw/{youtube_id}.wav`
-- [ ] Gerar `download_manifest.json` com metadados
+- [ ] **AJUSTAR**: Paths para `train/data/`:
+  ```python
+  data_dir = project_root / "train" / "data"
+  videos_csv = data_dir / "videos.csv"
+  raw_dir = data_dir / "raw"
+  ```
+- [ ] **MANTER**: Retry logic, logging, yt-dlp options
 
 **Critérios de Aceitação**:
-- ✅ Aceita CSV com lista de URLs
-- ✅ Download + conversão para 22050Hz mono 16-bit
-- ✅ Logging estruturado (JSON ou rich)
-- ✅ Tratamento de erros (retry, skip vídeos privados)
+- ✅ Lê `train/data/videos.csv` (copiar de `scripts/not_remove/videos.csv`)
+- ✅ Download para 22050Hz mono 16-bit
+- ✅ Salva em `train/data/raw/video_XXXXX.wav`
+- ✅ Logging em `train/logs/download_youtube.log`
 
 **Riscos**:
+- 🟢 **BAIXO**: Script já funcional, só ajustar paths
 - 🟡 **MÉDIO**: yt-dlp pode quebrar com updates do YouTube
-- 🟡 **MÉDIO**: Conversão de áudio pode falhar (ffmpeg)
 
 ---
 
-#### 1.4 Refatorar `segment_audio.py`
-- [ ] Mover de `scripts/dataset/` para `train/scripts/`
-- [ ] Implementar streaming VAD:
+#### 1.4 Migrar e Adaptar `prepare_segments_optimized.py`
+- [ ] Copiar `scripts/not_remove/prepare_segments_optimized.py` → `train/scripts/segment_audio.py`
+- [ ] **MANTER**: Streaming VAD (já otimizado para memória!)
+  - `iter_voice_regions()` - detecta fala em chunks de 10s
+  - `iter_final_segments_from_regions()` - gera segmentos finais
+- [ ] **AJUSTAR**: Duração para XTTS-v2 (7-12s, não 3-30s)
   ```python
-  def segment_audio_streaming(
-      input_wav: Path,
-      output_dir: Path,
-      config: DatasetConfig
-  ) -> List[Segment]:
-      """
-      Segment audio using VAD, optimized for memory.
-      
-      Returns list of Segment objects with:
-      - file_path: Path to output WAV
-      - start_time: float (seconds)
-      - end_time: float
-      - duration: float
-      - rms_db: float (loudness)
-      """
+  # Antes (F5-TTS)
+  min_duration = 3.0
+  max_duration = 30.0
+  # Depois (XTTS-v2)
+  min_duration = 7.0
+  max_duration = 12.0
+  target_duration = 10.0
   ```
-- [ ] Aplicar filtros do config:
-  - Duração: 5-12s
-  - Target: ~8s (juntar segmentos curtos quando possível)
-  - RMS threshold para VAD
-- [ ] Salvar em `train/data/processed/wavs/` com naming scheme:
+- [ ] **AJUSTAR**: Sample rate 24000 → 22050Hz
+  ```python
+  target_sr = config["audio"]["target_sample_rate"]  # 22050
   ```
-  {youtube_id}_{segment_index:04d}.wav
+- [ ] **AJUSTAR**: Paths para `train/data/`:
+  ```python
+  raw_dir = project_root / "train" / "data" / "raw"
+  processed_dir = project_root / "train" / "data" / "processed"
   ```
-- [ ] Gerar `segments_manifest.json`
+- [ ] **MANTER**: 
+  - Fade in/out para evitar clicks
+  - Normalização RMS ou pyloudnorm
+  - Resample usando scipy.signal
+  - Logging detalhado
 
 **Critérios de Aceitação**:
 - ✅ Processa arquivos grandes (>1GB) sem OOM
-- ✅ Segmentos entre 5-12s (idealmente ~8s)
+- ✅ Segmentos entre 7-12s (target 10s) - XTTS-v2 ideal
 - ✅ 22050Hz mono 16-bit preservado
-- ✅ RMS filtering remove silêncios/ruídos
+- ✅ VAD remove silêncios longos
 
 **Riscos**:
-- 🟡 **MÉDIO**: VAD pode ser impreciso (ajustar threshold empiricamente)
-- 🟢 **BAIXO**: Memory-efficient se usar streaming corretamente
+- 🟢 **BAIXO**: Script já testado, só ajustar parâmetros
 
 ---
-
-#### 1.5 Refatorar `transcribe_whisper.py`
-- [ ] Mover para `train/scripts/`
-- [ ] Integrar com `segments_manifest.json`
-- [ ] Implementar transcrição batch:
-  ```python
-  def transcribe_segments(
-      segments: List[Segment],
-      config: DatasetConfig,
-      model: WhisperModel = None
-  ) -> List[Transcription]:
-      """
-      Transcribe all segments using Whisper.
-      
-      Returns list of Transcription objects:
-      - segment_id: str
-      - text_raw: str (original transcription)
-      - text_normalized: str (após normalização)
-      - confidence: float (0-1)
-      - language_detected: str
-      """
-  ```
-- [ ] Aplicar normalização de texto pt-BR:
-  - Expandir números (via `num2words` pt-BR)
-  - Normalizar pontuação
-  - Remover caracteres especiais (manter acentos)
-- [ ] Salvar em `train/data/processed/transcriptions.json`
-
-**Critérios de Aceitação**:
-- ✅ Transcreve todos os segmentos do manifest
-- ✅ Normalização pt-BR correta (números expandidos)
-- ✅ Confidence score calculado
-- ✅ Logging de progresso (tqdm ou rich)
-
-**Riscos**:
-- 🟡 **MÉDIO**: Whisper pode demorar muito (usar GPU se disponível)
-- 🟡 **MÉDIO**: Erros de transcrição em áudio ruídoso
-
 ---
 
-#### 1.6 Criar `build_ljs_dataset.py`
-- [ ] Implementar builder LJSpeech:
+#### 1.5 Migrar e Adaptar `transcribe_or_subtitles.py`
+- [ ] Copiar `scripts/not_remove/transcribe_or_subtitles.py` → `train/scripts/transcribe_audio.py`
+- [ ] **MANTER**: Lógica completa já implementada!
+  - Tenta baixar legendas do YouTube (yt-dlp)
+  - Se não houver, usa Whisper
+  - Cache de modelos Whisper (evita reload)
+  - Fallback para modelo HP se OOV alto (>15%)
+  - Normalização pt-BR completa:
+    - `num2words` para números
+    - Lowercase
+    - Whitespace normalization
+    - Remoção de pontuação extra
+  - Vocabulário pt-BR embutido para detectar OOV
+- [ ] **AJUSTAR**: Paths para `train/data/`:
   ```python
-  def build_ljspeech_dataset(
-      transcriptions: List[Transcription],
-      segments: List[Segment],
-      output_dir: Path,
-      config: DatasetConfig
-  ) -> LJSpeechDataset:
-      """
-      Build LJSpeech format dataset:
-      - Copy/move wavs to MyTTSDataset/wavs/
-      - Generate metadata.csv
-      - Apply quality filters
-      - Split train/val
-      """
+  data_dir = project_root / "train" / "data"
+  videos_csv = data_dir / "videos.csv"
+  processed_dir = data_dir / "processed"
+  transcriptions_file = processed_dir / "transcriptions.json"
   ```
-- [ ] Formato `metadata.csv`:
+- [ ] **AJUSTAR**: Carregar config de `dataset_config.yaml`:
+  ```python
+  whisper_model = config["transcription"]["whisper_model"]
+  whisper_hp_model = config["transcription"]["whisper_hp_model"]
+  oov_threshold = config["transcription"]["oov_threshold"]
   ```
-  filename|raw_text|normalized_text
-  seg_0001.wav|Olá mundo 123|Olá mundo cento e vinte e três
+- [ ] **MANTER**: 
+  - Rate limit handling (HTTP 429)
+  - Retry logic
+  - Logging detalhado
+
+**Critérios de Aceitação**:
+- ✅ Prioriza legendas do YouTube (mais rápido, exato)
+- ✅ Fallback para Whisper funcional
+- ✅ Normalização pt-BR completa (números expandidos)
+- ✅ Salva `train/data/processed/transcriptions.json`
+---
+
+#### 1.6 Migrar e Adaptar `build_metadata_csv.py`
+- [ ] Copiar `scripts/not_remove/build_metadata_csv.py` → `train/scripts/build_ljs_dataset.py`
+- [ ] **REMOVER**: Referências a F5-TTS (comentários, paths `f5_dataset/`)
+- [ ] **AJUSTAR**: Formato metadata.csv para XTTS-v2 (compatível com LJSpeech):
   ```
-- [ ] Aplicar filtros de qualidade:
-  - SNR > 15dB
-  - Silence ratio < 30%
-  - 3-40 palavras por segmento
-- [ ] Gerar splits:
-  - `train/data/MyTTSDataset/metadata_train.csv` (90%)
-  - `train/data/MyTTSDataset/metadata_val.csv` (10%)
-- [ ] Estatísticas em `dataset_stats.json`:
-  ```json
-  {
-    "total_segments": 1500,
-    "total_duration_hours": 3.2,
-    "filtered_out": 120,
-    "train_samples": 1242,
-    "val_samples": 138,
-    "avg_duration_sec": 7.8
-  }
+  # F5-TTS (ANTIGO)
+  wavs/audio_0001.wav|texto em português aqui
+  
+  # XTTS-v2 / LJSpeech (NOVO - mantém compatibilidade!)
+  wavs/audio_00001.wav|texto em português aqui
+  ```
+  - **NOTA**: XTTS aceita formato F5 (1 coluna), mas pode expandir para 2 se quiser
+- [ ] **AJUSTAR**: Paths para `train/data/`:
+  ```python
+  data_dir = project_root / "train" / "data"
+  processed_dir = data_dir / "processed"
+  dataset_dir = data_dir / "MyTTSDataset"  # não f5_dataset!
+  wavs_dir = dataset_dir / "wavs"
+  ```
+- [ ] **MANTER**:
+  - Copia WAVs de `processed/` para `MyTTSDataset/wavs/`
+  - Gera `metadata.csv` com formato `relative_path|text`
+  - Logging detalhado
+  - Estatísticas de duração
+- [ ] **ADICIONAR** (opcional): Filtros de qualidade
+  ```python
+  # Filtrar por duração (7-12s)
+  if not (7.0 <= item["duration"] <= 12.0):
+      logger.warning(f"Duração fora do range: {item['duration']:.1f}s")
+      continue
+  
+  # Filtrar por palavras (3-50)
+  word_count = len(item["text"].split())
+  if not (3 <= word_count <= 50):
+      logger.warning(f"Palavras fora do range: {word_count}")
+      continue
+  ```
+- [ ] **ADICIONAR**: Train/val split
+  ```python
+  # Shuffle e split
+  random.seed(config["dataset"]["seed"])
+  random.shuffle(metadata_lines)
+  
+  split_idx = int(len(metadata_lines) * config["dataset"]["train_split"])
+  train_lines = metadata_lines[:split_idx]
+  val_lines = metadata_lines[split_idx:]
+  
+  # Salvar splits
+  (dataset_dir / "metadata_train.csv").write_text("\n".join(train_lines))
+  (dataset_dir / "metadata_val.csv").write_text("\n".join(val_lines))
   ```
 
 **Critérios de Aceitação**:
-- ✅ `metadata.csv` em formato LJSpeech válido
-- ✅ Filtros de qualidade aplicados
-- ✅ Train/val split correto
-- ✅ Estatísticas geradas
-
-**Riscos**:
-- 🟡 **MÉDIO**: Filtros podem remover muitos samples (ajustar thresholds)
-- 🟢 **BAIXO**: Formato LJSpeech é bem definido
-
+- ✅ `metadata.csv` em formato LJSpeech (compatível XTTS-v2)
+- ✅ WAVs organizados em `MyTTSDataset/wavs/`
 ---
 
 #### 1.7 Criar `pipeline.py` (Orquestrador)
-- [ ] Script master que executa pipeline completo:
+- [ ] Criar script master para executar pipeline completo:
   ```python
   # train/scripts/pipeline.py
   
+  """
+  Pipeline completo de preparação de dataset XTTS-v2
+  
+  Uso:
+      python -m train.scripts.pipeline
+      python -m train.scripts.pipeline --skip-download
+      python -m train.scripts.pipeline --only-step transcribe
+  """
+  
+  import click
+  from pathlib import Path
+  import yaml
+  
   @click.command()
   @click.option('--config', type=Path, default='train/config/dataset_config.yaml')
-  @click.option('--sources', type=Path, default='train/data/sources.csv')
-  @click.option('--skip-download', is_flag=True)
-  @click.option('--skip-segment', is_flag=True)
+  @click.option('--skip-download', is_flag=True, help='Pular download (usar raw/ existente)')
+  @click.option('--skip-segment', is_flag=True, help='Pular segmentação')
+  @click.option('--skip-transcribe', is_flag=True, help='Pular transcrição')
+  @click.option('--only-step', type=click.Choice(['download', 'segment', 'transcribe', 'build']), 
+                help='Executar apenas um step')
+  def run_pipeline(config, skip_download, skip_segment, skip_transcribe, only_step):
+      """
+      Executa pipeline completo de preparação de dataset:
+      
+      1. download_youtube.py   → raw/
+      2. segment_audio.py      → processed/wavs/
+      3. transcribe_audio.py   → processed/transcriptions.json
+      4. build_ljs_dataset.py  → MyTTSDataset/metadata.csv
+      """
+      cfg = load_config(config)', is_flag=True)
   @click.option('--skip-transcribe', is_flag=True)
   def run_pipeline(config, sources, skip_download, skip_segment, skip_transcribe):
       """
