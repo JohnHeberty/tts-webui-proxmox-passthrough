@@ -105,6 +105,7 @@ def get_model_from_pool(worker_id: int) -> whisper.Whisper:
 def transcribe_segment_worker(
     worker_id: int,
     segment: Dict,
+    correct_segment_index: int,
     config: Dict,
     high_precision: bool = False
 ) -> Optional[Dict]:
@@ -159,13 +160,19 @@ def transcribe_segment_worker(
         if len(text) < min_len:
             return None
         
-        # Return result
-        return {
-            **segment,
+        # Return result (don't copy segment_index from segment, use correct one)
+        result = {
+            "audio_path": segment["audio_path"],
+            "original_file": segment.get("original_file"),
+            "segment_index": correct_segment_index,  # Use CORRECT global index
+            "duration": segment.get("duration"),
+            "start_time": segment.get("start_time"),
+            "end_time": segment.get("end_time"),
             "text": text,
             "char_count": len(text),
             "worker_id": worker_id,
         }
+        return result
         
     except Exception as e:
         logger.error(f"   [Worker {worker_id}] ❌ Erro: {e}")
@@ -207,6 +214,9 @@ def transcribe_parallel(
         except Exception as e:
             logger.warning(f"⚠️ Erro ao carregar checkpoint: {e}")
     
+    # Create mapping of audio_path to correct global segment_index
+    segment_index_map = {seg["audio_path"]: i for i, seg in enumerate(segments)}
+    
     # Filter segments to process
     segments_to_process = [
         s for s in segments
@@ -236,10 +246,12 @@ def transcribe_parallel(
         future_to_segment = {}
         for i, segment in enumerate(segments_to_process):
             worker_id = i % num_workers
+            correct_idx = segment_index_map[segment["audio_path"]]  # Get correct global index
             future = executor.submit(
                 transcribe_segment_worker,
                 worker_id,
                 segment,
+                correct_idx,  # Pass correct index
                 config,
                 False
             )
