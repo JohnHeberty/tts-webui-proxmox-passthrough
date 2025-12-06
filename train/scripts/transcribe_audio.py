@@ -315,17 +315,19 @@ def transcribe_with_whisper(audio_path: Path, config: dict, high_precision: bool
     """
     Transcreve áudio usando Whisper.
 
-    Se high_precision=True e transcription.asr.high_precision_model estiver definido,
-    usa esse modelo; caso contrário, usa o modelo padrão com parâmetros "hp_*" se existirem.
+    Se high_precision=True, usa whisper_hp_model; caso contrário, usa whisper_model padrão.
     """
     global _WHISPER_MODEL, _WHISPER_HP_MODEL
 
-    asr_config = config["transcription"]["asr"]
-    device = asr_config.get("device", "cuda")
+    trans_config = config["transcription"]
+    
+    # Auto-detect device (CUDA se disponível, senão CPU)
+    import torch
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if high_precision and asr_config.get("high_precision_model"):
+    if high_precision and trans_config.get("whisper_hp_model"):
         # Modelo de alta precisão separado
-        model_name = asr_config["high_precision_model"]
+        model_name = trans_config["whisper_hp_model"]
         if _WHISPER_HP_MODEL is None:
             logger.info(f"   🎤 Carregando modelo Whisper de alta precisão ({model_name})...")
             try:
@@ -334,13 +336,10 @@ def transcribe_with_whisper(audio_path: Path, config: dict, high_precision: bool
                 logger.error(f"   ❌ Erro ao carregar modelo Whisper de alta precisão: {e}")
                 return ""
         model = _WHISPER_HP_MODEL
-        beam_size = asr_config.get("hp_beam_size", asr_config.get("beam_size", 5))
-        best_of = asr_config.get("hp_best_of", asr_config.get("best_of", 5))
-        temperature = asr_config.get("hp_temperature", asr_config.get("temperature", 0.0))
         logger.info("   🎧 Retranscrevendo com modelo de alta precisão...")
     else:
         # Modelo padrão
-        model_name = asr_config["model"]
+        model_name = trans_config.get("whisper_model", "base")
         if _WHISPER_MODEL is None:
             logger.info(f"   🎤 Carregando modelo Whisper ({model_name})...")
             try:
@@ -349,27 +348,15 @@ def transcribe_with_whisper(audio_path: Path, config: dict, high_precision: bool
                 logger.error(f"   ❌ Erro ao carregar modelo Whisper: {e}")
                 return ""
         model = _WHISPER_MODEL
-        # Se high_precision=True mas não há high_precision_model,
-        # apenas usa parâmetros mais fortes no mesmo modelo
-        if high_precision:
-            logger.info("   🎧 Retranscrevendo com modelo padrão, mas parâmetros mais precisos...")
-        beam_size = asr_config.get(
-            "hp_beam_size",
-            asr_config.get("beam_size", 5) if high_precision else asr_config.get("beam_size", 5),
-        )
-        best_of = asr_config.get(
-            "hp_best_of",
-            asr_config.get("best_of", 5) if high_precision else asr_config.get("best_of", 5),
-        )
-        temperature = asr_config.get("hp_temperature", asr_config.get("temperature", 0.0))
+
+    # Parâmetros de transcrição
+    language = trans_config.get("language", "pt")
+    temperature = trans_config.get("temperature", 0.0)
 
     try:
         result = model.transcribe(
             str(audio_path),
-            language=asr_config.get("language", "pt"),
-            task=asr_config.get("task", "transcribe"),
-            beam_size=beam_size,
-            best_of=best_of,
+            language=language,
             temperature=temperature,
         )
 
@@ -558,7 +545,7 @@ def _should_retry_with_high_precision(text: str, config: dict) -> bool:
     Decide se vale a pena retranscrever com modelo mais preciso,
     baseado na proporção de palavras fora do vocabulário pt-BR.
     """
-    text_config = config["text_preprocessing"]
+    text_config = config["text_processing"]
 
     if not text_config.get("retranscribe_on_oov", True):
         return False
@@ -606,7 +593,7 @@ def preprocess_text(text: str, config: dict) -> str:
     - remoção de caracteres especiais
     - limpeza de bordas bugadas (segmentos cortados)
     """
-    text_config = config["text_preprocessing"]
+    text_config = config["text_processing"]
 
     # 1) Lowercase
     if text_config.get("lowercase", True):
@@ -774,7 +761,7 @@ def main():
                 text = preprocess_text(text_hp_raw, config)
 
         # Validações de comprimento
-        text_config = config["text_preprocessing"]
+        text_config = config["text_processing"]
         min_len = text_config.get("min_text_length", 1)
         max_len = text_config.get("max_text_length", 10_000)
 
