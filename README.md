@@ -45,6 +45,7 @@ Docker + Celery + Redis + Circuit Breaker + Health Checks
 - [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Testes](#-testes)
 - [Comandos Úteis](#-comandos-úteis-makefile)
+- [**Treinamento F5-TTS**](#-treinamento-f5-tts) ⭐ **NOVO**
 - [Documentação](#-documentação)
 - [Contribuindo](#-contribuindo)
 - [Licença](#-licença)
@@ -573,6 +574,177 @@ furnished to do so, subject to the following conditions:
 
 [... texto completo da MIT License ...]
 ```
+
+---
+
+## 🎓 Treinamento F5-TTS
+
+Pipeline completo de **treinamento personalizado de modelos F5-TTS** para criar vozes customizadas de alta qualidade.
+
+### 🚀 Quick Start
+
+```bash
+# 1. Setup do ambiente de treinamento
+python train/scripts/health_check.py
+
+# 2. Prepare seu dataset (YouTube, áudio local, etc.)
+python train/examples/03_custom_dataset.py --audio-dir /path/to/audio
+
+# 3. Configure o treinamento
+vim train/config/config.yaml
+
+# 4. Inicie o treinamento
+python -m train.run_training --config train/config/config.yaml
+
+# 5. Teste o modelo treinado
+python train/examples/02_inference_simple.py
+```
+
+### 📚 Documentação Completa
+
+**Para iniciantes:**
+- 📖 **[Tutorial Passo-a-Passo](train/docs/TUTORIAL.md)** ⭐ **COMECE AQUI**
+  - Setup completo do ambiente
+  - Preparação de datasets
+  - Configuração e execução
+  - Monitoramento e deploy
+
+**Referências técnicas:**
+- 🔧 **[Inference API](train/docs/INFERENCE_API.md)** - API unificada de inferência
+- ⚙️ **[Config Schema](train/config/README.md)** - Configuração detalhada
+- 📊 **[Quality Profiles](docs/QUALITY_PROFILES.md)** - Perfis de qualidade
+
+**Módulos:**
+- 🎵 **[Audio Processing](train/audio/README.md)** - Processamento de áudio
+- 📝 **[Text Processing](train/text/README.md)** - Normalização de texto
+- 🛠️ **[Scripts](train/scripts/README.md)** - Ferramentas utilitárias
+
+**Exemplos práticos:**
+- 💡 **[Examples](train/examples/README.md)** - 4 exemplos comentados
+  - Quick training test (1 epoch)
+  - Simple inference
+  - Custom dataset creation
+  - Resume training
+
+**Índice completo:**
+- 📑 **[Documentation Index](train/docs/INDEX.md)** - Navegação completa
+
+### ✨ Principais Features
+
+✅ **Dataset Processing**
+- Download automático do YouTube com legendas
+- Segmentação inteligente de áudio (VAD)
+- Normalização e quality checks
+- Suporte a áudios longos (>30s)
+
+✅ **Training Pipeline**
+- Configuração via YAML type-safe (Pydantic)
+- Reproducibilidade completa (seed fixo)
+- TensorBoard integration
+- Best model tracking
+- Checkpoint management
+
+✅ **Inference API**
+- API unificada com singleton pattern
+- CLI tool (typer + rich)
+- Batch processing
+- Voice cloning
+- Multi-device (CUDA/CPU)
+
+✅ **Code Quality**
+- Ruff + Black + Mypy configurados
+- 11 testes unitários (100% passing)
+- Type hints completos
+- Documentação extensiva
+
+### 📦 Estrutura
+
+```
+train/
+├── docs/               # Documentação completa
+│   ├── TUTORIAL.md    # Tutorial passo-a-passo ⭐
+│   ├── INDEX.md       # Índice de navegação
+│   └── INFERENCE_API.md  # API reference
+├── examples/          # Exemplos práticos
+│   ├── 01_quick_train.py      # Teste rápido
+│   ├── 02_inference_simple.py # Inferência básica
+│   ├── 03_custom_dataset.py   # Criar dataset
+│   └── 04_resume_training.py  # Retomar treino
+├── config/            # Configuração
+│   ├── schemas.py     # Pydantic models
+│   ├── loader.py      # Config loading
+│   └── config.yaml    # Arquivo de config
+├── audio/             # Processamento de áudio
+├── text/              # Processamento de texto
+├── inference/         # API de inferência
+├── scripts/           # Utilitários
+└── tests/             # Testes unitários
+```
+
+### 🎯 Casos de Uso
+
+**1. Treinar modelo personalizado:**
+```bash
+# Prepare dataset de 1-10 horas de áudio
+python train/examples/03_custom_dataset.py --audio-dir /audio
+
+# Configure e treine
+python -m train.run_training --config train/config/config.yaml
+```
+
+**2. Fine-tuning de modelo existente:**
+```bash
+# Retome de checkpoint com dataset menor (30min-2h)
+python train/examples/04_resume_training.py \
+    --checkpoint models/f5tts/model_best.pt \
+    --additional-epochs 20
+```
+
+**3. Testar modelo treinado:**
+```bash
+# Inference CLI
+python -m train.cli.infer \
+    --checkpoint model.pt \
+    --vocab vocab.txt \
+    --text "Olá, mundo!" \
+    --ref-audio ref.wav \
+    --output out.wav
+```
+
+### 🔬 Recursos Avançados
+
+- **MLOps:** TensorBoard, checkpoint management, best model tracking
+- **Reproducibilidade:** Seed fixo, deterministic algorithms
+- **VRAM Optimization:** Gradient accumulation, mixed precision
+- **Data Augmentation:** Audio effects, speed variation
+- **Quality Assurance:** Text validation, audio checks
+
+### 📊 Performance
+
+| Dataset | VRAM | Batch Size | Tempo/Epoch |
+|---------|------|------------|-------------|
+| 1h | 8GB | 4 | ~15 min |
+| 5h | 12GB | 8 | ~45 min |
+| 10h | 24GB | 16 | ~90 min |
+
+### 🆘 Troubleshooting
+
+**OOM (Out of Memory)?**
+```yaml
+# Reduza batch size no config.yaml
+training:
+  batch_size_per_gpu: 2  # Ou 1
+  gradient_accumulation_steps: 4
+```
+
+**Loss não diminui?**
+- Verifique learning rate (1e-4 a 1e-5)
+- Valide qualidade do dataset
+- Aumente número de épocas
+
+**Mais problemas?**
+- [Tutorial - Seção Troubleshooting](train/docs/TUTORIAL.md#7-troubleshooting)
+- [Health Check](train/scripts/health_check.py)
 
 ---
 
