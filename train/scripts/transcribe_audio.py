@@ -718,10 +718,35 @@ def main():
     logger.info("ETAPA 2: TRANSCRIÇÃO DE SEGMENTOS")
     logger.info("=" * 80 + "\n")
 
+    # CHECKPOINT/RESUME: Carregar transcrições existentes se houver
+    transcriptions_file = processed_dir / "transcriptions.json"
     transcriptions: list[dict] = []
+    processed_paths = set()
+    
+    if transcriptions_file.exists():
+        logger.info(f"📂 Encontrado checkpoint existente: {transcriptions_file}")
+        try:
+            with open(transcriptions_file, "r", encoding="utf-8") as f:
+                transcriptions = json.load(f)
+            processed_paths = {t["audio_path"] for t in transcriptions}
+            logger.info(f"✅ Carregadas {len(transcriptions)} transcrições anteriores")
+            logger.info(f"🔄 Continuando de onde parou...\n")
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao carregar checkpoint: {e}")
+            logger.warning("   Iniciando do zero...\n")
+            transcriptions = []
+            processed_paths = set()
 
     for i, segment in enumerate(segments, 1):
-        logger.info(f"[{i}/{len(segments)}] {segment['audio_path']}")
+        audio_path_rel = segment['audio_path']
+        
+        # SKIP se já processado (resume)
+        if audio_path_rel in processed_paths:
+            if i % 100 == 0:  # Log a cada 100 para não poluir
+                logger.info(f"[{i}/{len(segments)}] ⏭️  Pulando (já processado): {audio_path_rel}")
+            continue
+        
+        logger.info(f"[{i}/{len(segments)}] {audio_path_rel}")
 
         # Caminho do áudio do segmento
         audio_path = project_root / "train" / "data" / segment["audio_path"]
@@ -797,9 +822,20 @@ def main():
         # Adicionar transcrição final
         transcriptions.append({**segment, "text": text, "char_count": len(text)})
 
-        logger.info(f"   ✅ {len(text)} caracteres: {text[:80]}...\n")
+        logger.info(f"   ✅ {len(text)} caracteres: {text[:80]}...")
+        
+        # SALVAMENTO INCREMENTAL: Salvar a cada 10 segmentos (proteção contra perda)
+        if len(transcriptions) % 10 == 0:
+            try:
+                with open(transcriptions_file, "w", encoding="utf-8") as f:
+                    json.dump(transcriptions, f, indent=2, ensure_ascii=False)
+                logger.info(f"   💾 Checkpoint salvo: {len(transcriptions)} transcrições\n")
+            except Exception as e:
+                logger.warning(f"   ⚠️ Erro ao salvar checkpoint: {e}\n")
+        else:
+            logger.info("")  # Linha em branco
 
-    # Salvar transcrições
+    # Salvar transcrições FINAIS (garantir que última batch foi salva)
     transcriptions_file = processed_dir / "transcriptions.json"
     with open(transcriptions_file, "w", encoding="utf-8") as f:
         json.dump(transcriptions, f, indent=2, ensure_ascii=False)

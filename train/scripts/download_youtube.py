@@ -156,6 +156,15 @@ def download_audio(video_info: dict, output_dir: Path, config: dict, force: bool
                 logger.info(f"✅ {output_filename}.wav baixado com sucesso!")
                 logger.info(f"   Título: {title}")
                 logger.info(f"   Duração: {duration:.1f}s")
+                
+                # CLEANUP: Remover arquivos temporários (WebM, MP4, etc)
+                for temp_file in output_dir.glob(f"{output_filename}.*"):
+                    if temp_file.suffix.lower() not in ['.wav']:
+                        try:
+                            temp_file.unlink()
+                            logger.info(f"   🗑️  Removido temporário: {temp_file.name}")
+                        except Exception as e:
+                            logger.warning(f"   ⚠️ Não foi possível remover {temp_file.name}: {e}")
 
                 return True
 
