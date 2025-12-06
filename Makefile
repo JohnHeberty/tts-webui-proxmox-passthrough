@@ -103,3 +103,49 @@ r: rebuild ## Atalho para rebuild
 s: status  ## Atalho para status
 l: logs    ## Atalho para logs
 h: health  ## Atalho para health
+
+# ============================================================
+# Training Pipeline Commands (Sprint 5)
+# ============================================================
+
+train-setup:  ## Setup training environment (install dependencies)
+	@echo "$(GREEN)📦 Installing training dependencies...$(NC)"
+	pip install -r train/requirements-train-lock.txt
+	@echo "$(GREEN)✅ Training setup complete!$(NC)"
+
+train-health:  ## Run training environment health check
+	@echo "$(GREEN)🏥 Running health check...$(NC)"
+	@python3 train/scripts/health_check.py
+
+train-validate:  ## Validate all training modules
+	@echo "$(GREEN)🔍 Validating training modules...$(NC)"
+	@python3 -c "from train.audio import load_audio; print('✅ train.audio OK')"
+	@python3 -c "from train.text import TextNormalizer; print('✅ train.text OK')"
+	@python3 -c "from train.io import ensure_directory; print('✅ train.io OK')"
+	@python3 -c "from train.training import BestModelCallback; print('✅ train.training OK')"
+	@python3 -c "from train.utils.reproducibility import set_seed; print('✅ reproducibility OK')"
+	@python3 -c "from train.utils.experiment import save_experiment_metadata; print('✅ experiment OK')"
+	@echo "$(GREEN)✅ All modules validated!$(NC)"
+
+train-info:  ## Show training environment information
+	@echo "$(GREEN)📊 Training Environment Information$(NC)"
+	@echo "===================================="
+	@python3 train/utils/experiment.py
+
+train-prepare:  ## Prepare dataset for training
+	@echo "$(GREEN)🔧 Preparing dataset...$(NC)"
+	@python3 train/scripts/prepare_segments_optimized.py
+
+train-run:  ## Start training
+	@echo "$(GREEN)🚀 Starting training...$(NC)"
+	@python3 train/run_training.py
+
+train-test:  ## Test inference with trained model
+	@echo "$(GREEN)🧪 Testing inference...$(NC)"
+	@python3 train/test.py
+
+train-clean:  ## Clean training artifacts
+	@echo "$(GREEN)🧹 Cleaning training artifacts...$(NC)"
+	find train/ -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find train/ -type f -name "*.pyc" -delete
+	@echo "$(GREEN)✅ Clean complete$(NC)"
