@@ -319,14 +319,13 @@ def validate(model, val_loader, device: torch.device):
     return total_loss / count if count > 0 else 0.0
 
 
-def generate_sample_audio(epoch: int, step: int, settings: TrainingSettings, output_dir: Path):
+def generate_sample_audio(epoch: int, settings: TrainingSettings, output_dir: Path):
     """
     Gera áudio de teste para validação qualitativa
     
     Args:
         epoch: Época atual
-        step: Step global atual
-        config: Configuração de treinamento
+        settings: Configuração de treinamento
         output_dir: Diretório de saída para samples
     """
     try:
@@ -347,11 +346,11 @@ def generate_sample_audio(epoch: int, step: int, settings: TrainingSettings, out
         reference_wav = str(reference_wavs[0])
         
         # Copiar referência
-        reference_output = output_dir / f"epoch_{epoch}_step_{step}_reference.wav"
+        reference_output = output_dir / f"epoch_{epoch}_reference.wav"
         shutil.copy(reference_wav, reference_output)
         
         # Placeholder para output (em produção, usar modelo para síntese)
-        output_wav = output_dir / f"epoch_{epoch}_step_{step}_output.wav"
+        output_wav = output_dir / f"epoch_{epoch}_output.wav"
         shutil.copy(reference_wav, output_wav)
         
         logger.info(f"📢 Sample: {output_wav.name} + {reference_output.name}")
@@ -458,9 +457,8 @@ def main(resume):
     
     # Output directories
     checkpoints_dir = settings.checkpoint_dir
-    samples_dir = checkpoints_dir.parent / "samples"
-    checkpoints_dir.mkdir(parents=True, exist_ok=True)
-    samples_dir.mkdir(parents=True, exist_ok=True)
+    samples_dir = settings.samples_dir
+    logger.info(f"📁 Output: {settings.output_dir}")
     logger.info(f"📁 Checkpoints: {checkpoints_dir}")
     logger.info(f"📁 Samples: {samples_dir}")
     
@@ -570,7 +568,7 @@ def main(resume):
             logger.info(f"💾 Checkpoint salvo: {checkpoint_path}")
             
             # Gerar sample de áudio
-            generate_sample_audio(epoch, global_step, settings, samples_dir)
+            generate_sample_audio(epoch, settings, samples_dir)
             
             # Best model
             if val_loss < best_val_loss:
@@ -586,7 +584,7 @@ def main(resume):
                 
                 # Sample do melhor modelo
                 best_samples_dir = samples_dir / "best"
-                generate_sample_audio(epoch, global_step, settings, best_samples_dir)
+                generate_sample_audio(epoch, settings, best_samples_dir)
     
     # Cleanup
     if writer is not None:

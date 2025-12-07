@@ -4,7 +4,7 @@ Consolidates train_config.yaml into type-safe Python configuration
 """
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TrainingSettings(BaseModel):
@@ -54,16 +54,37 @@ class TrainingSettings(BaseModel):
     log_dir: Path = Field(default=Path("train/runs"), description="TensorBoard logs")
     
     # === Output ===
+    output_dir: Path = Field(
+        default=Path("train/output"),
+        description="Output directory"
+    )
     checkpoint_dir: Path = Field(
-        default=Path("train/checkpoints"),
+        default=Path("train/output/checkpoints"),
         description="Checkpoint directory"
     )
+    samples_dir: Path = Field(
+        default=Path("train/output/samples"),
+        description="Audio samples directory"
+    )
     
-    @field_validator("dataset_dir", "log_dir", "checkpoint_dir")
+    @model_validator(mode='after')
+    def create_all_directories(self):
+        """Create all directories after model initialization"""
+        # Create main directories
+        self.dataset_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create output subdirectories
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.samples_dir.mkdir(parents=True, exist_ok=True)
+        
+        return self
+    
+    @field_validator("dataset_dir", "log_dir")
     @classmethod
-    def create_directories(cls, v: Path) -> Path:
-        """Create directories if they don't exist"""
-        v.mkdir(parents=True, exist_ok=True)
+    def validate_paths(cls, v: Path) -> Path:
+        """Validate paths are Path objects"""
         return v
     
     @field_validator("sample_rate")
