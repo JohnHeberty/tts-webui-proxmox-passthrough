@@ -1,7 +1,24 @@
 # WebUI – Plano de Sprints COMPLETO (Baseado em Auditoria Profunda)
 
 **Baseado em:** `MORE_WEBUI_COMPLETE.md` (Relatório de Auditoria 2025-12-07 v2.0)  
-**Objetivo:** Transformar WebUI de estado quebrado para production-ready em 6-7 semanas
+**Objetivo:** Transformar WebUI de estado quebrado para production-ready em 6-7 semanas  
+**Atualizado:** 2025-12-07 (Sprint 1 Completo)
+
+---
+
+## ✅ SPRINT 1 - COMPLETO (2025-12-07)
+
+**Status:** 100% Completo  
+**Commits:** 5 (pushed to main)  
+**Documentação:** Ver `SPRINT_1_COMPLETE.md`
+
+**Tasks Completadas:**
+- ✅ Task 1.1: RVC Legacy Removal (313 linhas removidas)
+- ✅ Task 1.2: Settings Serialization Fix (10 instâncias corrigidas)
+- ✅ Task 1.3: fetchJson Timeout (60s default)
+- ✅ Task 1.4: Favicon 404 Fix
+
+**Impacto:** 10 erros de console eliminados, -8% código, WebUI estável
 
 ---
 
@@ -11,7 +28,7 @@
 
 **Problemas Críticos Encontrados:**
 
-- [ ] **Task 0.1:** Corrigir `this.api is not a function` (8 ocorrências)
+- [x] **Task 0.1:** Corrigir `this.api is not a function` (8 ocorrências) ✅ COMPLETO
   - **Arquivo:** `app/webui/assets/js/app.js`
   - **Linhas:** 2895, 2922, 2941, 2990, 3034, 3067, 3100, 3150
   - **Ação:** Substituir `this.api()` por `this.fetchJson()` em todas as 8 funções:
@@ -91,13 +108,49 @@
 
 ---
 
-## Sprint 1 – Correções Críticas de Infraestrutura (P0-P1)
-**Duração:** 1 semana  
-**Meta:** Estabilizar integrações e resolver débitos técnicos críticos
+## Sprint 1 – Correções Críticas de Infraestrutura ✅ COMPLETO
+**Duração:** 2 horas (2025-12-07)  
+**Meta:** Estabilizar integrações e resolver débitos técnicos críticos  
+**Status:** 100% Completo - Ver `SPRINT_1_COMPLETE.md`
 
-### Tasks:
+### Tasks Executadas:
 
-- [ ] **Task 1.1:** Decidir destino dos módulos ES6 não utilizados
+- [x] **Task 1.1:** Remover código legado RVC ✅
+  - Removido: Seção HTML (95 linhas) + Modal (18 linhas) + JS (200 linhas)
+  - Eliminado: 8 erros 404 de endpoints `/rvc-models/*`
+  - Commits: f94cf1f, 1176981
+
+- [x] **Task 1.2:** Corrigir Settings object serialization ✅
+  - Corrigido: 10 instâncias `settings['key']` → `settings.key`
+  - Endpoints funcionando: `/admin/stats`, `/health`, `/admin/cleanup`
+  - Commit: 607a9ff
+
+- [x] **Task 1.3:** Adicionar timeout em requests HTTP ✅
+  - Implementado: AbortController com 60s default
+  - Proteção: 100% das chamadas `fetchJson()`
+  - Commit: 2adc08c
+
+- [x] **Task 1.4:** Corrigir favicon 404 ✅
+  - Adicionado: `<link rel="icon" href="data:,">`
+  - Eliminado: 1 erro 404 de `/favicon.ico`
+  - Commit: 0a8081c
+
+**Critério de Sucesso Sprint 1:**
+✅ Código morto removido (RVC legacy eliminado)  
+✅ Requests longos não travam a UI (timeout implementado)  
+✅ Settings endpoint funcional (dict→attr fix)  
+✅ Console limpo (10 erros eliminados)
+
+---
+
+## Sprint 1 (ORIGINAL - Descontinuado)
+**NOTA:** O Sprint 1 original foi substituído pelo Sprint 1 executado acima.
+Tasks originais movidas para Sprint 2-3 conforme necessário.
+
+<details>
+<summary>Ver tasks originais do Sprint 1 (arquivado)</summary>
+
+- [ ] **Task 1.1 (ORIGINAL):** Decidir destino dos módulos ES6 não utilizados
   - **Arquivos:** `app/webui/assets/js/modules/training.js`, `modules/utils.js`
   - **Decisão necessária:** 
     - **Opção A:** Remover `modules/` (código morto) - **RECOMENDADO**
@@ -189,6 +242,8 @@
 ✅ Requests longos não travam a UI (timeout)  
 ✅ Checkpoints carregam corretamente do `/train`  
 ✅ Erros inesperados são capturados e mostrados ao usuário
+
+</details>
 
 ---
 
