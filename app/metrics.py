@@ -242,7 +242,7 @@ async def readiness():
     - Model loading status
     """
     import torch
-    from app.redis_store import redis_client
+    from app.main import job_store
     
     checks = {
         "gpu": torch.cuda.is_available(),
@@ -251,7 +251,7 @@ async def readiness():
     }
     
     try:
-        redis_client.ping()
+        job_store.redis.ping()
         checks["redis"] = True
     except Exception:
         pass
