@@ -247,97 +247,98 @@ Tasks originais movidas para Sprint 2-3 conforme necessário.
 
 ---
 
-## Sprint 2 – Training Integration
-**Duração:** 1 semana  
-**Meta:** Garantir que WebUI enxerga tudo em `/train` via volume Docker
+## Sprint 2 – Training Integration ✅ COMPLETO
+**Duração:** 2 horas (2025-12-07)  
+**Meta:** Garantir que WebUI enxerga tudo em `/train` via volume Docker  
+**Status:** 100% Completo
 
 **NOTA:** Melhorias de UX e Testes serão tratados em sprints dedicados (Sprint 4 e 5)
 
 ### Tasks:
 
-- [ ] **Task 2.1:** Validar volume Docker `/train`
-  - **Arquivo:** `docker-compose.yml`
-  - **Ação:**
-    ```yaml
-    services:
-      audio-voice-service:
-        volumes:
-          - ./train:/app/train  # ✅ Deve existir
-    ```
-  - **Validação:**
-    ```bash
-    docker exec -it audio-voice-api ls -lah /app/train/output/checkpoints/
-    # Deve listar os 3 checkpoints: best_model.pt, checkpoint_epoch_1.pt, checkpoint_epoch_2.pt
-    ```
-  - **Tempo estimado:** 30 min
-  - **Validação:** Container enxerga arquivos em `/train` sem copiá-los
+- [x] **Task 2.1:** Validar volume Docker `/train` ✅
+  - **Resultado:** Validado - 6 checkpoints encontrados (28GB total)
+  - **Commit:** Parte do Sprint 2 (13927f0)
 
-- [ ] **Task 2.2:** Melhorar lista de checkpoints na WebUI
-  - **Arquivo:** `app/webui/assets/js/app.js` linhas 2770-2830
-  - **Ação:** Adicionar métricas visuais aos checkpoints
-    ```javascript
-    checkpointList.innerHTML = checkpoints.map(cp => `
-        <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-                <strong>${cp.name}</strong>
-                <br>
-                <small class="text-muted">
-                    Epoch ${cp.epoch} • ${cp.date} • 
-                    <span class="badge bg-info">${cp.size_mb.toFixed(0)} MB</span>
-                </small>
-            </div>
-            <button class="btn btn-sm btn-primary" onclick="app.useCheckpoint('${cp.path}')">
-                <i class="bi bi-arrow-right-circle"></i> Usar
-            </button>
-        </div>
-    `).join('');
-    ```
-  - **Tempo estimado:** 1h
-  - **Validação:** Lista mostra tamanho e data de cada checkpoint
+- [x] **Task 2.2:** Melhorar lista de checkpoints na WebUI ✅
+  - **Resultado:** Já implementado - mostra epoch, data e tamanho
+  - **Validação:** Interface funcional, nenhuma mudança necessária
+  - **Commit:** Parte do Sprint 2 (13927f0)
 
-- [ ] **Task 2.3:** Implementar player de samples na WebUI
-  - **Arquivo:** `app/webui/assets/js/app.js` linhas 2838-2890
-  - **Já implementado?** Verificar se `loadTrainingSamples()` está funcionando
-  - **Ação:** Se não funcionar, corrigir lógica de listagem
-  - **Validação:** Card "Training Samples" mostra 2 áudios com player funcional
+- [x] **Task 2.3:** Implementar player de samples na WebUI ✅
+  - **Resultado:** Já implementado - 4 samples reproduzíveis
+  - **Validação:** Player funcional com controles HTML5
+  - **Commit:** Parte do Sprint 2 (13927f0)
 
-- [ ] **Task 2.4:** Adicionar endpoint para listar datasets
-  - **Arquivo backend:** `app/training_api.py`
-  - **Já existe:** `GET /training/datasets` (implementado recentemente)
-  - **Ação WebUI:** Adicionar dropdown de seleção de dataset na tela de Training
-    ```html
-    <div class="mb-3">
-        <label class="form-label">Dataset</label>
-        <select class="form-select" id="training-dataset" required>
-            <option value="">Carregando...</option>
-        </select>
-    </div>
-    ```
-  - **JS:**
-    ```javascript
-    async loadDatasets() {
-        const datasets = await this.fetchJson('/training/datasets');
-        const select = document.getElementById('training-dataset');
-        select.innerHTML = '<option value="">Selecione...</option>' +
-            datasets.datasets.map(ds => 
-                `<option value="${ds.path}">${ds.name} (${ds.files} arquivos)</option>`
-            ).join('');
-    }
-    ```
-  - **Tempo estimado:** 2h
-  - **Validação:** Dropdown mostra "MyTTSDataset (4922 arquivos)"
+- [x] **Task 2.4:** Substituir input hardcoded por dropdown dinâmico ✅
+  - **Arquivo:** `app/webui/index.html` linha 768, `app/webui/assets/js/app.js`
+  - **Resultado:** Dropdown populado via `/training/datasets` endpoint
+  - **Funcionalidade:** Mostra nome, arquivos e duração de cada dataset
+  - **Commit:** 13927f0
 
 **Critério de Sucesso Sprint 2:**
-✅ WebUI lista checkpoints de `/train/output/checkpoints/`  
-✅ WebUI mostra samples de `/train/output/samples/`  
-✅ WebUI permite selecionar dataset de `/train/data/`  
-✅ Volume Docker configurado corretamente (sem cópia de arquivos)
+✅ WebUI enxerga checkpoints via volume Docker (6 encontrados)  
+✅ Lista de checkpoints mostra métricas (tamanho, época, data)  
+✅ Player de samples funcional (4 samples reproduzíveis)  
+✅ Datasets selecionáveis via dropdown (elimina erros de digitação)
 
 ---
 
-## Sprint 3 – Observabilidade e UX de Treinamento
-**Duração:** 1 semana  
-**Meta:** Dar visibilidade do progresso de treinamento em tempo real
+## Sprint 3 – Observability & Monitoring ✅ COMPLETO
+**Duração:** 2 horas (2025-12-07)  
+**Meta:** Dashboards em tempo real para status e progresso de treinamento  
+**Status:** 100% Completo
+
+### Tasks:
+
+- [x] **Task 3.1:** Enhanced training status dashboard ✅
+  - **Arquivo:** `app/webui/index.html` linhas 813-825
+  - **Resultado:** Card dinâmico com color-coded headers
+    - idle = secondary (cinza)
+    - training = primary (azul)
+    - completed = success (verde)
+    - failed = danger (vermelho)
+  - **Commit:** cb9ead0
+
+- [x] **Task 3.2:** Real-time status polling mechanism ✅
+  - **Arquivo:** `app/webui/assets/js/app.js`
+  - **Resultado:** Polling a cada 5 segundos via `/training/status`
+  - **Funcionalidades:**
+    - Animated progress bar durante training
+    - Badges com epoch/loss/progress
+    - TensorBoard link button quando ativo
+    - Auto-reload de checkpoints/samples ao completar
+  - **Commit:** cb9ead0
+
+- [x] **Task 3.3:** Training logs display ✅
+  - **Resultado:** Já implementado anteriormente
+  - **Localização:** Card "Training Logs" com terminal-style viewer
+  - **Validação:** Logs atualizados via polling
+  - **Commit:** cb9ead0
+
+- [x] **Task 3.4:** Operation feedback improvements ✅
+  - **Arquivo:** `app/webui/assets/js/app.js` - `startTraining()` e `stopTraining()`
+  - **Resultado:**
+    - Loading spinners nos botões Start/Stop
+    - Disabled states durante operações
+    - Enhanced toast messages com detalhes de erro
+    - Restauração de estado em caso de erro
+  - **Commit:** cb9ead0
+
+**Critério de Sucesso Sprint 3:**
+✅ Dashboard mostra status em tempo real (estado, epoch, loss, progress)  
+✅ Link direto para TensorBoard quando treinamento ativo  
+✅ Logs de treinamento visíveis e atualizados em tempo real  
+✅ Feedback claro em todas as operações (spinners e mensagens)
+
+---
+
+## Sprint 3 – Observabilidade e UX de Treinamento (DESCONTINUADO)
+**NOTA:** Esta seção foi substituída pelo Sprint 3 executado acima.
+Tasks originais foram implementadas ou movidas para outros sprints.
+
+<details>
+<summary>Ver tasks originais (descontinuadas)</summary>
 
 ### Tasks:
 
@@ -471,23 +472,164 @@ Tasks originais movidas para Sprint 2-3 conforme necessário.
 ✅ Logs de treinamento visíveis na UI  
 ✅ Feedback claro em todas as operações (loading states)
 
+</details>
+
 ---
 
 ## Sprint 4 – Melhorias de UX (User Experience) 🎨
 **Duração:** 1 semana  
-**Meta:** Melhorar feedback visual e experiência do usuário
+**Meta:** Melhorar feedback visual e experiência do usuário em todas as operações
 
 **NOTA:** Sprint focado exclusivamente em UX, conforme solicitado pelo usuário.
 
 ### Tasks:
 
 - [ ] **Task 4.1:** Adicionar spinners em todas operações longas
-- [ ] **Task 4.2:** Melhorar mensagens de erro (user-friendly)
-- [ ] **Task 4.3:** Adicionar progress bars (uploads/downloads)
-- [ ] **Task 4.4:** Toasts informativos (não só erros)
-- [ ] **Task 4.5:** Validação de formulários com feedback inline
+  - **Arquivos afetados:**
+    - `app/webui/assets/js/app.js` - todas as funções async
+    - `app/webui/index.html` - adicionar estrutura de spinner aos botões
+  - **Operações a melhorar:**
+    - `synthesize()` ✅ - já tem spinner (Sprint 0)
+    - `uploadAudio()` - adicionar spinner durante upload
+    - `downloadYouTube()` - spinner + progress bar
+    - `segmentAudio()` - spinner durante processamento
+    - `transcribeAudio()` - spinner + tempo estimado
+    - `createVoiceProfile()` - spinner + "Criando perfil..."
+  - **Padrão de implementação:**
+    ```javascript
+    // HTML
+    <button class="btn btn-primary">
+        <span class="btn-icon"><i class="bi bi-play"></i></span>
+        <span class="btn-text">Processar</span>
+        <span class="spinner-border spinner-border-sm btn-spinner d-none"></span>
+    </button>
+    
+    // JavaScript
+    async myOperation() {
+        const btn = document.getElementById('my-btn');
+        const icon = btn.querySelector('.btn-icon');
+        const text = btn.querySelector('.btn-text');
+        const spinner = btn.querySelector('.btn-spinner');
+        
+        btn.disabled = true;
+        icon.classList.add('d-none');
+        spinner.classList.remove('d-none');
+        text.textContent = 'Processando...';
+        
+        try {
+            await this.doWork();
+            this.showToast('Sucesso!', 'success');
+        } catch (error) {
+            this.showToast('Erro: ' + error.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            icon.classList.remove('d-none');
+            spinner.classList.add('d-none');
+            text.textContent = 'Processar';
+        }
+    }
+    ```
+  - **Tempo estimado:** 3h
+  - **Validação:** Todos os botões mostram spinner durante operação
 
-**Ver SPRINTS_WEBUI_DETALHADO.md para implementação completa**
+- [ ] **Task 4.2:** Melhorar mensagens de erro (user-friendly)
+  - **Ação:** Traduzir e humanizar mensagens de erro do backend
+  - **Exemplo de mapeamento:**
+    ```javascript
+    const ERROR_MESSAGES = {
+        'Connection refused': 'Não foi possível conectar ao servidor. Verifique se está rodando.',
+        'timeout': 'A operação demorou muito. Tente novamente.',
+        '404': 'Recurso não encontrado',
+        '500': 'Erro interno do servidor. Consulte os logs.',
+        'Network error': 'Sem conexão com a internet',
+    };
+    
+    formatError(error) {
+        for (const [key, msg] of Object.entries(ERROR_MESSAGES)) {
+            if (error.message.includes(key)) return msg;
+        }
+        return error.message; // fallback
+    }
+    ```
+  - **Tempo estimado:** 2h
+  - **Validação:** Erros mostram mensagens compreensíveis para usuários
+
+- [ ] **Task 4.3:** Adicionar progress bars (uploads/downloads)
+  - **Operações:** Upload de áudio, download do YouTube
+  - **Implementação:**
+    ```html
+    <div class="progress mt-2" id="upload-progress" style="display:none;">
+        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+             role="progressbar" style="width: 0%"></div>
+    </div>
+    ```
+    ```javascript
+    async uploadAudio(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const percent = (e.loaded / e.total) * 100;
+                this.updateProgress('upload-progress', percent);
+            }
+        };
+        // ... resto da implementação
+    }
+    ```
+  - **Tempo estimado:** 4h
+  - **Validação:** Barra de progresso funcional em uploads
+
+- [ ] **Task 4.4:** Toasts informativos (não só erros)
+  - **Ação:** Adicionar toasts de sucesso para operações importantes
+  - **Operações a adicionar toast:**
+    - Áudio sintetizado com sucesso
+    - Checkpoint carregado
+    - Perfil de voz criado
+    - Dataset validado
+    - Configuração salva
+  - **Exemplo:**
+    ```javascript
+    this.showToast('✅ Checkpoint carregado com sucesso', 'success');
+    this.showToast('ℹ️ Processando... Aguarde', 'info');
+    this.showToast('⚠️ VRAM baixa detectada', 'warning');
+    ```
+  - **Tempo estimado:** 1h
+  - **Validação:** Usuário recebe feedback positivo das ações
+
+- [ ] **Task 4.5:** Validação de formulários com feedback inline
+  - **Ação:** Adicionar validação client-side antes de enviar ao backend
+  - **Campos a validar:**
+    - Training: Dataset obrigatório, epochs > 0
+    - Voice Clone: Mínimo 3 áudios
+    - Synthesis: Texto não vazio
+  - **Implementação:**
+    ```html
+    <input type="number" class="form-control" id="training-epochs" required min="1">
+    <div class="invalid-feedback">
+        Número de épocas deve ser maior que zero
+    </div>
+    ```
+    ```javascript
+    validateForm(formId) {
+        const form = document.getElementById(formId);
+        if (!form.checkValidity()) {
+            form.classList.add('was-validated');
+            return false;
+        }
+        return true;
+    }
+    ```
+  - **Tempo estimado:** 2h
+  - **Validação:** Formulários mostram erros antes de submeter
+
+**Critério de Sucesso Sprint 4:**
+✅ Todas operações assíncronas têm spinner  
+✅ Mensagens de erro são compreensíveis  
+✅ Progress bars funcionam em uploads/downloads  
+✅ Toasts mostram sucesso e não só erros  
+✅ Validação inline previne erros de input
 
 ---
 
