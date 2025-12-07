@@ -466,12 +466,23 @@ const app = {
 
     // ==================== API HELPERS ====================
     async fetchJson(url, options = {}) {
+        /**
+         * Sprint 1 Task 1.3: Add timeout support to prevent hanging requests
+         * 
+         * Default timeout: 60 seconds (configurable per request)
+         * Uses AbortController to cancel requests that exceed timeout
+         */
+        const timeout = options.timeout || 60000; // 60s default
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
         try {
             const response = await fetch(url, {
                 ...options,
                 headers: {
                     ...options.headers,
                 },
+                signal: controller.signal
             });
 
             if (!response.ok) {
@@ -510,8 +521,16 @@ const app = {
 
             return await response.json();
         } catch (error) {
+            // Distinguish between timeout and other errors
+            if (error.name === 'AbortError') {
+                console.error(`❌ Request timeout after ${timeout}ms: ${url}`);
+                throw new Error(`Request timeout (${timeout / 1000}s)`);
+            }
             console.error('❌ Fetch error:', error);
             throw error;
+        } finally {
+            // Always clear the timeout to prevent memory leaks
+            clearTimeout(timeoutId);
         }
     },
 
