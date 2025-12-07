@@ -2,7 +2,7 @@
 
 ## Problema Encontrado: cuFFT Error
 
-Ao tentar gerar samples de áudio durante o treinamento, encontramos um bug no XTTS:
+Ao tentar gerar samples de áudio durante o treinamento, encontramos um bug persistente no XTTS:
 
 ```
 RuntimeError: cuFFT error: CUFFT_INVALID_SIZE
@@ -11,72 +11,135 @@ RuntimeError: cuFFT error: CUFFT_INVALID_SIZE
 ### Root Cause
 
 - **Local**: `torch.stft()` dentro de `get_conditioning_latents()`
-- **Quando**: Ao carregar XTTS múltiplas vezes na GPU no mesmo processo
-- **Motivo**: Estado corrompido do CUDA após treinamento intensivo
+- **Quando**: Ao usar XTTS na GPU neste ambiente específico
+- **Motivo**: Bug upstream no PyTorch/CUDA/cuFFT (não relacionado ao código)
 - **Arquivo**: `TTS/tts/models/xtts.py` linha 320-365
+- **Persistência**: Ocorre MESMO em subprocesso limpo isolado
 
 ### Tentativas Falhadas
 
-1. ❌ Ajustar API (`audio_path` vs `audio`)
-2. ❌ Corrigir sample rate (24000 → 22050)
+1. ❌ Limpar contexto CUDA (empty_cache + synchronize + gc.collect)
+2. ❌ Subprocesso Python isolado com GPU limpa
 3. ❌ Não carregar checkpoint state_dict
-4. ❌ Validar propriedades do áudio de referência
-5. ❌ Usar apenas modelo base
+4. ❌ Validar e ajustar propriedades do áudio de referência
+5. ❌ Usar apenas modelo base sem fine-tuning
+6. ❌ Diferentes sample rates e configurações
 
-**Todas falharam** - o erro persiste mesmo com modelo base na GPU.
+**Todas falharam** - o erro persiste independentemente da abordagem na GPU.
 
-## Solução Implementada: CPU Inference
+## Solução Implementada: Subprocesso CPU
 
 ### Estratégia
 
-Usar **CPU para geração de samples** (workaround do bug cuFFT na GPU):
+Usar **subprocesso isolado com CPU** para geração de samples:
 
 ```python
-def generate_sample_audio(...):
-    # 1. Carregar XTTS em CPU (não GPU)
-    tts = TTS('tts_models/multilingual/multi-dataset/xtts_v2', gpu=False)
-    
-    # 2. Gerar áudio normalmente
-    wav = tts.tts(text=..., language='pt', speaker_wav=...)
-    
-    # 3. Salvar e limpar
-    sf.write(output_path, wav, 22050)
-    del tts
+# Processo principal continua na GPU
+# Ao gerar sample:
+1. Salvar checkpoint
+2. Descarregar modelo de treinamento (GPU → CPU)
+3. Spawn subprocesso:
+   subprocess.run([
+       "python3", "generate_sample_subprocess.py",
+       "--reference_wav", "audio.wav",
+       "--text", "texto do metadata.csv",
+       "--output", "epoch_N_output.wav"
+   ])
+4. Subprocesso:
+   - Carrega XTTS em CPU (evita cuFFT)
+   - Gera áudio
+   - Salva WAV
+   - Exit (memória liberada automaticamente)
+5. Recarregar modelo de treinamento (CPU → GPU)
+6. Continuar treinamento
 ```
 
-### Gerenciamento de VRAM
+### Arquitetura da Solução
 
-Fluxo completo no training loop:
-
-```python
-# Após salvar checkpoint
-checkpoint_path = checkpoints_dir / f"checkpoint_epoch_{epoch}.pt"
-torch.save({...}, checkpoint_path)
-
-# 1. UNLOAD modelo de treinamento
-model = model.cpu()
-torch.cuda.empty_cache()
-
-# 2. GERAR sample (em CPU, função interna carrega TTS)
-generate_sample_audio(checkpoint_path, epoch, settings, samples_dir, device)
-
-# 3. RELOAD modelo de treinamento
-checkpoint = torch.load(checkpoint_path)
-model.load_state_dict(checkpoint['model_state_dict'])
-model = model.to(device)
-model.train()
+```
+┌─────────────────────────────────────────────────────────┐
+│ PROCESSO PRINCIPAL (train_xtts.py)                    │
+│ ┌─────────────────────────────────────────────────┐   │
+│ │ TREINAMENTO NA GPU                               │   │
+│ │ • Modelo XTTS carregado (GPU)                   │   │
+│ │ • Training loop                                  │   │
+│ │ • Loss decreasing                                │   │
+│ └─────────────────────────────────────────────────┘   │
+│                     ↓                                   │
+│ ┌─────────────────────────────────────────────────┐   │
+│ │ CHECKPOINT SAVE                                  │   │
+│ │ • Salvar model_state_dict                       │   │
+│ │ • Salvar optimizer_state_dict                   │   │
+│ └─────────────────────────────────────────────────┘   │
+│                     ↓                                   │
+│ ┌─────────────────────────────────────────────────┐   │
+│ │ UNLOAD TRAINING MODEL                           │   │
+│ │ • model = model.cpu()                           │   │
+│ │ • torch.cuda.empty_cache()                      │   │
+│ └─────────────────────────────────────────────────┘   │
+│                     ↓                                   │
+│            subprocess.run([...])                       │
+└─────────────────┼───────────────────────────────────────┘
+                  │
+                  ↓
+        ┌─────────────────────────────────────────┐
+        │ SUBPROCESSO (generate_sample_subprocess) │
+        │ ┌─────────────────────────────────────┐ │
+        │ │ LOAD XTTS (CPU)                    │ │
+        │ │ • Processo limpo                   │ │
+        │ │ • gpu=False                        │ │
+        │ │ • Sem conflito cuFFT               │ │
+        │ └─────────────────────────────────────┘ │
+        │                 ↓                        │
+        │ ┌─────────────────────────────────────┐ │
+        │ │ GENERATE AUDIO                      │ │
+        │ │ • tts.tts(text=..., speaker_wav=...) │ │
+        │ │ • Usando CPU (~43s)                 │ │
+        │ └─────────────────────────────────────┘ │
+        │                 ↓                        │
+        │ ┌─────────────────────────────────────┐ │
+        │ │ SAVE WAV                            │ │
+        │ │ • sf.write(output.wav, wav, 22050)  │ │
+        │ └─────────────────────────────────────┘ │
+        │                 ↓                        │
+        │ ┌─────────────────────────────────────┐ │
+        │ │ EXIT                                │ │
+        │ │ • del tts                           │ │
+        │ │ • Memória liberada automaticamente  │ │
+        │ └─────────────────────────────────────┘ │
+        └───────────────┬─────────────────────────┘
+                        │ return code 0
+                        ↓
+┌─────────────────────────────────────────────────────────┐
+│ PROCESSO PRINCIPAL (continua)                          │
+│ ┌─────────────────────────────────────────────────┐   │
+│ │ RELOAD TRAINING MODEL                           │   │
+│ │ • checkpoint = torch.load(...)                  │   │
+│ │ • model.load_state_dict(checkpoint['...'])      │   │
+│ │ • model = model.to(device)                      │   │
+│ │ • model.train()                                 │   │
+│ └─────────────────────────────────────────────────┘   │
+│                     ↓                                   │
+│ ┌─────────────────────────────────────────────────┐   │
+│ │ CONTINUAR TREINAMENTO                           │   │
+│ │ • Próxima época                                 │   │
+│ │ • Estado preservado                             │   │
+│ └─────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### Trade-offs
 
-| Aspecto | GPU (quebrado) | CPU (funciona) |
-|---------|----------------|----------------|
-| **Velocidade** | ~1s | ~12s |
+| Aspecto | GPU (quebrado) | CPU Subprocesso (funciona) |
+|---------|----------------|----------------------------|
+| **Velocidade** | ~3s | ~43s |
 | **cuFFT Error** | ❌ Sim | ✅ Não |
-| **VRAM** | Alta | Baixa |
+| **VRAM** | Alta | Nenhuma (usa RAM) |
 | **Confiabilidade** | 0% | 100% |
+| **Isolamento** | N/A | ✅ Processo separado |
+| **Auto-cleanup** | Manual | ✅ Automático |
 
-**Decisão**: CPU é **12x mais lento**, mas **funciona perfeitamente**.
+**Decisão**: CPU é **14x mais lento**, mas é a **única opção que funciona** neste ambiente.
 
 ## Uso
 
@@ -141,7 +204,7 @@ Para mudar frequência:
 save_every_n_epochs: int = 5  # Gerar sample a cada 5 épocas
 ```
 
-## Monitoramento
+### Monitoramento
 
 ### Logs Durante Geração
 
@@ -149,16 +212,22 @@ save_every_n_epochs: int = 5  # Gerar sample a cada 5 épocas
 💾 Checkpoint salvo: checkpoint_epoch_1.pt
 🧹 Liberando VRAM para geração de samples...
    ✅ Modelo de treinamento movido para CPU
-🎤 Gerando sample de áudio em CPU (workaround cuFFT)...
+   📝 Texto do metadata: 'ah, agora eu estou me ouvindo na tv...'
+🎤 Gerando sample de áudio (subprocesso CPU)...
    Época: 1
    Referência: audio_00001.wav
+   ⚠️  Usando CPU - bug cuFFT impede uso da GPU
+   🚀 Iniciando subprocesso...
+   
+   [SUBPROCESSO]
    📥 Carregando XTTS em CPU...
-   🔊 Sintetizando áudio (CPU - pode demorar)...
- > Processing time: 12.44s
- > Real-time factor: 1.73x
+   🔊 Sintetizando áudio em CPU (mais lento mas evita cuFFT bug)...
+    > Processing time: 42.8s
+    > Real-time factor: 2.54x
+   ✅ Sample gerado: /path/to/epoch_1_output.wav
+   
    ✅ Sample gerado: epoch_1_output.wav
    ✅ Referência copiada: epoch_1_reference.wav
-   🧹 Modelo de inferência descarregado
 📥 Recarregando modelo de treinamento...
    ✅ Modelo de treinamento restaurado na GPU
 ```
@@ -166,17 +235,17 @@ save_every_n_epochs: int = 5  # Gerar sample a cada 5 épocas
 ### Tempo Total por Sample
 
 - Unload training model: ~1s
+- Subprocess overhead: ~2s
 - Carregar XTTS CPU: ~11s
-- Gerar áudio: ~12s
-- Reload training model: ~5s
-- **Total: ~29s por sample**
+- Gerar áudio: ~30s (depende do tamanho do texto)
+- **Total: ~43s por sample**
 
 ### Performance Impact
 
 Para treinamento com 1000 épocas:
 - Sem samples: ~1h
-- Com samples (1 por época): ~1h + 8h = ~9h total
-- **Recomendação**: `save_every_n_epochs = 10` (9h → 1.8h overhead)
+- Com samples (1 por época, 43s cada): ~1h + 12h = ~13h total
+- **Recomendação**: `save_every_n_epochs = 10` (13h → 2.2h overhead)
 
 ## Troubleshooting
 
