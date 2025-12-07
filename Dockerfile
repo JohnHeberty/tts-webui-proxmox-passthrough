@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg libsndfile1 build-essential pkg-config \
     libavformat-dev libavcodec-dev libavdevice-dev \
     libavutil-dev libavfilter-dev libswscale-dev libswresample-dev \
-    git curl \
+    git curl su-exec \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -66,6 +66,10 @@ RUN apt-get purge -y --auto-remove \
 COPY app/ ./app/
 COPY run.py .
 COPY scripts/ ./scripts/
+COPY docker-entrypoint.sh /usr/local/bin/
+
+# Make entrypoint executable
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Criar speaker default (será recriado pelo entrypoint se volume sobrescrever)
 RUN python scripts/create_default_speaker.py
@@ -82,11 +86,12 @@ RUN mkdir -p /app/uploads /app/processed /app/temp /app/logs \
  && chmod -R 755 /app \
  && chmod -R 777 /app/uploads /app/processed /app/temp /app/logs /app/voice_profiles /app/models
 
-USER appuser
+# Note: Will run as root first in entrypoint to fix volume permissions, then switch to appuser
 
 EXPOSE 8005
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
   CMD curl -f http://localhost:8005/ || exit 1
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["python", "run.py"]
