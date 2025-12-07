@@ -15,6 +15,7 @@ redis==5.0.1
 # torch e torchaudio são instalados no Dockerfile com versão específica cu118
 numpy>=1.26.0,<1.27.0
 soundfile==0.12.1
+noisereduce==3.0.2  # Audio denoising for high_quality profile
 
 # === XTTS (Coqui TTS - PRIMARY TTS ENGINE) ===
 coqui-tts>=0.27.0

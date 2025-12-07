@@ -17,6 +17,14 @@ from ..exceptions import TTSEngineException
 
 logger = get_logger(__name__)
 
+# Lazy import for noisereduce (optional dependency)
+try:
+    import noisereduce as nr
+    DENOISE_AVAILABLE = True
+except ImportError:
+    DENOISE_AVAILABLE = False
+    logger.warning("noisereduce not installed - denoise disabled")
+
 
 class XTTSService:
     """
@@ -184,10 +192,9 @@ class XTTSService:
             audio_array = np.array(wav, dtype=np.float32)
             sample_rate = 24000  # XTTS sempre usa 24kHz
             
-            # Denoise se high_quality (placeholder - implementar futuramente)
+            # Denoise se high_quality
             if params.get("denoise", False):
-                logger.debug("Denoise requested (not implemented yet)")
-                # TODO: Implementar com noisereduce
+                audio_array = self._apply_denoise(audio_array, sample_rate)
             
             duration = len(audio_array) / sample_rate
             logger.info(f"✅ Synthesis complete: {duration:.2f}s audio generated")
@@ -230,6 +237,36 @@ class XTTSService:
             profile = "balanced"
         
         return self.quality_profiles[profile]
+    
+    def _apply_denoise(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        """
+        Aplica noise reduction usando spectral gating.
+        Só usado em quality_profile='high_quality'.
+        
+        Args:
+            audio: Audio array
+            sample_rate: Sample rate (24kHz)
+        
+        Returns:
+            Denoised audio array
+        """
+        if not DENOISE_AVAILABLE:
+            logger.warning("Denoise requested but noisereduce not installed")
+            return audio
+        
+        try:
+            logger.debug("Applying denoise (spectral gating)")
+            denoised = nr.reduce_noise(
+                y=audio,
+                sr=sample_rate,
+                stationary=True,
+                prop_decrease=1.0
+            )
+            logger.debug("✅ Denoise applied successfully")
+            return denoised
+        except Exception as e:
+            logger.warning(f"Denoise failed: {e}, returning original audio")
+            return audio
     
     def get_supported_languages(self) -> list:
         """Retorna lista de linguagens suportadas pelo XTTS"""
