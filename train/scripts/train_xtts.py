@@ -26,6 +26,8 @@ import subprocess
 import sys
 import time
 from typing import Optional
+import gc
+import psutil
 
 import click
 import torch
@@ -64,6 +66,81 @@ def setup_device(settings: TrainingSettings) -> torch.device:
         logger.info("⚠️  Using CPU (training will be slow)")
     
     return device
+
+
+def log_resource_usage(epoch: int, device: torch.device):
+    """Sprint 6 Task 6.4: Log RAM and VRAM usage"""
+    try:
+        ram_used = psutil.virtual_memory().used / 1024**3
+        ram_total = psutil.virtual_memory().total / 1024**3
+        ram_percent = psutil.virtual_memory().percent
+        
+        logger.info(f"📊 Epoch {epoch} Resource Usage:")
+        logger.info(f"   💾 RAM: {ram_used:.2f}GB / {ram_total:.2f}GB ({ram_percent:.1f}%)")
+        
+        if device.type == 'cuda':
+            vram_allocated = torch.cuda.memory_allocated(device) / 1024**3
+            vram_reserved = torch.cuda.memory_reserved(device) / 1024**3
+            vram_total = torch.cuda.get_device_properties(device).total_memory / 1024**3
+            logger.info(f"   🎮 VRAM Allocated: {vram_allocated:.2f}GB / {vram_total:.2f}GB")
+            logger.info(f"   🎮 VRAM Reserved: {vram_reserved:.2f}GB / {vram_total:.2f}GB")
+    except Exception as e:
+        logger.warning(f"⚠️  Could not log resource usage: {e}")
+
+
+class SampleGenerationCircuitBreaker:
+    """Sprint 6 Task 6.3: Circuit breaker to prevent training crashes from sample failures"""
+    
+    def __init__(self, max_failures: int = 3):
+        self.max_failures = max_failures
+        self.consecutive_failures = 0
+        self.disabled = False
+        self.total_attempts = 0
+        self.total_successes = 0
+    
+    def execute(self, func, *args, **kwargs):
+        """Execute function with circuit breaker protection"""
+        if self.disabled:
+            logger.warning("⚠️  Sample generation DISABLED (circuit breaker tripped)")
+            logger.warning(f"   Consecutive failures: {self.consecutive_failures}/{self.max_failures}")
+            logger.warning("   Training will continue without samples")
+            return None
+        
+        self.total_attempts += 1
+        
+        try:
+            result = func(*args, **kwargs)
+            
+            if result is not None:
+                # Success - reset failure counter
+                self.consecutive_failures = 0
+                self.total_successes += 1
+                logger.info(f"✅ Sample generation successful ({self.total_successes}/{self.total_attempts} total)")
+                return result
+            else:
+                # Failed but didn't crash
+                self._handle_failure("Sample generation returned None")
+                return None
+                
+        except Exception as e:
+            self._handle_failure(f"Sample generation crashed: {e}")
+            return None
+    
+    def _handle_failure(self, reason: str):
+        """Handle sample generation failure"""
+        self.consecutive_failures += 1
+        logger.error(f"❌ Sample generation failed ({self.consecutive_failures}/{self.max_failures})")
+        logger.error(f"   Reason: {reason}")
+        
+        if self.consecutive_failures >= self.max_failures:
+            self.disabled = True
+            logger.error("🚫 CIRCUIT BREAKER TRIPPED - Sample generation disabled")
+            logger.error(f"   Failed {self.consecutive_failures} consecutive times")
+            logger.error("   Training will continue without audio samples")
+            logger.error("   This prevents RAM exhaustion from repeated failures")
+        else:
+            remaining = self.max_failures - self.consecutive_failures
+            logger.warning(f"   Will retry. {remaining} attempts remaining before circuit breaker trips")
 
 
 def load_pretrained_model(settings: TrainingSettings, device: torch.device):
@@ -555,31 +632,66 @@ def generate_sample_audio(
         ]
         
         logger.info(f"   🚀 Iniciando subprocesso CPU...")
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120  # 2 minutos timeout
-        )
         
-        if result.returncode == 0 and "SUCCESS" in result.stdout:
-            logger.info(f"   ✅ Sample gerado em CPU: {output_wav_path.name}")
+        # Sprint 6 Task 6.1: Use Popen for better process control
+        process = None
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
             
-            # Copiar referência também
-            reference_output = output_dir / f"epoch_{epoch}_reference.wav"
-            shutil.copy2(reference_wav_path, reference_output)
-            logger.info(f"   ✅ Referência copiada: {reference_output.name}")
+            # Wait with timeout
+            stdout, stderr = process.communicate(timeout=120)
             
-            return output_wav_path
-        else:
-            logger.error(f"   ❌ Subprocesso falhou:")
-            logger.error(f"   stdout: {result.stdout}")
-            logger.error(f"   stderr: {result.stderr}")
+            if process.returncode == 0 and "SUCCESS" in stdout:
+                logger.info(f"   ✅ Sample gerado em CPU: {output_wav_path.name}")
+                
+                # Copiar referência também
+                reference_output = output_dir / f"epoch_{epoch}_reference.wav"
+                shutil.copy2(reference_wav_path, reference_output)
+                logger.info(f"   ✅ Referência copiada: {reference_output.name}")
+                
+                return output_wav_path
+            else:
+                logger.error(f"   ❌ Subprocesso falhou (returncode={process.returncode}):")
+                logger.error(f"   stdout: {stdout}")
+                logger.error(f"   stderr: {stderr}")
+                return None
+                
+        except subprocess.TimeoutExpired:
+            logger.error(f"   ❌ Timeout ao gerar sample (>120s) - terminando processo...")
+            
+            # Sprint 6 Task 6.1: Properly terminate the subprocess
+            if process and process.poll() is None:
+                logger.info(f"   🔪 Terminando subprocesso (PID: {process.pid})...")
+                process.terminate()
+                
+                try:
+                    process.wait(timeout=5)
+                    logger.info(f"   ✅ Subprocesso terminado gracefully")
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"   ⚠️  Subprocesso não terminou, forçando kill...")
+                    process.kill()
+                    process.wait()
+                    logger.info(f"   ✅ Subprocesso killed")
+            
+            # Force cleanup
+            gc.collect()
+            
             return None
-        
-    except subprocess.TimeoutExpired:
-        logger.error(f"   ❌ Timeout ao gerar sample (>120s)")
-        return None
+        finally:
+            # Sprint 6 Task 6.1: Ensure process is cleaned up
+            if process and process.poll() is None:
+                logger.warning(f"   ⚠️  Processo ainda vivo no finally, terminando...")
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except:
+                    process.kill()
+                    process.wait()
     except Exception as e:
         logger.error(f"   ❌ Erro ao gerar áudio: {e}")
         import traceback
@@ -798,6 +910,10 @@ def main(resume):
     # Mixed precision training
     scaler = torch.amp.GradScaler() if settings.use_amp else None
     
+    # Sprint 6 Task 6.3: Initialize circuit breaker for sample generation
+    sample_circuit_breaker = SampleGenerationCircuitBreaker(max_failures=3)
+    logger.info("🛡️  Circuit breaker initialized (max 3 consecutive failures)\n")
+    
     # Output directories
     checkpoints_dir = settings.checkpoint_dir
     samples_dir = settings.samples_dir
@@ -993,6 +1109,9 @@ def main(resume):
         
         # Salvar checkpoint a cada N épocas
         if epoch % save_every_n_epochs == 0:
+            # Sprint 6 Task 6.4: Log resources before checkpoint save
+            log_resource_usage(epoch, device)
+            
             checkpoint_path = checkpoints_dir / f"checkpoint_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
@@ -1013,10 +1132,20 @@ def main(resume):
             model = model.cpu()
             if device.type == 'cuda':
                 torch.cuda.empty_cache()
+            gc.collect()  # Sprint 6 Task 6.1: Force garbage collection
             logger.info(f"   ✅ Modelo de treinamento movido para CPU")
             
             # PASSO 2: Gerar sample (função carrega TTS separado)
-            generate_sample_audio(checkpoint_path, epoch, settings, samples_dir, device)
+            # Sprint 6 Task 6.3: Use circuit breaker to protect against repeated failures
+            sample_success = sample_circuit_breaker.execute(
+                generate_sample_audio,
+                checkpoint_path, epoch, settings, samples_dir, device
+            )
+            
+            # Sprint 6 Task 6.1: Force cleanup after sample generation
+            gc.collect()
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
             
             # PASSO 3: Recarregar modelo de treinamento na VRAM
             logger.info(f"📥 Recarregando modelo de treinamento...")
@@ -1024,7 +1153,11 @@ def main(resume):
             model.load_state_dict(checkpoint['model_state_dict'])
             model = model.to(device)
             model.train()
-            logger.info(f"   ✅ Modelo de treinamento restaurado na GPU\n")
+            logger.info(f"   ✅ Modelo de treinamento restaurado na GPU")
+            
+            # Sprint 6 Task 6.4: Log resources after reload
+            log_resource_usage(epoch, device)
+            logger.info("")  # Blank line
             # ============================================================
             
             # Best model
@@ -1053,6 +1186,12 @@ def main(resume):
                 model.load_state_dict(checkpoint['model_state_dict'])
                 model = model.to(device)
                 model.train()
+                
+                # Sprint 6 Task 6.1: Force cleanup
+                gc.collect()
+                if device.type == 'cuda':
+                    torch.cuda.empty_cache()
+                    
                 logger.info(f"   ✅ Modelo restaurado\n")
     
     # Cleanup
