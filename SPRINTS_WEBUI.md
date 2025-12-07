@@ -641,13 +641,201 @@ Tasks originais foram implementadas ou movidas para outros sprints.
 
 ### Tasks:
 
-- [ ] **Task 5.1:** Configurar Jest (testes unitários)
-- [ ] **Task 5.2:** Testes unitários (70%+ coverage)
-- [ ] **Task 5.3:** Configurar Playwright (E2E)
-- [ ] **Task 5.4:** Testes E2E críticos (training, synthesis)
-- [ ] **Task 5.5:** CI/CD com testes automáticos
+- [ ] **Task 5.1:** Configurar Jest para testes unitários JavaScript
+  - **Arquivos:**
+    - `package.json` (adicionar dependências)
+    - `jest.config.js` (configuração)
+    - `.gitignore` (node_modules, coverage)
+  - **Ação:**
+    ```bash
+    cd app/webui
+    npm init -y
+    npm install --save-dev jest @testing-library/dom @testing-library/jest-dom
+    ```
+  - **jest.config.js:**
+    ```javascript
+    module.exports = {
+      testEnvironment: 'jsdom',
+      collectCoverageFrom: [
+        'assets/js/**/*.js',
+        '!assets/js/vendor/**'
+      ],
+      coverageThreshold: {
+        global: {
+          branches: 70,
+          functions: 70,
+          lines: 70,
+          statements: 70
+        }
+      }
+    };
+    ```
+  - **Tempo estimado:** 2h
+  - **Validação:** `npm test` executa sem erros
 
-**Ver SPRINTS_WEBUI_DETALHADO.md para implementação completa**
+- [ ] **Task 5.2:** Escrever testes unitários (70%+ coverage)
+  - **Arquivos de teste:**
+    - `app/webui/tests/app.test.js`
+    - `app/webui/tests/api.test.js`
+    - `app/webui/tests/utils.test.js`
+  - **Casos de teste críticos:**
+    ```javascript
+    // tests/app.test.js
+    describe('App Object', () => {
+      test('formatError traduz erros corretamente', () => {
+        expect(app.formatError({message: 'Connection refused'}))
+          .toBe('Não foi possível conectar ao servidor...');
+      });
+      
+      test('showToast adiciona classes corretas', () => {
+        app.showToast('Test', 'Message', 'success');
+        const toast = document.getElementById('toast');
+        expect(toast.classList.contains('bg-success')).toBe(true);
+      });
+      
+      test('validateForm retorna false para campos vazios', () => {
+        // Mock form validation
+      });
+    });
+    
+    // tests/api.test.js
+    describe('API Client', () => {
+      test('fetchJson adiciona timeout', async () => {
+        // Mock fetch with timeout
+      });
+      
+      test('fetchJson lança erro em 404', async () => {
+        // Mock 404 response
+      });
+    });
+    ```
+  - **Tempo estimado:** 8h
+  - **Validação:** `npm run test:coverage` mostra >70%
+
+- [ ] **Task 5.3:** Configurar Playwright para testes E2E
+  - **Ação:**
+    ```bash
+    npm init playwright@latest
+    ```
+  - **playwright.config.js:**
+    ```javascript
+    module.exports = {
+      testDir: './e2e',
+      timeout: 30000,
+      use: {
+        baseURL: 'http://localhost:8005',
+        screenshot: 'only-on-failure',
+        video: 'retain-on-failure'
+      },
+      projects: [
+        { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+      ],
+    };
+    ```
+  - **Tempo estimado:** 2h
+  - **Validação:** `npx playwright test --list` mostra testes
+
+- [ ] **Task 5.4:** Escrever testes E2E críticos
+  - **Arquivos:**
+    - `app/webui/e2e/training.spec.js`
+    - `app/webui/e2e/synthesis.spec.js`
+    - `app/webui/e2e/jobs.spec.js`
+  - **Casos de teste:**
+    ```javascript
+    // e2e/training.spec.js
+    test('deve carregar página de training', async ({ page }) => {
+      await page.goto('/');
+      await page.click('text=Training');
+      await expect(page.locator('#training-dataset')).toBeVisible();
+    });
+    
+    test('deve validar formulário de training', async ({ page }) => {
+      await page.goto('/');
+      await page.click('text=Training');
+      await page.click('#btn-start-training');
+      // Deve mostrar mensagem de validação
+      await expect(page.locator('.invalid-feedback')).toBeVisible();
+    });
+    
+    test('deve carregar checkpoints', async ({ page }) => {
+      await page.goto('/');
+      await page.click('text=Training');
+      // Aguardar requisição
+      await page.waitForResponse(resp => 
+        resp.url().includes('/training/checkpoints') && resp.status() === 200
+      );
+      await expect(page.locator('#checkpoint-list')).not.toBeEmpty();
+    });
+    
+    // e2e/synthesis.spec.js
+    test('deve criar job de síntese', async ({ page }) => {
+      await page.goto('/');
+      await page.fill('#job-text', 'Teste de síntese');
+      await page.selectOption('#job-source-language', 'pt');
+      await page.click('#btn-create-job');
+      await expect(page.locator('.toast')).toContainText('Job criado');
+    });
+    ```
+  - **Tempo estimado:** 6h
+  - **Validação:** Todos os testes E2E passam
+
+- [ ] **Task 5.5:** Adicionar CI/CD com GitHub Actions
+  - **Arquivo:** `.github/workflows/test.yml`
+  - **Ação:**
+    ```yaml
+    name: Tests
+    
+    on: [push, pull_request]
+    
+    jobs:
+      unit-tests:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v3
+          - uses: actions/setup-node@v3
+            with:
+              node-version: '18'
+          - name: Install dependencies
+            working-directory: app/webui
+            run: npm ci
+          - name: Run unit tests
+            working-directory: app/webui
+            run: npm test -- --coverage
+          - name: Upload coverage
+            uses: codecov/codecov-action@v3
+            
+      e2e-tests:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v3
+          - uses: actions/setup-node@v3
+          - name: Install Playwright
+            working-directory: app/webui
+            run: npx playwright install --with-deps
+          - name: Start server
+            run: docker-compose up -d
+          - name: Wait for server
+            run: npx wait-on http://localhost:8005
+          - name: Run E2E tests
+            working-directory: app/webui
+            run: npx playwright test
+          - name: Upload test results
+            if: always()
+            uses: actions/upload-artifact@v3
+            with:
+              name: playwright-report
+              path: app/webui/playwright-report/
+    ```
+  - **Tempo estimado:** 3h
+  - **Validação:** CI passa em cada push
+
+**Critério de Sucesso Sprint 5:**
+✅ Jest configurado e rodando  
+✅ Testes unitários com >70% coverage  
+✅ Playwright configurado  
+✅ Testes E2E cobrem fluxos críticos  
+✅ CI/CD automático no GitHub Actions  
+✅ Badge de coverage no README
 
 ---
 
