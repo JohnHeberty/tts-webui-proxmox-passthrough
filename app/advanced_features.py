@@ -18,7 +18,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, validator
 import jwt
 
-from app.config import settings
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
