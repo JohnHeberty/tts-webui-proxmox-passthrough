@@ -247,9 +247,11 @@ Tasks originais movidas para Sprint 2-3 conforme necessário.
 
 ---
 
-## Sprint 2 – Checkpoints, Samples e Integração com /train
+## Sprint 2 – Training Integration
 **Duração:** 1 semana  
 **Meta:** Garantir que WebUI enxerga tudo em `/train` via volume Docker
+
+**NOTA:** Melhorias de UX e Testes serão tratados em sprints dedicados (Sprint 4 e 5)
 
 ### Tasks:
 
@@ -471,9 +473,45 @@ Tasks originais movidas para Sprint 2-3 conforme necessário.
 
 ---
 
-## Sprint 4 – Refatoração Estrutural da WebUI
+## Sprint 4 – Melhorias de UX (User Experience) 🎨
+**Duração:** 1 semana  
+**Meta:** Melhorar feedback visual e experiência do usuário
+
+**NOTA:** Sprint focado exclusivamente em UX, conforme solicitado pelo usuário.
+
+### Tasks:
+
+- [ ] **Task 4.1:** Adicionar spinners em todas operações longas
+- [ ] **Task 4.2:** Melhorar mensagens de erro (user-friendly)
+- [ ] **Task 4.3:** Adicionar progress bars (uploads/downloads)
+- [ ] **Task 4.4:** Toasts informativos (não só erros)
+- [ ] **Task 4.5:** Validação de formulários com feedback inline
+
+**Ver SPRINTS_WEBUI_DETALHADO.md para implementação completa**
+
+---
+
+## Sprint 5 – Testes Automatizados 🧪
+**Duração:** 1 semana  
+**Meta:** Garantir qualidade com testes automatizados
+
+**NOTA:** Sprint focado exclusivamente em testes, conforme solicitado pelo usuário.
+
+### Tasks:
+
+- [ ] **Task 5.1:** Configurar Jest (testes unitários)
+- [ ] **Task 5.2:** Testes unitários (70%+ coverage)
+- [ ] **Task 5.3:** Configurar Playwright (E2E)
+- [ ] **Task 5.4:** Testes E2E críticos (training, synthesis)
+- [ ] **Task 5.5:** CI/CD com testes automáticos
+
+**Ver SPRINTS_WEBUI_DETALHADO.md para implementação completa**
+
+---
+
+## Sprint 6 – Refatoração Arquitetural (Clean Code)
 **Duração:** 2 semanas  
-**Meta:** Melhorar manutenibilidade e testabilidade do código
+**Meta:** Modularizar código e eliminar débito técnico
 
 ### Tasks:
 
