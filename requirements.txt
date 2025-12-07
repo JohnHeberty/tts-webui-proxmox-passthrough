@@ -19,11 +19,6 @@ soundfile==0.12.1
 # === XTTS (Coqui TTS - PRIMARY TTS ENGINE) ===
 coqui-tts>=0.27.0
 
-# === RVC HELPERS (sem tts-with-rvc aqui!) ===
-faiss-cpu>=1.7.4
-praat-parselmouth==0.4.3
-resampy>=0.4.2
-
 # === UTILITIES ===
 httpx==0.27.0
 

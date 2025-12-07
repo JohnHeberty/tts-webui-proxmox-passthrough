@@ -69,40 +69,6 @@ class ServiceException(VoiceServiceException):
     pass
 
 
-# === RVC EXCEPTIONS (Sprint 3) ===
-
-class RvcException(VoiceServiceException):
-    """Exceção base para RVC"""
-    def __init__(self, message: str, status_code: int = 500):
-        super().__init__(f"RVC error: {message}", status_code=status_code)
-
-
-class RvcConversionException(RvcException):
-    """Exceção durante conversão RVC"""
-    def __init__(self, message: str):
-        super().__init__(f"Conversion failed: {message}", status_code=500)
-
-
-class RvcModelException(RvcException):
-    """Exceção relacionada a modelos RVC"""
-    def __init__(self, message: str):
-        super().__init__(f"Model error: {message}", status_code=400)
-
-
-class RvcDeviceException(RvcException):
-    """Exceção relacionada a device (GPU/CPU)"""
-    def __init__(self, message: str):
-        super().__init__(f"Device error: {message}", status_code=500)
-
-
-class RvcModelNotFoundException(RvcModelException):
-    """Modelo RVC não encontrado"""
-    def __init__(self, model_id: str):
-        message = f"Model not found: {model_id}"
-        super().__init__(message)
-        self.status_code = 404
-
-
 async def exception_handler(request: Request, exc: VoiceServiceException):
     """Handler global de exceções para FastAPI"""
     logger.error(f"Exception handling request {request.url}: {exc.message}")

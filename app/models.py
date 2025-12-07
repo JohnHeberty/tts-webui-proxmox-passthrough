@@ -45,16 +45,6 @@ class TTSEngine(str, Enum):
     F5TTS = "f5tts"
 
 
-class RvcF0Method(str, Enum):
-    """Métodos de extração F0 para RVC"""
-    RMVPE = "rmvpe"
-    FCPE = "fcpe"
-    PM = "pm"
-    HARVEST = "harvest"
-    DIO = "dio"
-    CREPE = "crepe"
-
-
 class JobDownloadRequest(BaseModel):
     """Request model para download de job com timeout opcional"""
     format: str = Field(
@@ -418,87 +408,6 @@ class JobListResponse(BaseModel):
     """Response para listagem de jobs"""
     total: int
     jobs: List[Job]
-
-
-class RvcModelResponse(BaseModel):
-    """Response para operações de RVC models (Sprint 7 API)"""
-    id: str = Field(..., description="Unique model ID (MD5 hash)")
-    name: str = Field(..., description="Model name")
-    description: Optional[str] = Field(None, description="Model description")
-    pth_file: str = Field(..., description="Path to .pth file")
-    index_file: Optional[str] = Field(None, description="Path to .index file (optional)")
-    created_at: str = Field(..., description="Creation timestamp (ISO format)")
-    file_size_mb: float = Field(..., description="Total size in MB")
-
-
-class RvcModelListResponse(BaseModel):
-    """Response para listagem de RVC models (Sprint 7 API)"""
-    total: int = Field(..., description="Total number of models")
-    models: List[RvcModelResponse] = Field(..., description="List of RVC models")
-
-
-# === RVC MODELS (Sprint 3) ===
-
-class RvcModel(BaseModel):
-    """
-    Modelo RVC para voice conversion
-    """
-    model_id: str = Field(..., description="ID único do modelo")
-    name: str = Field(..., min_length=1, max_length=100, description="Nome do modelo")
-    pth_path: str = Field(..., description="Caminho para arquivo .pth")
-    index_path: Optional[str] = Field(None, description="Caminho para arquivo .index (opcional)")
-    sample_rate: int = Field(24000, description="Sample rate do modelo (Hz)")
-    version: str = Field("v2", description="Versão do RVC (v1/v2)")
-    description: Optional[str] = Field(None, max_length=500, description="Descrição do modelo")
-    created_at: datetime = Field(default_factory=datetime.now)
-    
-    @classmethod
-    def create_new(
-        cls,
-        name: str,
-        model_path: str,
-        index_path: Optional[str] = None,
-        description: Optional[str] = None
-    ) -> 'RvcModel':
-        """Factory para criar novo modelo RVC"""
-        model_id = hashlib.md5(f"{name}_{model_path}".encode()).hexdigest()[:16]
-        return cls(
-            model_id=model_id,
-            name=name,
-            pth_path=model_path,
-            index_path=index_path,
-            description=description
-        )
-
-
-class RvcParameters(BaseModel):
-    """
-    Parâmetros para conversão RVC
-    """
-    pitch: int = Field(
-        0,
-        ge=-12,
-        le=12,
-        description="Pitch shift em semitons (-12 a +12)"
-    )
-    index_rate: float = Field(
-        0.5,
-        ge=0.0,
-        le=1.0,
-        description="Taxa de influência do index (0.0 a 1.0)"
-    )
-    protect: float = Field(
-        0.33,
-        ge=0.0,
-        le=0.5,
-        description="Proteção de consoantes/respiração (0.0 a 0.5)"
-    )
-    rms_mix_rate: float = Field(
-        0.25,
-        ge=0.0,
-        le=1.0,
-        description="Mix rate do volume envelope (0.0 a 1.0)"
-    )
     filter_radius: int = Field(
         3,
         ge=0,

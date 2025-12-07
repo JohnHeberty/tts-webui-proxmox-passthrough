@@ -89,19 +89,6 @@ gpu_utilization_percent = Gauge(
     ['gpu_id']
 )
 
-# RVC metrics
-rvc_conversion_total = Counter(
-    'rvc_conversion_total',
-    'Total RVC conversions',
-    ['model_id']
-)
-
-rvc_conversion_duration_seconds = Histogram(
-    'rvc_conversion_duration_seconds',
-    'RVC conversion duration in seconds',
-    buckets=[1, 2, 5, 10, 20, 30, 60]
-)
-
 # Cache metrics
 cache_hits_total = Counter(
     'cache_hits_total',
@@ -149,12 +136,6 @@ def track_audio_generation(duration: float, file_size: int):
     """Track audio generation"""
     audio_generation_duration_seconds.observe(duration)
     audio_file_size_bytes.observe(file_size)
-
-
-def track_rvc_conversion(model_id: str, duration: float):
-    """Track RVC conversion"""
-    rvc_conversion_total.labels(model_id=model_id).inc()
-    rvc_conversion_duration_seconds.observe(duration)
 
 
 def track_cache_access(cache_type: str, hit: bool):
