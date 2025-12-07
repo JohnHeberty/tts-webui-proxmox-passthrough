@@ -85,6 +85,10 @@ class XTTSService:
             logger.warning("XTTS already initialized, skipping")
             return
         
+        # Accept Coqui TTS ToS programmatically
+        import os
+        os.environ['COQUI_TOS_AGREED'] = '1'
+        
         logger.info(f"🚀 Loading XTTS-v2 model: {self.model_name}")
         logger.info(f"   Device: {self.device}")
         
