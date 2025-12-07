@@ -100,34 +100,32 @@ class VoiceProcessor:
             job.tts_engine_requested = "xtts"
             job.tts_engine_used = "xtts"
             job.engine_fallback = False
-                    
-            except Exception as e:
-                logger.error(f"Failed to load engine {engine_type_requested}: {e}", exc_info=True)
-                job.engine_fallback = True
-                job.fallback_reason = str(e)
-                raise
             
             job.status = JobStatus.PROCESSING
             job.progress = 10.0
             if self.job_store:
                 self.job_store.update_job(job)
             
-            # Gera áudio dublado com perfil de qualidade usando engine selecionado
-            # Retry automático já aplicado via decorator em TTSEngine.generate_dubbing
-            audio_bytes, duration = await engine.generate_dubbing(
+            # Gera áudio usando XTTSService
+            from io import BytesIO
+            audio_bytes = await self.xtts_service.synthesize_async(
                 text=job.text,
                 language=job.source_language or job.target_language or 'en',
-                voice_profile=voice_profile,
-                quality_profile=job.quality_profile,
-                speed=1.0
+                speaker_wav=voice_profile.profile_path if voice_profile else None,
+                quality_profile_id=job.quality_profile
             )
+            
+            # Calculate duration from audio
+            import soundfile as sf
+            audio_data, sample_rate = sf.read(BytesIO(audio_bytes))
+            duration = len(audio_data) / sample_rate
             
             job.progress = 80.0
             if self.job_store:
                 self.job_store.update_job(job)
             
             # Salva áudio
-            processed_dir = Path(self.settings['processed_dir'])
+            processed_dir = Path(self.settings.processed_dir)
             processed_dir.mkdir(exist_ok=True, parents=True)
             
             output_path = processed_dir / f"{job.id}.wav"
@@ -161,7 +159,7 @@ class VoiceProcessor:
     
     async def process_clone_job(self, job: Job) -> VoiceProfile:
         """
-        Processa job de clonagem de voz
+        Processa job de clonagem de voz usando XTTS service.
         
         Returns:
             VoiceProfile criado
@@ -170,87 +168,23 @@ class VoiceProcessor:
         start_time = datetime.datetime.now()
         
         try:
-            # Determina qual engine usar
-            engine_type_requested = job.tts_engine or self.settings.get('tts_engine_default', 'xtts')
+            # v2.0: Sempre usa XTTS
+            job.tts_engine_requested = "xtts"
+            job.tts_engine_used = "xtts"
+            job.engine_fallback = False
             
-            # === SPRINT-02: Track requested engine ===
-            job.tts_engine_requested = engine_type_requested
-            
-            # 🎬 Logging estruturado inicial
             logger.info(
-                "🎬 Starting voice clone processing",
+                f"🎬 Starting voice clone: {job.voice_name}",
                 extra={
                     "job_id": job.id,
-                    "engine_requested": engine_type_requested,
                     "voice_name": job.voice_name,
-                    "language": job.source_language,
-                    "has_ref_text": job.ref_text is not None
+                    "language": job.source_language
                 }
             )
             
-            # Garante que engine esteja carregado (lazy load)
-            try:
-                engine = self._get_engine(engine_type_requested)
-                
-                # === SPRINT-02: Track actual engine used ===
-                job.tts_engine_used = engine.engine_name
-                job.engine_fallback = (job.tts_engine_requested != job.tts_engine_used)
-                
-                if job.engine_fallback:
-                    job.fallback_reason = f"Failed to load {job.tts_engine_requested}, using {job.tts_engine_used}"
-                    logger.warning(
-                        f"⚠️  Engine fallback occurred: {job.tts_engine_requested} → {job.tts_engine_used}",
-                        extra={
-                            "job_id": job.id,
-                            "requested": job.tts_engine_requested,
-                            "used": job.tts_engine_used,
-                            "fallback": True
-                        }
-                    )
-                    
-                    # === SPRINT-03: Map quality profile for fallback ===
-                    if job.quality_profile:
-                        original_profile = job.quality_profile
-                        mapped_profile = map_quality_profile_for_fallback(
-                            profile_id=original_profile,
-                            requested_engine=job.tts_engine_requested,
-                            actual_engine=job.tts_engine_used
-                        )
-                        
-                        if mapped_profile and mapped_profile != original_profile:
-                            job.quality_profile = mapped_profile
-                            job.quality_profile_mapped = True
-                            logger.info(
-                                f"📊 Quality profile adapted for fallback: {original_profile} → {mapped_profile}"
-                            )
-                        elif not mapped_profile:
-                            # No mapping found, clear profile to use engine default
-                            job.quality_profile = None
-                            job.quality_profile_mapped = True
-                            logger.warning(
-                                f"⚠️  Quality profile '{original_profile}' incompatible with {job.tts_engine_used}, using engine default"
-                            )
-                else:
-                    logger.debug(f"✅ Using requested engine: {job.tts_engine_used}")
-                    
-            except Exception as e:
-                logger.error(f"Failed to load engine {engine_type_requested}: {e}", exc_info=True)
-                job.engine_fallback = True
-                job.fallback_reason = str(e)
-                raise
-            
             # Validação
-            logger.debug("  - input_file: %s", job.input_file)
-            logger.debug("  - voice_name: %s", job.voice_name)
-            logger.debug("  - language: %s", job.source_language)
-            logger.debug("  - ref_text: %s", job.ref_text or '(auto-transcribe)')
-            
             if not job.input_file:
-                error_msg = (
-                    f"Job {job.id} is missing input_file. "
-                    f"This should have been set during upload. "
-                    f"Job data: {job.model_dump()}"
-                )
+                error_msg = f"Job {job.id} missing input_file"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
             
@@ -259,16 +193,12 @@ class VoiceProcessor:
             if self.job_store:
                 self.job_store.update_job(job)
             
-            logger.info("Processing voice clone job %s: %s", job.id, job.voice_name)
-            
-            # Clona voz usando engine selecionado
-            # Note: ref_text é usado por F5-TTS (auto-transcribed if None), ignorado por XTTS
-            voice_profile = await engine.clone_voice(
+            # Cria VoiceProfile usando XTTSService
+            voice_profile = await self.xtts_service.create_voice_profile(
                 audio_path=job.input_file,
-                language=job.source_language or 'en',
                 voice_name=job.voice_name,
-                description=job.voice_description,
-                ref_text=job.ref_text  # F5-TTS: auto-transcribe if None, XTTS: ignored
+                language=job.source_language or 'en',
+                description=job.voice_description
             )
             
             job.progress = 90.0

@@ -1,5 +1,6 @@
 """
 Tarefas Celery para processamento assíncrono
+v2.0: Integrado com XTTSService (SOLID architecture)
 """
 import asyncio
 import logging
@@ -9,6 +10,7 @@ from .models import Job, VoiceProfile
 from .processor import VoiceProcessor
 from .redis_store import RedisJobStore
 from .settings import get_settings
+from .services.xtts_service import XTTSService
 
 logger = logging.getLogger(__name__)
 
@@ -18,20 +20,32 @@ job_store = RedisJobStore(redis_url=settings.redis_url)
 
 # LAZY LOADING: Processor será criado sob demanda
 _processor = None
+_xtts_service = None
+
+
+def get_xtts_service() -> XTTSService:
+    """Lazy load XTTS service for workers"""
+    global _xtts_service
+    if _xtts_service is None:
+        logger.info("🔧 Initializing XTTS service for worker...")
+        _xtts_service = XTTSService(
+            model_name=settings.xtts_model_name,
+            device=settings.xtts_device,
+            models_dir=settings.models_dir
+        )
+        _xtts_service.load_model()
+    return _xtts_service
 
 
 def get_processor() -> VoiceProcessor:
     """
-    Retorna instância do VoiceProcessor (LAZY LOADING)
-    Lazy loading: modelo XTTS só é carregado quando task é executada,
-    não no import do módulo (economiza memória em workers idle)
+    Retorna instância do VoiceProcessor com XTTS service injetado.
     """
     global _processor
     if _processor is None:
-        logger.info("🔧 Initializing VoiceProcessor (lazy load)...")
-        # Worker CARREGA modelo XTTS (lazy_load=False)
-        # Diferente da API que usa lazy_load=True
-        _processor = VoiceProcessor(lazy_load=False)
+        logger.info("🔧 Initializing VoiceProcessor (with XTTSService)...")
+        xtts_service = get_xtts_service()
+        _processor = VoiceProcessor(xtts_service=xtts_service)
         _processor.job_store = job_store
     return _processor
 
