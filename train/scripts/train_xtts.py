@@ -22,7 +22,9 @@ Dependências:
 import logging
 import os
 from pathlib import Path
+import subprocess
 import sys
+import time
 from typing import Optional
 
 import click
@@ -590,14 +592,59 @@ def main(resume):
     logger.info(f"📁 Checkpoints: {checkpoints_dir}")
     logger.info(f"📁 Samples: {samples_dir}")
     
-    # TensorBoard
+    # TensorBoard - Auto-start
+    tensorboard_process = None
     writer = None
     if settings.use_tensorboard:
         log_dir = settings.log_dir
         writer = SummaryWriter(log_dir)
-        logger.info(f"📊 TensorBoard: {log_dir}")
-        logger.info(f"   Visualizar: http://localhost:6006")
-        logger.info(f"   Comando: tensorboard --logdir={log_dir}")
+        
+        # Verificar se TensorBoard já está rodando
+        try:
+            ps_output = subprocess.run(
+                ["ps", "aux"], 
+                capture_output=True, 
+                text=True, 
+                check=True
+            )
+            tensorboard_running = "tensorboard" in ps_output.stdout and str(log_dir) in ps_output.stdout
+        except Exception:
+            tensorboard_running = False
+        
+        if not tensorboard_running:
+            # Iniciar TensorBoard em background
+            try:
+                tensorboard_cmd = [
+                    "tensorboard",
+                    f"--logdir={log_dir}",
+                    "--port=6006",
+                    "--bind_all",
+                    "--reload_interval=5"
+                ]
+                tensorboard_process = subprocess.Popen(
+                    tensorboard_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True  # Desacoplar do processo pai
+                )
+                time.sleep(2)  # Aguardar TensorBoard inicializar
+                
+                logger.info(f"📊 TensorBoard iniciado automaticamente (PID: {tensorboard_process.pid})")
+                logger.info(f"   Log dir: {log_dir}")
+                logger.info(f"   Visualizar: http://localhost:6006")
+                logger.info(f"   O servidor continuará rodando após o treinamento terminar")
+            except FileNotFoundError:
+                logger.warning("⚠️  TensorBoard não encontrado! Instale: pip install tensorboard")
+                logger.info(f"📊 TensorBoard logs em: {log_dir}")
+                logger.info(f"   Iniciar manualmente: tensorboard --logdir={log_dir} --port=6006")
+            except Exception as e:
+                logger.warning(f"⚠️  Erro ao iniciar TensorBoard: {e}")
+                logger.info(f"📊 TensorBoard logs em: {log_dir}")
+                logger.info(f"   Iniciar manualmente: tensorboard --logdir={log_dir} --port=6006")
+        else:
+            logger.info(f"📊 TensorBoard já está rodando")
+            logger.info(f"   Log dir: {log_dir}")
+            logger.info(f"   Visualizar: http://localhost:6006")
     
     # Training configuration
     num_epochs = settings.num_epochs
@@ -729,6 +776,8 @@ def main(resume):
     # Cleanup
     if writer is not None:
         writer.close()
+        logger.info("\n📊 TensorBoard writer fechado")
+        logger.info("   Servidor TensorBoard continua rodando em http://localhost:6006")
     
     logger.info("\n" + "="*80)
     logger.info("✅ TREINAMENTO COMPLETO!")
@@ -738,6 +787,10 @@ def main(resume):
     logger.info(f"Best Val Loss: {best_val_loss:.4f}")
     logger.info(f"Checkpoints: {checkpoints_dir}")
     logger.info(f"Samples: {samples_dir}")
+    
+    if settings.use_tensorboard:
+        logger.info(f"\n📊 TensorBoard disponível em: http://localhost:6006")
+        logger.info(f"   Para parar: pkill -f 'tensorboard.*{settings.log_dir}'")
 
 
 if __name__ == "__main__":
