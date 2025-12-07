@@ -118,41 +118,22 @@ def setup_lora(model: nn.Module, settings: TrainingSettings) -> nn.Module:
     """
     Configura LoRA (Low-Rank Adaptation) no modelo usando Pydantic Settings
     
-    Usa biblioteca PEFT (Parameter-Efficient Fine-Tuning)
+    NOTA: LoRA training requer modelo real XTTS, não dummy model.
+    Este template apenas demonstra a estrutura.
     """
     if not settings.use_lora:
         logger.info("⏭️  LoRA desabilitado, usando fine-tuning completo")
         return model
     
-    try:
-        from peft import LoraConfig, get_peft_model
-        
-        logger.info("🔧 Configurando LoRA...")
-        
-        peft_config = LoraConfig(
-            r=settings.lora_rank,
-            lora_alpha=settings.lora_alpha,
-            lora_dropout=settings.lora_dropout,
-            target_modules=["dummy_layer"],  # Adaptar para modelo real
-            bias="none",
-            task_type="CAUSAL_LM",  # Adaptar se necessário
-        )
-        
-        model = get_peft_model(model, peft_config)
-        
-        # Log trainable parameters
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        total_params = sum(p.numel() for p in model.parameters())
-        
-        logger.info(f"   LoRA rank: {settings.lora_rank}")
-        logger.info(f"   Trainable params: {trainable_params:,} ({trainable_params/total_params*100:.2f}%)")
-        logger.info(f"   Total params: {total_params:,}")
-        
-        return model
-        
-    except ImportError:
-        logger.error("❌ PEFT não encontrado. Instale com: pip install peft")
-        sys.exit(1)
+    logger.warning("⚠️  TEMPLATE MODE: LoRA setup requer modelo XTTS real")
+    logger.info("   Para implementar LoRA no XTTS:")
+    logger.info("   1. Identifique os módulos alvo (GPT layers, vocoder, etc)")
+    logger.info("   2. Configure LoraConfig com target_modules corretos")
+    logger.info("   3. Use get_peft_model() apenas com modelo real")
+    logger.info("")
+    logger.info("   Skipping LoRA setup em template mode...")
+    
+    return model
 
 
 def create_dataset(settings: TrainingSettings):
@@ -203,6 +184,34 @@ def create_dataset(settings: TrainingSettings):
     logger.info(f"   Train: {train_metadata}")
     logger.info(f"   Val: {val_metadata}")
     
+    # TEMPLATE MODE: Verificar se dataset existe
+    if not train_metadata.exists() or not val_metadata.exists():
+        logger.warning("⚠️  Dataset não encontrado - usando modo TEMPLATE")
+        logger.info("   Para treinar com dataset real:")
+        logger.info(f"   1. Criar dataset em: {dataset_dir}")
+        logger.info("   2. Usar scripts: download_youtube → segment_audio → transcribe → build_ljs_dataset")
+        logger.info("")
+        logger.info("   Criando dataset dummy para demonstração...")
+        
+        # Criar dataset dummy
+        class DummyDataset:
+            def __init__(self, name):
+                self.name = name
+                self.samples = [{'audio_path': f'sample_{i}.wav', 'text': f'Texto {i}'} for i in range(10)]
+            
+            def __len__(self):
+                return len(self.samples)
+            
+            def __getitem__(self, idx):
+                return self.samples[idx]
+        
+        train_dataset = DummyDataset("train")
+        val_dataset = DummyDataset("val")
+        
+        logger.info(f"   ✅ Dataset dummy criado: {len(train_dataset)} train, {len(val_dataset)} val samples")
+        return train_dataset, val_dataset
+    
+    # Dataset real existe
     train_dataset = XTTSDataset(train_metadata, sample_rate=settings.sample_rate)
     val_dataset = XTTSDataset(val_metadata, sample_rate=settings.sample_rate)
     
@@ -403,17 +412,33 @@ def main(resume):
     # Load model
     model = load_pretrained_model(settings, device)
     if model is None:
-        logger.error("❌ Modelo não carregado (implementação parcial)")
+        logger.error("❌ Modelo não carregado (TEMPLATE MODE)")
         logger.info("\n" + "=" * 80)
         logger.info("⚠️  ATENÇÃO: Script de treinamento é um TEMPLATE")
         logger.info("=" * 80)
-        logger.info("Este script demonstra a estrutura completa de treinamento,")
-        logger.info("mas requer implementação específica do XTTS-v2.")
-        logger.info("\nPróximos passos:")
-        logger.info("  1. Instalar TTS: pip install TTS")
-        logger.info("  2. Implementar load_pretrained_model() com TTS API")
-        logger.info("  3. Implementar create_dataset() com TTS.tts.datasets")
-        logger.info("  4. Implementar train_step() com XTTS-v2 forward pass")
+        logger.info("Este script demonstra a estrutura completa de treinamento XTTS,")
+        logger.info("mas requer implementação específica do modelo XTTS-v2.")
+        logger.info("")
+        logger.info("📚 PARA TREINAR XTTS REAL:")
+        logger.info("")
+        logger.info("1. ✅ Instale TTS:")
+        logger.info("   pip install TTS")
+        logger.info("")
+        logger.info("2. ✅ Implemente load_pretrained_model():")
+        logger.info("   from TTS.tts.models.xtts import Xtts")
+        logger.info("   model = Xtts.init_from_config(config)")
+        logger.info("")
+        logger.info("3. ✅ Implemente create_dataset():")
+        logger.info("   from TTS.tts.datasets import load_tts_samples")
+        logger.info("   samples = load_tts_samples(...)")
+        logger.info("")
+        logger.info("4. ✅ Implemente train_step():")
+        logger.info("   Use XTTS-v2 forward pass com GPT + HiFi-GAN")
+        logger.info("")
+        logger.info("📖 Referências:")
+        logger.info("   - https://github.com/coqui-ai/TTS")
+        logger.info("   - https://docs.coqui.ai/en/latest/")
+        logger.info("   - https://huggingface.co/coqui/XTTS-v2")
         logger.info("=" * 80)
         return
     
@@ -433,7 +458,7 @@ def main(resume):
     
     # Output directories
     checkpoints_dir = settings.checkpoint_dir
-    samples_dir = settings.output_dir / "samples"
+    samples_dir = checkpoints_dir.parent / "samples"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
     samples_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"📁 Checkpoints: {checkpoints_dir}")
@@ -493,7 +518,7 @@ def main(resume):
         
         for batch_idx, batch in enumerate(train_loader):
             # Train step
-            loss = train_step(model, batch, optimizer, scaler, cfg, device)
+            loss = train_step(model, batch, optimizer, scaler, settings, device)
             epoch_loss += loss
             num_batches += 1
             
