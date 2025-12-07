@@ -17,8 +17,7 @@ import subprocess
 from .models import (
     Job, JobStatus, JobMode, TTSJobMode, VoiceProfile, QualityProfile, VoicePreset,
     DubbingRequest, VoiceCloneRequest,
-    VoiceListResponse, JobListResponse, RvcModelResponse, RvcModelListResponse,
-    RvcF0Method,  # TTSEngine já vem de quality_profiles
+    VoiceListResponse, JobListResponse,
     JobDownloadRequest
 )
 from .quality_profiles import (
@@ -186,11 +185,6 @@ job_store = RedisJobStore(redis_url=redis_url)
 processor = VoiceProcessor(lazy_load=True)
 processor.job_store = job_store
 
-# Inicializa RvcModelManager (Sprint 6)
-from .rvc_model_manager import RvcModelManager
-rvc_storage_dir = Path(settings.get('rvc_models_dir', '/app/models/rvc'))
-processor.rvc_model_manager = RvcModelManager(storage_dir=rvc_storage_dir)
-
 
 @app.get("/")
 async def root():
@@ -254,16 +248,7 @@ async def create_job(
     tts_engine: str = Form('xtts', description="TTS engine: only 'xtts' is supported (F5-TTS has been removed)"),
     ref_text: Optional[str] = Form(None, description="Reference transcription (deprecated, not used by XTTS)"),
     # Quality Profile (NEW - usa sistema de profiles por engine)
-    quality_profile_id: Optional[str] = Form(None, description="Quality profile ID (ex: 'xtts_balanced', 'f5tts_ultra_quality'). Se None, usa padrão do engine."),
-    # RVC Parameters (Sprint 7 + SPRINT-06 fix)
-    enable_rvc: bool = Form(False, description="Enable RVC voice conversion (default: False)"),
-    rvc_model_id: Optional[str] = Form(None, description="RVC model ID (required if enable_rvc=True)"),
-    rvc_pitch: int = Form(0, description="Pitch shift in semitones (-12 to +12)"),
-    rvc_index_rate: float = Form(0.75, description="Index rate for retrieval (0.0 to 1.0)"),
-    rvc_filter_radius: int = Form(3, description="Median filter radius (0 to 7)"),
-    rvc_rms_mix_rate: float = Form(0.25, description="RMS mix rate (0.0 to 1.0)"),
-    rvc_protect: float = Form(0.33, description="Protect voiceless consonants (0.0 to 0.5)"),
-    rvc_f0_method: str = Form('rmvpe', description="Pitch extraction method: 'rmvpe' (default), 'harvest', 'crepe', etc.")
+    quality_profile_id: Optional[str] = Form(None, description="Quality profile ID (ex: 'xtts_balanced', 'f5tts_ultra_quality'). Se None, usa padrão do engine.")
 ) -> Job:
     """
     Cria job de dublagem com validação rigorosa (similar a admin/cleanup)
@@ -322,8 +307,7 @@ async def create_job(
         # Logging estruturado
         logger.info(
             f"📥 Job creation request: mode={mode_enum.value}, engine={tts_engine_enum.value}, "
-            f"preset={voice_preset_enum.value if voice_preset_enum else None}, "
-            f"rvc={enable_rvc}, f0_method={rvc_f0_method_enum.value}"
+            f"preset={voice_preset_enum.value if voice_preset_enum else None}"
         )
         
         # ===== Validações adicionais =====
@@ -354,34 +338,6 @@ async def create_job(
             voice_profile = job_store.get_voice_profile(voice_id)
             if not voice_profile:
                 raise VoiceProfileNotFoundException(voice_id)
-        
-        # Validações RVC (Sprint 7)
-        if enable_rvc:
-            if not rvc_model_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="rvc_model_id is required when enable_rvc=True"
-                )
-            
-            # Verifica se modelo RVC existe
-            rvc_model = processor.rvc_model_manager.get_model(rvc_model_id)
-            if not rvc_model:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"RVC model not found: {rvc_model_id}"
-                )
-            
-            # Validar ranges de parâmetros RVC
-            if not -12 <= rvc_pitch <= 12:
-                raise HTTPException(status_code=400, detail="rvc_pitch must be between -12 and +12")
-            if not 0.0 <= rvc_index_rate <= 1.0:
-                raise HTTPException(status_code=400, detail="rvc_index_rate must be between 0.0 and 1.0")
-            if not 0 <= rvc_filter_radius <= 7:
-                raise HTTPException(status_code=400, detail="rvc_filter_radius must be between 0 and 7")
-            if not 0.0 <= rvc_rms_mix_rate <= 1.0:
-                raise HTTPException(status_code=400, detail="rvc_rms_mix_rate must be between 0.0 and 1.0")
-            if not 0.0 <= rvc_protect <= 0.5:
-                raise HTTPException(status_code=400, detail="rvc_protect must be between 0.0 and 0.5")
         
         # Converte TTSJobMode para JobMode (são compatíveis por valor)
         job_mode = JobMode(mode_enum.value) if isinstance(mode_enum, TTSJobMode) else mode_enum
@@ -434,7 +390,7 @@ async def create_job(
         job_store.save_job(new_job)
         submit_processing_task(new_job)
         
-        logger.info(f"Job created: {new_job.id} (RVC: {enable_rvc})")
+        logger.info(f"Job created: {new_job.id}")
         return new_job
         
     except HTTPException:
@@ -870,175 +826,6 @@ async def delete_voice(voice_id: str):
     job_store.delete_voice_profile(voice_id)
     
     return {"message": "Voice profile deleted", "voice_id": voice_id}
-
-
-# ===== RVC MODEL MANAGEMENT ENDPOINTS (SPRINT 7) =====
-
-@app.post("/rvc-models", response_model=RvcModelResponse, status_code=201)
-async def upload_rvc_model(
-    name: str = Form(..., min_length=1, max_length=100, description="Model name"),
-    description: Optional[str] = Form(None, max_length=500, description="Model description"),
-    pth_file: UploadFile = File(..., description=".pth file (PyTorch checkpoint)"),
-    index_file: Optional[UploadFile] = File(None, description=".index file (FAISS index, optional)")
-):
-    """
-    Upload RVC model for voice conversion
-    
-    **Required:**
-    - **name**: Model name (unique identifier)
-    - **pth_file**: PyTorch checkpoint file (.pth)
-    
-    **Optional:**
-    - **description**: Model description
-    - **index_file**: FAISS index file (.index) for better quality
-    
-    **Returns:** Model metadata with ID for use in /jobs endpoint
-    """
-    try:
-        # Salvar arquivo .pth temporariamente
-        temp_dir = Path(settings['temp_dir'])
-        temp_dir.mkdir(exist_ok=True, parents=True)
-        
-        # Salvar .pth
-        pth_temp_path = temp_dir / f"upload_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.pth"
-        pth_content = await pth_file.read()
-        with open(pth_temp_path, 'wb') as f:
-            f.write(pth_content)
-        
-        # Salvar .index se fornecido
-        index_temp_path = None
-        if index_file:
-            index_temp_path = temp_dir / f"upload_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.index"
-            index_content = await index_file.read()
-            with open(index_temp_path, 'wb') as f:
-                f.write(index_content)
-        
-        # Upload via RvcModelManager
-        model_metadata = await processor.rvc_model_manager.upload_model(
-            name=name,
-            pth_file=pth_temp_path,
-            index_file=index_temp_path,
-            description=description
-        )
-        
-        # Limpar arquivos temporários
-        pth_temp_path.unlink(missing_ok=True)
-        if index_temp_path:
-            index_temp_path.unlink(missing_ok=True)
-        
-        logger.info(f"RVC model uploaded: {model_metadata['id']} ({name})")
-        
-        return RvcModelResponse(**model_metadata)
-        
-    except FileExistsError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid file: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error uploading RVC model: {e}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-
-@app.get("/rvc-models", response_model=RvcModelListResponse)
-async def list_rvc_models(
-    sort_by: str = Query(default="created_at", description="Sort by: name, created_at, file_size_mb")
-) -> RvcModelListResponse:
-    """
-    List all RVC models
-    
-    **Query Parameters:**
-    - **sort_by**: Sorting field (name, created_at, file_size_mb)
-    
-    **Returns:** List of RVC models with metadata
-    """
-    try:
-        models = processor.rvc_model_manager.list_models(sort_by=sort_by)
-        return RvcModelListResponse(
-            total=len(models),
-            models=[RvcModelResponse(**m) for m in models]
-        )
-    except Exception as e:
-        logger.error(f"Error listing RVC models: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")
-
-
-@app.get("/rvc-models/stats")
-async def get_rvc_models_stats():
-    """
-    Get RVC models statistics
-    
-    **Returns:** Statistics about RVC models (count, size, etc.)
-    """
-    try:
-        # Check if RVC model manager is available
-        if not hasattr(processor, 'rvc_model_manager') or processor.rvc_model_manager is None:
-            return {
-                'total_models': 0,
-                'models_with_index': 0,
-                'total_size_bytes': 0,
-                'total_size_mb': 0.0,
-                'message': 'RVC model manager not initialized'
-            }
-        
-        stats = processor.rvc_model_manager.get_model_stats()
-        return stats
-    except Exception as e:
-        logger.error(f"Error getting RVC stats: {e}", exc_info=True)
-        # Return empty stats instead of 500 error
-        return {
-            'total_models': 0,
-            'models_with_index': 0,
-            'total_size_bytes': 0,
-            'total_size_mb': 0.0,
-            'error': str(e)
-        }
-
-
-@app.get("/rvc-models/{model_id}", response_model=RvcModelResponse)
-async def get_rvc_model(model_id: str) -> RvcModelResponse:
-    """
-    Get RVC model details by ID
-    
-    **Parameters:**
-    - **model_id**: Model unique identifier (MD5 hash)
-    
-    **Returns:** Model metadata
-    """
-    try:
-        model = processor.rvc_model_manager.get_model(model_id)
-        if not model:
-            raise HTTPException(status_code=404, detail=f"RVC model not found: {model_id}")
-        return RvcModelResponse(**model)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting RVC model {model_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/rvc-models/{model_id}")
-async def delete_rvc_model(model_id: str):
-    """
-    Delete RVC model by ID
-    
-    **Parameters:**
-    - **model_id**: Model unique identifier
-    
-    **Returns:** Success message
-    """
-    try:
-        success = await processor.rvc_model_manager.delete_model(model_id)
-        if not success:
-            raise HTTPException(status_code=404, detail=f"RVC model not found: {model_id}")
-        
-        logger.info(f"RVC model deleted: {model_id}")
-        return {"message": "RVC model deleted", "model_id": model_id}
-        
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error deleting RVC model {model_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ===== ENDPOINTS INFORMATIVOS =====

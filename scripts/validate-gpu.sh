@@ -1,12 +1,12 @@
 #!/bin/bash
-# validate-gpu.sh - Script de validação de GPU para Sprint 1
-# Valida que ambiente está pronto para RVC + XTTS com CUDA
+# validate-gpu.sh - Script de validação de GPU para XTTS-v2
+# Valida que ambiente está pronto para XTTS com CUDA
 
 set -e
 
 echo "=================================================="
-echo "  GPU Validation Script - Sprint 1"
-echo "  Audio Voice Service - RVC + XTTS"
+echo "  GPU Validation Script"
+echo "  Audio Voice Service - XTTS-v2"
 echo "=================================================="
 echo ""
 
@@ -92,12 +92,12 @@ echo ""
 # 5. Verificar GPU Memory
 echo "5. Checking GPU Memory..."
 GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1)
-if [ "$GPU_MEM" -ge 12000 ]; then
-    print_success "GPU Memory: ${GPU_MEM}MB (≥12GB required)"
+if [ "$GPU_MEM" -ge 8000 ]; then
+    print_success "GPU Memory: ${GPU_MEM}MB (≥8GB required)"
     ((CHECKS_PASSED++))
 else
-    print_warning "GPU Memory: ${GPU_MEM}MB (<12GB - may cause OOM errors)"
-    print_info "RVC + XTTS requires ≥12GB VRAM (16GB+ recommended)"
+    print_warning "GPU Memory: ${GPU_MEM}MB (<8GB - may cause OOM errors)"
+    print_info "XTTS-v2 requires ≥8GB VRAM (12GB+ recommended)"
     ((CHECKS_PASSED++))
 fi
 echo ""
@@ -111,7 +111,7 @@ if [ "$COMPUTE_MAJOR" -ge 7 ]; then
     ((CHECKS_PASSED++))
 else
     print_error "Compute Capability: $COMPUTE_CAP (<7.0 - GPU too old)"
-    print_info "RVC requires Compute Capability ≥7.0 (RTX 2000+, Tesla T4+)"
+    print_info "XTTS requires Compute Capability ≥7.0 (RTX 2000+, Tesla T4+)"
     ((CHECKS_FAILED++))
 fi
 echo ""

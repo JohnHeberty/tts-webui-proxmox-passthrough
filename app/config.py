@@ -132,25 +132,6 @@ def get_settings():
             'max_ref_duration': int(os.getenv('XTTS_MAX_REF_DURATION', '30')),  # segundos
         },
         
-        # ===== RVC (Voice Conversion) =====
-        'rvc': {
-            # Device (auto, cuda, cpu)
-            'device': os.getenv('RVC_DEVICE', 'cpu'),  # Default CPU (economiza VRAM)
-            
-            # Fallback para CPU se CUDA não disponível
-            'fallback_to_cpu': os.getenv('RVC_FALLBACK_TO_CPU', 'true').lower() == 'true',
-            
-            # Diretório dos modelos RVC
-            'models_dir': os.getenv('RVC_MODELS_DIR', './models/rvc'),
-            
-            # Parâmetros padrão de conversão
-            'pitch': int(os.getenv('RVC_PITCH', '0')),  # -12 a +12 semitons
-            'filter_radius': int(os.getenv('RVC_FILTER_RADIUS', '3')),
-            'index_rate': float(os.getenv('RVC_INDEX_RATE', '0.75')),
-            'rms_mix_rate': float(os.getenv('RVC_RMS_MIX_RATE', '0.25')),
-            'protect': float(os.getenv('RVC_PROTECT', '0.33')),
-        },
-        
         # ===== RESILIÊNCIA =====
         'resilience': {
             'max_retries': int(os.getenv('MAX_RETRIES', '3')),
