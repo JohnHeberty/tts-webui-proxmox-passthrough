@@ -764,9 +764,13 @@
                                                     placeholder="my_voice_model" required>
                                             </div>
                                             <div class="col-md-6">
-                                                <label class="form-label">Pasta do Dataset</label>
-                                                <input type="text" class="form-control" id="training-dataset-folder" 
-                                                    value="datasets/my_voice" required>
+                                                <label class="form-label">Dataset</label>
+                                                <select class="form-select" id="training-dataset" required>
+                                                    <option value="">Carregando datasets...</option>
+                                                </select>
+                                                <small class="form-text text-muted">
+                                                    Datasets disponíveis em /train/data/
+                                                </small>
                                             </div>
                                         </div>
 

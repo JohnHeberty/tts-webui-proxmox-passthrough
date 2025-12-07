@@ -2437,6 +2437,7 @@ const app = {
     loadTrainingSection() {
         console.log('🎓 Loading training section');
         this.loadDatasetStats();
+        this.loadDatasets();  // Sprint 2 Task 2.4: Load datasets dropdown
         this.loadCheckpoints();
         this.loadTrainingSamples();  // Sprint 0 Fix: Load training samples
     },
@@ -2507,6 +2508,41 @@ const app = {
                         Erro ao carregar estatísticas
                     </div>
                 `;
+            }
+        }
+    },
+
+    /**
+     * Load available datasets into dropdown
+     * Sprint 2 Task 2.4
+     */
+    async loadDatasets() {
+        try {
+            const data = await this.fetchJson('/training/datasets');
+            const select = document.getElementById('training-dataset');
+            
+            if (!select) {
+                console.warn('⚠️ training-dataset select not found');
+                return;
+            }
+            
+            if (!data.datasets || data.datasets.length === 0) {
+                select.innerHTML = '<option value="">Nenhum dataset encontrado</option>';
+                return;
+            }
+            
+            select.innerHTML = '<option value="">Selecione um dataset...</option>' +
+                data.datasets.map(ds => {
+                    const hours = ds.duration_seconds ? (ds.duration_seconds / 3600).toFixed(1) + 'h' : 'N/A';
+                    return `<option value="${ds.path}">${ds.name} (${ds.files} arquivos, ${hours})</option>`;
+                }).join('');
+            
+            console.log(`✅ Loaded ${data.datasets.length} datasets`);
+        } catch (error) {
+            console.error('❌ Error loading datasets:', error);
+            const select = document.getElementById('training-dataset');
+            if (select) {
+                select.innerHTML = '<option value="">Erro ao carregar datasets</option>';
             }
         }
     },
@@ -2806,11 +2842,17 @@ const app = {
      */
     async startTraining() {
         const modelName = document.getElementById('model-name').value;
-        const datasetFolder = document.getElementById('training-dataset-folder').value;
+        const datasetPath = document.getElementById('training-dataset').value;  // Sprint 2: Use dropdown
         const epochs = document.getElementById('training-epochs').value;
         const batchSize = document.getElementById('training-batch-size').value;
         const learningRate = document.getElementById('training-lr').value;
         const useDeepspeed = document.getElementById('training-use-deepspeed').checked;
+
+        // Validation
+        if (!datasetPath) {
+            this.showToast('Selecione um dataset', 'warning');
+            return;
+        }
 
         try {
             const response = await this.fetchJson('/training/start', {
@@ -2818,7 +2860,7 @@ const app = {
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     model_name: modelName,
-                    dataset_folder: datasetFolder,
+                    dataset_folder: datasetPath,  // Now uses full path from dropdown
                     epochs: parseInt(epochs),
                     batch_size: parseInt(batchSize),
                     learning_rate: parseFloat(learningRate),
