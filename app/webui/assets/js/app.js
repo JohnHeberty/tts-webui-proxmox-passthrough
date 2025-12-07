@@ -567,6 +567,37 @@ const app = {
         toast.show();
     },
 
+    /**
+     * Sprint 4 Task 4.2: Translate error messages to user-friendly Portuguese
+     */
+    formatError(error) {
+        const errorMessage = error.message || String(error);
+        
+        const ERROR_TRANSLATIONS = {
+            'Connection refused': 'Não foi possível conectar ao servidor. Verifique se está rodando.',
+            'Failed to fetch': 'Erro de conexão. Verifique sua internet ou se o servidor está rodando.',
+            'timeout': 'A operação demorou muito tempo. Tente novamente.',
+            'Network error': 'Erro de rede. Verifique sua conexão.',
+            'NetworkError': 'Erro de rede. Verifique sua conexão.',
+            '404': 'Recurso não encontrado no servidor.',
+            '500': 'Erro interno do servidor. Consulte os logs para mais detalhes.',
+            '502': 'Gateway indisponível. O servidor pode estar reiniciando.',
+            '503': 'Serviço temporariamente indisponível. Tente novamente em alguns instantes.',
+            'ECONNREFUSED': 'Conexão recusada. O servidor pode estar desligado.',
+            'ETIMEDOUT': 'Tempo de conexão esgotado.',
+        };
+        
+        // Check for specific error patterns
+        for (const [key, translation] of Object.entries(ERROR_TRANSLATIONS)) {
+            if (errorMessage.includes(key)) {
+                return translation;
+            }
+        }
+        
+        // If no match found, return original message
+        return errorMessage;
+    },
+
     // ==================== DASHBOARD ====================
     async loadDashboard() {
         console.log('📊 Carregando dashboard...');
@@ -2704,7 +2735,7 @@ const app = {
             this.loadDatasetStats();
         } catch (error) {
             console.error('❌ Error segmenting audio:', error);
-            this.showToast('Erro ao segmentar áudio: ' + error.message, 'danger');
+            this.showToast('Erro ao segmentar áudio: ' + this.formatError(error), 'danger');
         } finally {
             btn.disabled = false;
             btnIcon.classList.remove('d-none');
@@ -2741,7 +2772,7 @@ const app = {
             this.showToast('✅ Transcrição iniciada com sucesso', 'success');
         } catch (error) {
             console.error('❌ Error transcribing dataset:', error);
-            this.showToast('Erro ao transcrever dataset: ' + error.message, 'danger');
+            this.showToast('Erro ao transcrever dataset: ' + this.formatError(error), 'danger');
         } finally {
             btn.disabled = false;
             btnIcon.classList.remove('d-none');
@@ -2779,7 +2810,7 @@ const app = {
             btnText.textContent = 'Parar';
         } catch (error) {
             console.error('❌ Error stopping training:', error);
-            this.showToast('Erro ao parar treinamento: ' + error.message, 'danger');
+            this.showToast('Erro ao parar treinamento: ' + this.formatError(error), 'danger');
             
             // Restore button state
             btnStop.disabled = false;
@@ -2901,7 +2932,7 @@ const app = {
             this.loadDatasetStats();
         } catch (error) {
             console.error('❌ Error downloading videos:', error);
-            this.showToast('Erro ao baixar vídeos: ' + error.message, 'danger');
+            this.showToast('Erro ao baixar vídeos: ' + this.formatError(error), 'danger');
         } finally {
             // Restore button state
             btn.disabled = false;
@@ -2963,7 +2994,7 @@ const app = {
             this.pollTrainingStatus();
         } catch (error) {
             console.error('❌ Error starting training:', error);
-            this.showToast('Erro ao iniciar treinamento: ' + error.message, 'danger');
+            this.showToast('Erro ao iniciar treinamento: ' + this.formatError(error), 'danger');
             
             // Restore button state
             btnStart.disabled = false;
