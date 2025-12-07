@@ -429,17 +429,16 @@ def generate_sample_audio(
     """
     Gera sample de áudio usando checkpoint salvo.
     
-    IMPORTANTE: Esta função DESCARREGA o modelo de treinamento da VRAM,
-    carrega checkpoint para inferência, gera áudio, e retorna.
-    O modelo de treinamento deve ser recarregado após esta função.
+    NOTA: Temporariamente DESABILITADO devido a bug cuFFT no XTTS.
+    O erro ocorre em torch.stft dentro de get_conditioning_latents.
     
-    Args:
-        checkpoint_path: Path do checkpoint para carregar
-        epoch: Número da época atual
-        settings: Training settings
-        output_dir: Diretório de saída para samples
-        device: Device (cuda/cpu)
+    TODO: Investigar solução para cuFFT error: CUFFT_INVALID_SIZE
     """
+    logger.warning(f"⚠️  Geração de samples TEMPORARIAMENTE DESABILITADA")
+    logger.warning(f"   Motivo: Bug cuFFT no XTTS get_conditioning_latents()")
+    logger.warning(f"   Checkpoint salvo OK em: {checkpoint_path}")
+    logger.warning(f"   Para testar modelo: carregar checkpoint manualmente e usar TTS.tts()")
+    return None
     import torchaudio
     from TTS.api import TTS
     
@@ -481,18 +480,12 @@ def generate_sample_audio(
         )
         inference_model = tts.synthesizer.tts_model
         
-        # PASSO 2: Carregar pesos do checkpoint
-        logger.info(f"   Carregando pesos do checkpoint...")
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        # PASSO 2: Usar modelo BASE (não carregar checkpoint por enquanto)
+        # NOTA: Carregar state_dict do checkpoint quebra componentes de inferência
+        # TODO: Implementar conversão correta de checkpoint → modelo de inferência
+        logger.info(f"   ⚠️  Usando modelo BASE XTTS (checkpoint não carregado para inferência)")
+        logger.info(f"   Checkpoint: {checkpoint_path.name} (usado apenas para continuar treinamento)")
         
-        # Carregar state_dict
-        if 'model_state_dict' in checkpoint:
-            state_dict = checkpoint['model_state_dict']
-        else:
-            state_dict = checkpoint
-        
-        # Carregar pesos (pode ter chaves extras do LoRA)
-        inference_model.load_state_dict(state_dict, strict=False)
         inference_model = inference_model.to(device)
         inference_model.eval()
         
@@ -502,11 +495,12 @@ def generate_sample_audio(
         with torch.no_grad():
             try:
                 # Usar get_conditioning_latents com audio_path
+                # IMPORTANTE: XTTS usa 22050Hz internamente, NÃO 24000Hz!
                 gpt_cond_latent, speaker_embedding = inference_model.get_conditioning_latents(
                     audio_path=str(reference_wav_path),
                     max_ref_length=30,
                     gpt_cond_len=6,
-                    load_sr=settings.sample_rate
+                    load_sr=22050  # FIXO: XTTS sempre usa 22050Hz
                 )
                 
                 # Sintetizar áudio
@@ -865,25 +859,8 @@ def main(resume):
             }, checkpoint_path)
             logger.info(f"💾 Checkpoint salvo: {checkpoint_path}")
             
-            # IMPORTANTE: Gerar sample DEPOIS de salvar checkpoint
-            # Isso descarrega o modelo de treinamento e carrega para inferência
-            logger.info(f"🔄 Preparando geração de sample (modelo será temporariamente descarregado)...")
-            
-            # Descarregar modelo de treinamento da VRAM
-            model = model.cpu()
-            if device.type == 'cuda':
-                torch.cuda.empty_cache()
-            
-            # Gerar sample usando checkpoint (carrega modelo fresco para inferência)
+            # Geração de samples (temporariamente desabilitada)
             generate_sample_audio(checkpoint_path, epoch, settings, samples_dir, device)
-            
-            # RECARREGAR modelo de treinamento do checkpoint
-            logger.info(f"🔄 Recarregando modelo de treinamento...")
-            checkpoint_data = torch.load(checkpoint_path, map_location=device, weights_only=False)
-            model.load_state_dict(checkpoint_data['model_state_dict'])
-            model = model.to(device)
-            model.train()  # Voltar para modo treinamento
-            logger.info(f"✅ Modelo de treinamento recarregado na VRAM")
             
             # Best model
             if val_loss < best_val_loss:
@@ -897,20 +874,9 @@ def main(resume):
                 }, best_model_path)
                 logger.info(f"🏆 Novo melhor modelo! Epoch {epoch} | Val Loss: {val_loss:.4f}\n")
                 
-                # Sample do melhor modelo (mesmo processo)
-                logger.info(f"🔄 Gerando sample do MELHOR modelo...")
-                model = model.cpu()
-                if device.type == 'cuda':
-                    torch.cuda.empty_cache()
-                
+                # Sample do melhor modelo
                 best_samples_dir = samples_dir / "best"
                 generate_sample_audio(best_model_path, epoch, settings, best_samples_dir, device)
-                
-                # Recarregar novamente
-                model.load_state_dict(checkpoint_data['model_state_dict'])
-                model = model.to(device)
-                model.train()
-                logger.info(f"✅ Modelo de treinamento recarregado (após best sample)")
     
     # Cleanup
     if writer is not None:
