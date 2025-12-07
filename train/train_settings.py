@@ -35,11 +35,9 @@ class TrainingSettings(BaseModel):
     batch_size: int = Field(default=2, description="Training batch size")
     num_workers: int = Field(default=2, description="DataLoader workers")
     max_train_samples: Optional[int] = Field(
-        default=None, 
-        description="Limit training samples (para teste rápido, use 100)"
-    )
-    
-    # === Training Hyperparameters ===
+        default=None,
+        description="Limitar amostras de treino (None = dataset completo, 100 = teste rápido). Configurável via MAX_TRAIN_SAMPLES no .env"
+    )    # === Training Hyperparameters ===
     num_epochs: int = Field(default=1000, description="Number of epochs")
     learning_rate: float = Field(default=1.0e-5, description="Learning rate")
     adam_beta1: float = Field(default=0.9)

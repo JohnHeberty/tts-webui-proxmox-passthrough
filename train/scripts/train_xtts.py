@@ -182,7 +182,9 @@ def create_dataset(settings: TrainingSettings):
             
             logger.info(f"   Loaded {len(self.samples)} samples from {metadata_path}")
             if max_samples:
-                logger.info(f"   (Limitado a {max_samples} samples para teste rápido)")
+                logger.info(f"   (Limitado a {max_samples} samples - configurável via MAX_TRAIN_SAMPLES)")
+            else:
+                logger.info(f"   (Dataset completo - use MAX_TRAIN_SAMPLES=N para limitar)")
         
         def __len__(self):
             return len(self.samples)
@@ -201,7 +203,9 @@ def create_dataset(settings: TrainingSettings):
     logger.info(f"   Train: {train_metadata}")
     logger.info(f"   Val: {val_metadata}")
     if max_samples:
-        logger.info(f"   ⚠️  MODO TESTE: Limitando a {max_samples} amostras por época")
+        logger.info(f"   ⚠️  MODO TESTE: Limitando a {max_samples} amostras")
+    else:
+        logger.info(f"   📊 Carregando dataset completo")
     
     # Verificar se dataset existe
     if not train_metadata.exists() or not val_metadata.exists():
@@ -435,11 +439,12 @@ def generate_sample_audio(
     
     FLUXO:
     1. Carrega XTTS base em CPU (evita cuFFT error)
-    2. Gera áudio
+    2. Gera áudio usando TEXTO TRANSCRITO do metadata.csv
     3. Limpa memória
     """
     import torchaudio
     from TTS.api import TTS
+    import csv
     
     try:
         # Criar diretório
@@ -456,9 +461,28 @@ def generate_sample_audio(
         
         # Usar primeiro arquivo
         reference_wav_path = reference_wavs[0]
+        reference_filename = reference_wav_path.name
         
-        # Texto de teste
-        test_text = "Olá, este é um teste de síntese de voz usando XTTS treinado."
+        # Buscar texto transcrito no metadata_train.csv
+        metadata_path = dataset_dir / "metadata_train.csv"
+        test_text = "Olá, este é um teste de síntese de voz usando XTTS treinado."  # fallback
+        
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f, delimiter='|')
+                    for row in reader:
+                        if len(row) >= 2:
+                            # row[0] = "wavs/audio_XXXXX.wav"
+                            # row[1] = "texto transcrito"
+                            wav_path = row[0]
+                            if wav_path.endswith(reference_filename) or reference_filename in wav_path:
+                                test_text = row[1].strip()
+                                logger.info(f"   📝 Texto do metadata: '{test_text[:50]}...'")
+                                break
+            except Exception as e:
+                logger.warning(f"   ⚠️  Não conseguiu ler metadata.csv: {e}")
+                logger.warning(f"   Usando texto padrão")
         
         logger.info(f"🎤 Gerando sample de áudio em CPU (workaround cuFFT)...")
         logger.info(f"   Época: {epoch}")
