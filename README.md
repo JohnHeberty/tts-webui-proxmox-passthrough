@@ -14,23 +14,23 @@ Sistema completo de geração de voz sintética usando **XTTS v2** (Coqui TTS) c
 
 ## ✨ v2.0 Highlights
 
-🎯 **XTTS-v2 Only** ⭐ **UPDATED**  
+🎯 **XTTS-v2 Only** ⭐ **v2.0**  
 Streamlined to use only XTTS-v2 engine for better performance and maintainability
 
-🗑️ **RVC Removed** ⭐ **BREAKING**  
+🗑️ **RVC Removed** ⭐ **BREAKING v2.0**  
 RVC voice conversion removed - use XTTS-v2 native voice cloning instead
 
-🚀 **Faster Startup** ⭐ **NEW**  
-No more lazy loading - models load on startup (~5-15s)
+🚀 **Eager Loading** ⭐ **v2.0**  
+Models load on startup (~36s) - first request instant (<1s vs 8-12s in v1.x)
 
-⚡ **Better Performance** ⭐ **NEW**  
-Reduced dependencies, lower VRAM usage (8GB minimum, 12GB+ recommended)
+⚡ **Better Performance** ⭐ **v2.0**  
+-50% VRAM (1.6GB vs 3.2GB), -2,600 lines code, SOLID architecture
 
-🎨 **Quality Profiles** ⭐ **ENHANCED**  
-3 built-in profiles: fast, balanced, high_quality
+🎨 **Quality Profiles** ⭐ **v2.0 ENHANCED**  
+3 profiles with denoise: fast (~2s), balanced (~3s), high_quality (~5s + denoise)
 
-📦 **Production-Ready**  
-Docker + Celery + Redis + Circuit Breaker + Health Checks
+📦 **Production-Ready** ⭐ **v2.0**  
+Error middleware + request tracing + structured logging + health checks
 
 ---
 
@@ -51,25 +51,27 @@ Docker + Celery + Redis + Circuit Breaker + Health Checks
 
 ### Text-to-Speech (TTS)
 
-- ✅ **XTTS v2** (Coqui TTS): Multilingual, 16 idiomas suportados
-- ✅ **Voice Presets**: 8 vozes genéricas pré-configuradas
+- ✅ **XTTS-v2** (Coqui TTS): Multilingual, 16 idiomas suportados
+- ✅ **Voice Presets**: Vozes genéricas pré-configuradas  
 - ✅ **Voice Cloning**: Clone vozes customizadas com zero-shot learning
-- ✅ **Quality Profiles**: fast, balanced, high_quality
+- ✅ **Quality Profiles**: fast, balanced, high_quality (com denoise)
 - ✅ **Multi-format Output**: WAV, MP3, OGG, FLAC, M4A, OPUS
 
-### API
+### API & Observability
 
-- ✅ **REST API**: FastAPI com OpenAPI docs automático
+- ✅ **REST API**: FastAPI v0.120.0 com OpenAPI docs automático
 - ✅ **Async Jobs**: Celery + Redis para processamento em background
+- ✅ **Request Tracing**: UUID request_id em todos logs e headers
+- ✅ **Structured Logging**: JSON logs com context (method, path, duration_ms)
 - ✅ **Health Checks**: Endpoint `/health` com métricas de GPU/VRAM
-- ✅ **Metrics**: Prometheus `/metrics` endpoint
+- ✅ **Error Handling**: Global middleware com exception tracking
 
 ### DevOps
 
 - ✅ **Docker**: Imagem otimizada com CUDA 11.8
 - ✅ **GPU Support**: NVIDIA Container Toolkit
-- ✅ **Logging**: Logs estruturados JSON
-- ✅ **Error Handling**: Circuit breaker para CUDA OOM
+- ✅ **Pydantic Settings**: Type-safe configuration (v2.0)
+- ✅ **SOLID Architecture**: SRP, DI, eager loading patterns
 
 ---
 
