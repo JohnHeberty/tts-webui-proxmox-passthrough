@@ -431,20 +431,23 @@ def generate_sample_audio(
     device: torch.device
 ):
     """
-    Gera sample de áudio usando modelo BASE em CPU.
+    Gera sample de áudio usando SUBPROCESSO isolado em CPU.
     
-    WORKAROUND: Devido a bug cuFFT quando carrega XTTS múltiplas vezes
-    na GPU no mesmo processo, esta função usa CPU para inferência.
-    É mais lento mas FUNCIONA.
+    MOTIVO CPU: Bug cuFFT persistente no ambiente CUDA deste sistema.
+    Mesmo em subprocesso limpo, torch.stft falha com CUFFT_INVALID_SIZE.
+    
+    VANTAGEM SUBPROCESSO: Não afeta treinamento, memória limpa após geração.
+    CPU é mais lento (~12s vs ~1s) mas é a única opção que funciona.
     
     FLUXO:
-    1. Carrega XTTS base em CPU (evita cuFFT error)
-    2. Gera áudio usando TEXTO TRANSCRITO do metadata.csv
-    3. Limpa memória
+    1. Busca texto transcrito do metadata.csv
+    2. Chama script auxiliar em subprocesso (CPU)
+    3. Subprocesso carrega XTTS, gera, salva e termina
+    4. Processo principal continua treinamento na GPU
     """
-    import torchaudio
-    from TTS.api import TTS
     import csv
+    import subprocess
+    import shutil
     
     try:
         # Criar diretório
@@ -473,8 +476,6 @@ def generate_sample_audio(
                     reader = csv.reader(f, delimiter='|')
                     for row in reader:
                         if len(row) >= 2:
-                            # row[0] = "wavs/audio_XXXXX.wav"
-                            # row[1] = "texto transcrito"
                             wav_path = row[0]
                             if wav_path.endswith(reference_filename) or reference_filename in wav_path:
                                 test_text = row[1].strip()
@@ -484,66 +485,56 @@ def generate_sample_audio(
                 logger.warning(f"   ⚠️  Não conseguiu ler metadata.csv: {e}")
                 logger.warning(f"   Usando texto padrão")
         
-        logger.info(f"🎤 Gerando sample de áudio em CPU (workaround cuFFT)...")
+        logger.info(f"🎤 Gerando sample de áudio (subprocesso CPU)...")
         logger.info(f"   Época: {epoch}")
-        logger.info(f"   Referência: {reference_wav_path.name}")
+        logger.info(f"   Referência: {reference_filename}")
+        logger.info(f"   ⚠️  Usando CPU - bug cuFFT impede uso da GPU")
         
-        # Monkey patch para PyTorch 2.6+
-        original_load = torch.load
-        def patched_load(*args, **kwargs):
-            kwargs['weights_only'] = False
-            return original_load(*args, **kwargs)
-        torch.load = patched_load
-        
-        # Carregar TTS API em CPU (evita cuFFT na GPU)
-        logger.info(f"   📥 Carregando XTTS em CPU...")
-        tts = TTS(
-            model_name="tts_models/multilingual/multi-dataset/xtts_v2",
-            gpu=False  # CPU para evitar cuFFT error
-        )
-        
-        # Gerar áudio
-        logger.info(f"   🔊 Sintetizando áudio (CPU - pode demorar)...")
-        wav = tts.tts(
-            text=test_text,
-            language="pt",
-            speaker_wav=str(reference_wav_path)
-        )
-        
-        # Salvar áudio gerado
+        # Paths para subprocesso
         output_wav_path = output_dir / f"epoch_{epoch}_output.wav"
+        subprocess_script = Path(__file__).parent / "generate_sample_subprocess.py"
         
-        import soundfile as sf
-        sf.write(str(output_wav_path), wav, 22050)
+        # Executar em subprocesso isolado (CPU)
+        cmd = [
+            "python3",
+            str(subprocess_script),
+            "--reference_wav", str(reference_wav_path),
+            "--text", test_text,
+            "--output", str(output_wav_path),
+        ]
         
-        logger.info(f"   ✅ Sample gerado: {output_wav_path.name}")
+        # Não adicionar --gpu (CPU sempre, por causa do bug)
         
-        # Copiar referência também
-        reference_output = output_dir / f"epoch_{epoch}_reference.wav"
-        import shutil
-        shutil.copy2(reference_wav_path, reference_output)
-        logger.info(f"   ✅ Referência copiada: {reference_output.name}")
+        logger.info(f"   🚀 Iniciando subprocesso...")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120  # 2 minutos timeout
+        )
         
-        # Limpar memória
-        del tts
-        logger.info(f"   🧹 Modelo de inferência descarregado")
+        if result.returncode == 0 and "SUCCESS" in result.stdout:
+            logger.info(f"   ✅ Sample gerado: {output_wav_path.name}")
+            
+            # Copiar referência também
+            reference_output = output_dir / f"epoch_{epoch}_reference.wav"
+            shutil.copy2(reference_wav_path, reference_output)
+            logger.info(f"   ✅ Referência copiada: {reference_output.name}")
+            
+            return output_wav_path
+        else:
+            logger.error(f"   ❌ Subprocesso falhou:")
+            logger.error(f"   stdout: {result.stdout}")
+            logger.error(f"   stderr: {result.stderr}")
+            return None
         
-        # Restaurar torch.load
-        torch.load = original_load
-        
-        return output_wav_path
-        
+    except subprocess.TimeoutExpired:
+        logger.error(f"   ❌ Timeout ao gerar sample (>120s)")
+        return None
     except Exception as e:
         logger.error(f"   ❌ Erro ao gerar áudio: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        
-        # Limpar memória
-        try:
-            del tts
-        except:
-            pass
-        
         return None
     import torchaudio
     from TTS.api import TTS
