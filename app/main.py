@@ -8,11 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, BackgroundTasks, Depends
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import tempfile
 import subprocess
+import soundfile as sf
 
 from .models import (
     Job, JobStatus, JobMode, TTSJobMode, VoiceProfile, QualityProfile, VoicePreset,
@@ -39,6 +40,8 @@ from .exceptions import (
     VoiceServiceException, InvalidLanguageException, TextTooLongException,
     FileTooLargeException, VoiceProfileNotFoundException, exception_handler
 )
+from .services.xtts_service import XTTSService
+from .dependencies import set_xtts_service, get_xtts_service
 
 # Configuração
 settings = get_settings()
@@ -194,9 +197,47 @@ async def root():
 
 @app.on_event("startup")
 async def startup_event():
-    """Inicializa sistema"""
+    """Inicializa sistema com eager loading de modelos"""
+    import time
+    start_time = time.time()
+    
+    logger.info("🚀 Starting Audio Voice Service...")
+    
+    # Inicializar XTTS Service com eager loading
+    logger.info("Loading XTTS-v2 model (eager load)...")
+    xtts_service = XTTSService(
+        model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+        device=settings.get('device', 'cuda'),
+        models_dir=Path(settings.get('models_dir', '/app/models/xtts'))
+    )
+    xtts_service.initialize()
+    
+    # Registrar service globalmente para dependency injection
+    set_xtts_service(xtts_service)
+    
+    # Warm-up: primeira síntese para pré-alocar CUDA
+    try:
+        default_voice = Path("/app/voice_profiles/default.wav")
+        if default_voice.exists():
+            logger.info("Warm-up: running test synthesis...")
+            await xtts_service.synthesize(
+                text="Test warmup",
+                speaker_wav=default_voice,
+                language="pt"
+            )
+            logger.info("✅ Warm-up complete")
+    except Exception as e:
+        logger.warning(f"Warm-up failed (non-critical): {e}")
+    
+    # Iniciar cleanup task do Redis
     await job_store.start_cleanup_task()
-    logger.info("✅ Audio Voice Service started")
+    
+    elapsed = time.time() - start_time
+    logger.info(f"✅ Audio Voice Service started in {elapsed:.1f}s")
+    logger.info(f"   XTTS ready on {xtts_service.device}")
+    
+    # Armazenar start time para uptime
+    app.state.start_time = start_time
 
 
 @app.on_event("shutdown")
@@ -917,20 +958,97 @@ async def health_check():
     
     # TTS Engine (XTTS)
     try:
-        tts_status = {
-            "status": "ok",
-            "engine": "XTTS",
-            "device": processor.engine.device,
-            "model": processor.engine.model_name
-        }
-        health_status["checks"]["tts_engine"] = tts_status
+        from .dependencies import _xtts_service
+        if _xtts_service and _xtts_service.is_ready:
+            xtts_status = _xtts_service.get_status()
+            health_status["checks"]["xtts"] = {
+                "status": "ok",
+                "device": xtts_status["device"],
+                "model": xtts_status["model_name"],
+                "gpu": xtts_status.get("gpu", {})
+            }
+        else:
+            health_status["checks"]["xtts"] = {
+                "status": "loading",
+                "message": "XTTS service initializing"
+            }
     except Exception as e:
-        health_status["checks"]["tts_engine"] = {"status": "error", "message": str(e)}
+        health_status["checks"]["xtts"] = {"status": "error", "message": str(e)}
+        is_healthy = False
+    
+    # Uptime
+    if hasattr(app.state, 'start_time'):
+        import time
+        uptime = time.time() - app.state.start_time
+        health_status["uptime_seconds"] = round(uptime, 1)
     
     health_status["status"] = "healthy" if is_healthy else "unhealthy"
     status_code = 200 if is_healthy else 503
     
     return JSONResponse(content=health_status, status_code=status_code)
+
+
+@app.post("/synthesize-direct", tags=["tts"])
+async def synthesize_direct(
+    text: str = Form(..., description="Texto para sintetizar"),
+    speaker_wav: UploadFile = File(..., description="Arquivo WAV de referência para clonagem"),
+    language: str = Form("pt", description="Código da linguagem (pt, en, es, etc.)"),
+    quality_profile: str = Form("balanced", description="Perfil de qualidade: fast, balanced, high_quality"),
+    xtts: XTTSService = Depends(get_xtts_service)
+):
+    """
+    🎯 Síntese TTS direta usando XTTSService (novo endpoint com eager loading).
+    
+    Este endpoint usa o novo XTTSService com dependency injection e eager loading,
+    resultando em latência muito menor que o /jobs endpoint (que usa Celery).
+    
+    **Uso recomendado**: Requests síncronas onde o cliente pode esperar a resposta.
+    **Performance**: ~2-5s (sem fila, processamento imediato)
+    
+    Args:
+        text: Texto para sintetizar
+        speaker_wav: Arquivo WAV de referência (voz a clonar)
+        language: Código de linguagem (pt, en, es, fr, de, etc.)
+        quality_profile: fast (rápido) | balanced (padrão) | high_quality (melhor qualidade)
+    
+    Returns:
+        Arquivo WAV com áudio sintetizado
+    """
+    try:
+        # Salvar speaker_wav temporariamente
+        temp_speaker = Path(f"/app/temp/speaker_{os.urandom(8).hex()}.wav")
+        temp_speaker.parent.mkdir(exist_ok=True, parents=True)
+        
+        with temp_speaker.open("wb") as f:
+            content = await speaker_wav.read()
+            f.write(content)
+        
+        # Sintetizar usando XTTSService
+        audio_array, sample_rate = await xtts.synthesize(
+            text=text,
+            speaker_wav=temp_speaker,
+            language=language,
+            quality_profile=quality_profile
+        )
+        
+        # Salvar áudio gerado
+        output_path = Path(f"/app/temp/synth_{os.urandom(8).hex()}.wav")
+        sf.write(output_path, audio_array, sample_rate)
+        
+        # Cleanup temp speaker
+        temp_speaker.unlink(missing_ok=True)
+        
+        return FileResponse(
+            output_path,
+            media_type="audio/wav",
+            filename=f"synthesis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        )
+        
+    except Exception as e:
+        logger.error(f"Direct synthesis failed: {e}", exc_info=True)
+        if temp_speaker.exists():
+            temp_speaker.unlink()
+        raise HTTPException(status_code=500, detail=f"Synthesis error: {str(e)}")
 
 
 @app.get("/health/engines", tags=["health"])
