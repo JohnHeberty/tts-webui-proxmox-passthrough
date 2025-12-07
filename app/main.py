@@ -182,11 +182,11 @@ def convert_audio_format(input_path: Path, output_format: str) -> Path:
 redis_url = settings.redis_url
 job_store = RedisJobStore(redis_url=redis_url)
 
-# API NÃO carrega modelo XTTS (lazy_load=True)
-# Apenas o Celery Worker precisa carregar o modelo (lazy_load=False)
-# Isso economiza ~2GB de VRAM e evita CUDA OOM
-processor = VoiceProcessor(lazy_load=True)
-processor.job_store = job_store
+# Processor global (será inicializado no startup com XTTSService injetado)
+processor = None
+
+# Imports para dependency injection
+from .dependencies import set_xtts_service
 
 
 @app.get("/")
