@@ -1313,7 +1313,7 @@ async def check_feature_flag(
     "/quality-profiles",
     response_model=QualityProfileList,
     summary="Listar perfis de qualidade",
-    description="Lista todos os perfis de qualidade agrupados por engine (XTTS e F5-TTS)"
+    description="Lista todos os perfis de qualidade (XTTS)"
 )
 async def list_quality_profiles():
     """
@@ -1321,7 +1321,7 @@ async def list_quality_profiles():
     
     Retorna perfis separados por engine:
     - xtts_profiles: Perfis otimizados para XTTS
-    - f5tts_profiles: Perfis otimizados para F5-TTS
+    - f5tts_profiles: [] (vazio - F5-TTS removido)
     
     Cada perfil contém parâmetros específicos do seu engine.
     """
@@ -1330,8 +1330,8 @@ async def list_quality_profiles():
         
         return QualityProfileList(
             xtts_profiles=profiles["xtts"],
-            f5tts_profiles=profiles["f5tts"],
-            total_count=len(profiles["xtts"]) + len(profiles["f5tts"])
+            f5tts_profiles=profiles.get("f5tts", []),
+            total_count=len(profiles["xtts"])
         )
     except Exception as e:
         logger.error(f"Erro ao listar perfis: {e}", exc_info=True)
@@ -1341,7 +1341,7 @@ async def list_quality_profiles():
 @app.get(
     "/quality-profiles/{engine}",
     summary="Listar perfis por engine",
-    description="Lista perfis de qualidade de um engine específico"
+    description="Lista perfis de qualidade de um engine específico (apenas XTTS)"
 )
 async def list_profiles_by_engine(
     engine: TTSEngine
@@ -1350,7 +1350,7 @@ async def list_profiles_by_engine(
     Lista perfis de qualidade de um engine específico.
     
     Args:
-        engine: xtts ou f5tts
+        engine: xtts
     
     Returns:
         Lista de perfis do engine

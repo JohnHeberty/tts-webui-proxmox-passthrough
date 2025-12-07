@@ -124,8 +124,9 @@ class QualityProfileUpdate(BaseModel):
 
 
 class QualityProfileList(BaseModel):
-    """Response com lista de perfis XTTS"""
+    """Response com lista de perfis XTTS e F5-TTS (vazio)"""
     xtts_profiles: List[XTTSQualityProfile] = Field(default_factory=list)
+    f5tts_profiles: List[Any] = Field(default_factory=list)  # Empty for compatibility
     total_count: int = 0
 
 

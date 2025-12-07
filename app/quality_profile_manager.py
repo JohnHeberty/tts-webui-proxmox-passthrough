@@ -69,7 +69,7 @@ class QualityProfileManager:
     
     def _get_prefix(self, engine: TTSEngine) -> str:
         """Retorna prefixo Redis para engine"""
-        return self.REDIS_PREFIX_XTTS if engine == TTSEngine.XTTS else self.REDIS_PREFIX_F5TTS
+        return self.REDIS_PREFIX_XTTS
     
     def _get_list_key(self, engine: TTSEngine) -> str:
         """Retorna chave da lista de perfis"""
@@ -131,7 +131,7 @@ class QualityProfileManager:
         Busca perfil por ID.
         
         Args:
-            engine: Engine (xtts ou f5tts)
+            engine: Engine (xtts)
             profile_id: ID do perfil
         
         Returns:
@@ -191,10 +191,11 @@ class QualityProfileManager:
         Lista todos os perfis XTTS.
         
         Returns:
-            Dict com chave 'xtts'
+            Dict com chave 'xtts' e 'f5tts' (vazio para compatibilidade)
         """
         return {
-            "xtts": self.list_profiles(TTSEngine.XTTS)
+            "xtts": self.list_profiles(TTSEngine.XTTS),
+            "f5tts": []
         }
     
     def update_profile(
@@ -301,11 +302,10 @@ class QualityProfileManager:
             pass
 
         # Caso contrário, retornar padrão embutido marcado como is_default
-        defaults = DEFAULT_XTTS_PROFILES if engine == TTSEngine.XTTS else DEFAULT_F5TTS_PROFILES
-        for p in defaults.values():
+        for p in DEFAULT_XTTS_PROFILES.values():
             if p.is_default:
                 return p
-        return list(defaults.values())[0] if defaults else None
+        return list(DEFAULT_XTTS_PROFILES.values())[0] if DEFAULT_XTTS_PROFILES else None
     
     def set_default_profile(
         self,
