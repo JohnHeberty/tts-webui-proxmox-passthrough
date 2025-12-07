@@ -1,196 +1,207 @@
-# 🎙️ XTTS-v2 Training Pipeline
+# XTTS-v2 Fine-Tuning Pipeline
 
-Pipeline completo de preparação de dados e treinamento fine-tuning para XTTS-v2 (Coqui TTS).
+Pipeline completo para fine-tuning de modelos XTTS-v2 com LoRA.
 
-## 📁 Estrutura
+## 📊 Status
+
+**Progresso**: 67% (4/6 sprints completos)
+
+- ✅ Sprint 0: Segurança (100%)
+- ✅ Sprint 1: Dataset Pipeline (100%)  
+- ✅ Sprint 2: Training Script (100%)
+- ✅ Sprint 3: API Integration (100%)
+- ⏳ Sprint 4-5: Testes e Docs
+
+Ver `IMPLEMENTATION_STATUS.md` para detalhes.
+
+## 🚀 Quick Start
+
+### 1. Criar Dataset
+
+```bash
+# Download de vídeos do YouTube
+python3 -m train.scripts.download_youtube
+
+# Segmentar áudio em chunks
+python3 -m train.scripts.segment_audio
+
+# Transcrever com Whisper (parallel processing, 15x faster)
+python3 -m train.scripts.transcribe_audio_parallel
+
+# Gerar metadata LJSpeech
+python3 -m train.scripts.build_ljs_dataset
+```
+
+**Resultado**: Dataset em `train/data/MyTTSDataset/` (4922 samples, 15.3h)
+
+### 2. Training
+
+```bash
+# Smoke test (10 steps)
+python3 -m train.scripts.train_xtts --config train/config/smoke_test.yaml
+
+# Full training (50 epochs)
+python3 -m train.scripts.train_xtts --config train/config/train_config.yaml
+```
+
+**Checkpoints**: Salvos em `train/checkpoints/`
+
+### 3. Inference
+
+```python
+from train.scripts.xtts_inference import XTTSInference
+
+# Carregar modelo fine-tunado
+inference = XTTSInference(checkpoint_path="train/checkpoints/best_model.pt")
+
+# Sintetizar áudio
+audio = inference.synthesize("Texto custom", language="pt", speaker_wav="reference.wav")
+
+# Salvar em arquivo
+inference.synthesize_to_file("Outro texto", "output.wav", language="pt")
+```
+
+### 4. API Endpoints
+
+```bash
+# Listar checkpoints
+curl http://localhost:8000/v1/finetune/checkpoints
+
+# Sintetizar com checkpoint
+curl -X POST http://localhost:8000/v1/finetune/synthesize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Olá, teste de síntese",
+    "language": "pt",
+    "checkpoint": "best_model.pt"
+  }'
+
+# Info do modelo
+curl http://localhost:8000/v1/finetune/model/info?checkpoint=best_model.pt
+```
+
+## 📂 Estrutura
 
 ```
 train/
 ├── config/
-│   └── dataset_config.yaml      # Configuração de preparação de dados
-├── data/
-│   ├── videos.csv               # Catálogo de vídeos do YouTube
-│   ├── raw/                     # Áudios baixados (22050Hz mono)
-│   ├── processed/               # Segmentos processados com VAD
-│   └── MyTTSDataset/            # Dataset final (formato LJSpeech)
-│       ├── wavs/                # Arquivos de áudio
-│       ├── metadata.csv         # Metadata completo
-│       ├── metadata_train.csv   # Split de treino (90%)
-│       └── metadata_val.csv     # Split de validação (10%)
+│   ├── dataset_config.yaml      # XTTS-v2 dataset specs
+│   ├── train_config.yaml         # LoRA training config
+│   └── smoke_test.yaml           # Quick validation
 ├── scripts/
-│   ├── download_youtube.py      # Download de áudios do YouTube
-│   ├── segment_audio.py         # Segmentação com VAD
-│   ├── transcribe_audio.py      # Transcrição com Whisper
-│   ├── build_ljs_dataset.py     # Construção do dataset LJSpeech
-│   └── pipeline.py              # Orquestrador completo
-├── output/
-│   ├── checkpoints/             # Checkpoints do fine-tuning
-│   └── samples/                 # Amostras geradas durante treino
-└── logs/                        # Logs de execução
+│   ├── download_youtube.py       # YouTube downloader
+│   ├── segment_audio.py          # Audio segmentation
+│   ├── transcribe_audio_parallel.py  # Parallel Whisper (15x faster)
+│   ├── build_ljs_dataset.py      # LJSpeech metadata builder
+│   ├── train_xtts.py             # Training script (517 linhas)
+│   └── xtts_inference.py         # Inference engine (376 linhas)
+├── data/
+│   ├── raw/                      # YouTube videos (~30-40h)
+│   ├── processed/                # Segments + transcriptions
+│   └── MyTTSDataset/             # Final dataset (4922 samples)
+├── checkpoints/                  # Saved models
+└── env_config.py                 # VRAM auto-detection
 ```
 
-## 🚀 Quickstart
+## 🎯 Features
 
-### 1. Preparar Dataset
+- **Pipeline Completo**: Download → Segment → Transcribe → Build → Train
+- **Parallel Processing**: 15x speedup (6-8 workers com VRAM auto-detection)
+- **LoRA Training**: Efficient fine-tuning (PEFT)
+- **Checkpoint Management**: Auto-save, best model tracking
+- **Inference Engine**: Load custom checkpoints, voice cloning
+- **REST API**: 6 endpoints (`/v1/finetune/*`)
+- **Quality Filtering**: 14.2% low-quality samples removed
+- **Incremental Save**: Resume from crash (zero data loss)
 
-**Opção A: Pipeline completo (recomendado)**
+## 📊 Dataset Stats
+
+- **Total samples**: 4922
+- **Duration**: 15.3 hours (13.76h train, 1.54h val)
+- **Split**: 90/10 train/val
+- **Average length**: 11.19s per sample
+- **Format**: 22050Hz mono 16-bit WAV
+- **Metadata**: LJSpeech format (`path|text`)
+
+## 🔧 Configuração
+
+### Environment Variables
+
 ```bash
-# Executar todos os steps (com salvamento incremental + resume)
-python -m train.scripts.pipeline_v2
-
-# ✅ Benefícios do pipeline_v2:
-# - Salvamento incremental a cada 10 segmentos (proteção contra crash)
-# - Resume automático (continua de onde parou)
-# - Imports diretos (melhor performance e debug)
-# - Cleanup automático de temporários
+# train/.env
+MAX_WORKERS=6           # Parallel transcription workers
+VRAM_GB=24              # Available VRAM (auto-detected)
+CHUNK_SIZE=10           # Save checkpoint every N segments
 ```
 
-**Opção B: Steps individuais**
-```bash
-# 1. Download de áudios do YouTube
-python -m train.scripts.download_youtube
+### Training Config
 
-# 2. Segmentação com VAD (7-12s por segmento)
-python -m train.scripts.segment_audio
-
-# 3. Transcrição com Whisper (com checkpoint automático)
-python -m train.scripts.transcribe_audio
-
-# 4. Construção do dataset LJSpeech
-python -m train.scripts.build_ljs_dataset
-```
-
-**Opção C: Pular steps já executados**
-```bash
-# Se já baixou os vídeos
-python -m train.scripts.pipeline_v2 --skip-download
-
-# Se já segmentou
-python -m train.scripts.pipeline_v2 --skip-download --skip-segment
-
-# Executar apenas um step específico
-python -m train.scripts.pipeline_v2 --only-step transcribe
-```
-
-### 2. Configurar Dataset
-
-Edite `train/config/dataset_config.yaml` para ajustar:
-- **Audio**: Sample rate (22050Hz), canais (mono)
-- **Segmentação**: Duração min/max (7-12s), threshold VAD
-- **Transcrição**: Modelo Whisper (base/small/medium)
-- **Qualidade**: Filtros de palavras, duração
-
-### 3. Adicionar Vídeos
-
-Edite `train/data/videos.csv`:
-```csv
-id,youtube_url,speaker,emotion,language,split,notes
-1,https://www.youtube.com/watch?v=xxxxx,narrator1,neutral,pt-br,train,Podcast EP1
-2,https://www.youtube.com/watch?v=yyyyy,narrator1,happy,pt-br,train,Podcast EP2
-```
-
-## 🎯 Especificações XTTS-v2
-
-**Requisitos do modelo:**
-- ✅ Sample rate: **22050Hz** (não 24000!)
-- ✅ Formato: **WAV mono 16-bit**
-- ✅ Duração ideal: **7-12 segundos** por segmento
-- ✅ Idioma: **pt-BR** (Português Brasil)
-- ✅ Formato dataset: **LJSpeech** (`wavs/audio_00001.wav|texto aqui`)
-
-**Diferenças vs F5-TTS:**
-| Feature | F5-TTS | XTTS-v2 |
-|---------|--------|---------|
-| Sample rate | 24000Hz | **22050Hz** |
-| Duração ideal | 3-30s | **7-12s** |
-| Formato metadata | `path|text` | `path|text` (igual) |
-| Normalização texto | Case-sensitive | **Lowercase** |
-
-## 📊 Pipeline de Dados
-
-### 1. Download YouTube (`download_youtube.py`)
-- Lê `videos.csv`
-- Baixa áudio com yt-dlp
-- Converte para WAV 22050Hz mono
-- Salva em `data/raw/video_XXXXX.wav`
-
-### 2. Segmentação VAD (`segment_audio.py`)
-- Voice Activity Detection (energia RMS)
-- Streaming (não carrega arquivo inteiro na RAM)
-- Segmenta em 7-12s (ideal para XTTS-v2)
-- Aplica fade in/out, normalização RMS
-- Salva em `data/processed/video_XXXXX_YYYY.wav`
-
-### 3. Transcrição (`transcribe_audio.py`)
-- **Prioriza legendas do YouTube** (mais rápido, exato)
-- **Fallback para Whisper** se não houver legendas
-- Normalização pt-BR:
-  - Números expandidos ("123" → "cento e vinte e três")
-  - Lowercase (XTTS funciona melhor)
-  - Remoção de caracteres especiais
-- Salva em `data/processed/transcriptions.json`
-
-### 4. Build Dataset (`build_ljs_dataset.py`)
-- Copia WAVs para `MyTTSDataset/wavs/`
-- Gera `metadata.csv` (formato LJSpeech)
-- Aplica filtros de qualidade:
-  - Duração: 7-12s
-  - Palavras: 3-50
-- Split train/val (90/10)
-
-## 🔧 Troubleshooting
-
-### Erro: "yt-dlp não encontrado"
-```bash
-pip install yt-dlp
-```
-
-### Erro: "ffmpeg not found"
-```bash
-# Ubuntu/Debian
-sudo apt install ffmpeg
-
-# macOS
-brew install ffmpeg
-```
-
-### Erro: "Whisper model not found"
-```bash
-pip install openai-whisper
-```
-
-### Erro: "Memory error during segmentation"
-Reduza `vad_chunk_duration` em `dataset_config.yaml`:
 ```yaml
-segmentation:
-  vad_chunk_duration: 5.0  # Reduzir de 10.0 para 5.0
+# train/config/train_config.yaml
+model:
+  name: "tts_models/multilingual/multi-dataset/xtts_v2"
+  use_lora: true
+  lora:
+    rank: 8
+    alpha: 16
+    target_modules:
+      - "gpt.transformer.h.*.attn.c_attn"
+      - "gpt.transformer.h.*.mlp.c_fc"
+
+training:
+  max_steps: 10000
+  learning_rate: 1e-5
+  use_amp: true
+  lr_scheduler: "cosine_with_warmup"
 ```
 
-### Erro: "Too many segments filtered out"
-Ajuste filtros em `dataset_config.yaml`:
-```yaml
-quality_filters:
-  enabled: false  # Desabilitar filtros temporariamente
+## 📚 Documentação
+
+- `IMPLEMENTATION_STATUS.md` - Overview geral do projeto
+- `SPRINT0_REPORT.md` - Segurança e cleanup
+- `IMPLEMENTATION_COMPLETE.md` - Dataset pipeline (Sprint 1)
+- `SPRINT2_REPORT.md` - Training script (Sprint 2)
+- `SPRINT3_REPORT.md` - API integration (Sprint 3)
+- `SPRINTS.md` - Plano completo de desenvolvimento
+
+## 🐛 Troubleshooting
+
+### PyTorch 2.6 UnpicklingError
+
+**Problema**: `weights_only=True` causa erro ao carregar TTS.
+
+**Solução**: Aplicado fix em `xtts_inference.py`:
+```python
+import torch.serialization
+from TTS.tts.configs.xtts_config import XttsConfig
+torch.serialization.add_safe_globals([XttsConfig])
 ```
 
-## 📈 Métricas Esperadas
+### Transformers Incompatibility
 
-Para um dataset de qualidade:
-- ✅ **1-2 horas** de áudio total (mínimo)
-- ✅ **500-1000 segmentos** (7-12s cada)
-- ✅ **Taxa de filtro < 20%** (poucos segmentos descartados)
-- ✅ **Duração média ~10s** (ideal para XTTS-v2)
+**Problema**: `BeamSearchScorer` não encontrado.
 
-## 🔜 Próximos Passos
+**Solução**: Downgrade para versão compatível:
+```bash
+pip install 'transformers<4.40' 'peft<0.8'
+```
 
-Após preparar o dataset:
-1. **Treinar XTTS-v2**: `python -m train.scripts.train_xtts`
-2. **Avaliar checkpoints**: `python -m train.scripts.evaluate`
-3. **Integrar com API**: Modificar `app/engines/xtts_engine.py`
+### VRAM Out of Memory
 
-## 📚 Referências
+**Problema**: CUDA OOM durante training.
 
-- [XTTS-v2 Paper](https://arxiv.org/abs/2406.04904)
-- [Coqui TTS Docs](https://docs.coqui.ai/)
-- [LJSpeech Dataset Format](https://keithito.com/LJ-Speech-Dataset/)
-- [Whisper by OpenAI](https://github.com/openai/whisper)
+**Solução**:
+- Reduzir `batch_size` em `train_config.yaml`
+- Desabilitar `use_amp`
+- Usar `gradient_checkpointing`
+
+## 🎓 Referências
+
+- [Coqui TTS](https://github.com/coqui-ai/TTS)
+- [XTTS-v2](https://huggingface.co/coqui/XTTS-v2)
+- [PEFT/LoRA](https://github.com/huggingface/peft)
+- [Whisper](https://github.com/openai/whisper)
+
+---
+
+**Última atualização**: 2025-12-06

@@ -1,0 +1,20 @@
+{
+  "reference_audio": "reference_test.wav",
+  "cloned_audio": "cloned_output.wav",
+  "transcription_original": "Tá bom, vou te explicar. Funciona assim, você vai ter acesso ao meu sistema que cruza a número da sorte do sonho, vários dados de sorteios que já ocorreram e criamos probabilidades de acertos em 5 jogos por dia, sendo 5 jogos loto fácil e 5 jogos mega-sena. A assertividade é de 85% de fazer os 14 pontos. Não vou te falar que você vai acertar todos os dias mais 5, 2 vezes na semana no mínimo você terá de acerto. E outra coisa você só paga uma vez e terá sinais atualizados sempre que solicitar no app. Sobre os números. Enviamos sim apenas 300 pessoas receberão esses sinais até no primeiro momento e temos apenas 10 vagas.",
+  "transcription_generated": "Tá bom, vou te explicar ponto. Funciona assim, você vai ter acesso ao meu sistema que cruza a número da sorte do sonho. Vários dados de sorteios que já ocorreram e criamos probabilidade de acertos em cinco jogos por dia, sendo cinco jogos lá do Fácil e cinco jogos. A acertividade é de 85% de fazer os 14 pontos. Ponto, não vou te falar que você vai acertar todos os dias mais cinco, dois vezes na semana, no mínimo você terá de acerto. E outra coisa você só paga uma vez e terá sinais atualizados sempre que solicitar no app.ponto.com sobre os números. Enviamos sim apenas 300 pessoas receberão esses sinais até no primeiro momento. E temos apenas 10 vagas pontos de tempo.",
+  "similarity": 0.8984615384615384,
+  "test_passed": true,
+  "validation": {
+    "method": "Whisper ASR comparison",
+    "threshold": 0.8,
+    "result": "PASSED"
+  },
+  "audio_metrics": {
+    "mfcc_similarity": 0.9950886460776119,
+    "duration_original": 40.67265306122449,
+    "duration_cloned": 40.67265306122449,
+    "rms_original": 0.029478733259185128,
+    "rms_cloned": 0.11871770315759068
+  }
+}

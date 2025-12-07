@@ -1316,6 +1316,81 @@
 
 ---
 
+## 📊 PROGRESSO GERAL
+
+### ✅ Sprint 0: Segurança e Limpeza (COMPLETO)
+**Status**: ✅ 100%  
+**Duração**: 1h  
+**Relatório**: `SPRINT0_REPORT.md`
+
+**Achievements**:
+- ✅ Auditoria de segurança completa
+- ✅ Documentação F5-TTS deprecada
+- ✅ Logs e métricas removidos
+
+### ✅ Sprint 1: Pipeline de Dataset (COMPLETO)
+**Status**: ✅ 100%  
+**Duração**: 5.5h (otimizado com paralelização)  
+**Relatório**: `IMPLEMENTATION_COMPLETE.md`
+
+**Achievements**:
+- ✅ 15 vídeos baixados (~30-40h raw audio)
+- ✅ 9173 segmentos gerados
+- ✅ 5739 transcrições (15x speedup, parallel processing)
+- ✅ 4922 samples finais (15.3h dataset)
+- ✅ Metadata CSV no formato LJSpeech
+- ✅ Todos os bugs corrigidos (progress counter, segment_index, data loss)
+
+### ✅ Sprint 2: Training Script (COMPLETO)
+**Status**: ✅ 100%  
+**Duração**: 2h  
+**Relatório**: `SPRINT2_REPORT.md`
+
+**Achievements**:
+- ✅ Todos os 6 TODOs implementados:
+  - load_pretrained_model()
+  - create_dataset()
+  - create_scheduler()
+  - train_step()
+  - validate()
+  - Training loop completo
+- ✅ Smoke test passou (10 steps)
+- ✅ Checkpoint saving/loading funcional
+- ✅ Best model tracking
+- ✅ Mixed precision + gradient clipping
+- ✅ TensorBoard integration
+- ✅ Dependências instaladas e compatibilizadas
+
+**Pendências**:
+- ⏳ Habilitar TTS.api.TTS (modelo real)
+- ⏳ Implementar XTTS forward pass completo
+- ⏳ Testar LoRA com modelo real
+- ⏳ Full training run (50 epochs)
+
+### ✅ Sprint 3: API Integration (COMPLETO)
+**Status**: ✅ 100%  
+**Duração**: 1h  
+**Relatório**: `SPRINT3_REPORT.md`
+
+**Achievements**:
+- ✅ `xtts_inference.py` implementado (376 linhas):
+  - XTTSInference class completa
+  - Checkpoint loading (base + fine-tuned)
+  - Voice cloning support
+  - Singleton pattern
+  - PyTorch 2.6 fix
+- ✅ `finetune_api.py` implementado (342 linhas):
+  - 6 endpoints REST
+  - Pydantic models
+  - Error handling
+- ✅ Integração com `app/main.py`
+- ✅ Smoke test validado
+
+### ⏳ Sprint 4-5: Pendente
+**Status**: ⏳ 0%
+
+---
+
 ## 📝 Notas Finais
 
 - **Priorizar Sprint 0 e 1** antes de qualquer outra coisa

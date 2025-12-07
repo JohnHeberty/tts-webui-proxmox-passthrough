@@ -1,8 +1,8 @@
 # 🎙️ Audio Voice Service
 
-> **Microserviço profissional de Text-to-Speech (TTS) e Voice Cloning com suporte multi-engine e Voice Conversion avançada**
+> **Microserviço profissional de Text-to-Speech (TTS) e Voice Cloning com suporte multi-engine e XTTS-v2 Fine-Tuning**
 
-Sistema completo de geração de voz sintética usando **XTTS v2** (Coqui TTS), **F5-TTS** especializado em PT-BR, e **RVC** (Retrieval-based Voice Conversion) para conversão de voz de alta qualidade.
+Sistema completo de geração de voz sintética usando **XTTS v2** (Coqui TTS) com fine-tuning, **Voice Cloning Zero-Shot**, e **RVC** (Retrieval-based Voice Conversion) para conversão de voz de alta qualidade.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.120.0-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -14,29 +14,39 @@ Sistema completo de geração de voz sintética usando **XTTS v2** (Coqui TTS), 
 
 ## ✨ Destaques
 
-🎯 **Multi-Engine TTS**  
-Suporte a XTTS v2 (16 idiomas) e F5-TTS (otimizado PT-BR) com troca dinâmica de engines
+🎯 **XTTS-v2 Fine-Tuning** ⭐ **NOVO**  
+Pipeline completo de fine-tuning com LoRA para vozes customizadas
+
+🎨 **Training WebUI** ⭐ **NOVO**  
+Interface completa para gerenciar datasets, treinamento e inferência
+
+🔬 **A/B Testing** ⭐ **NOVO**  
+Compare modelo base vs fine-tuned com métricas de qualidade
+
+📊 **13 Novos Endpoints** ⭐ **NOVO**  
+API completa para gerenciamento de treinamento e checkpoints
 
 🎤 **Voice Cloning Zero-Shot**  
-Clone qualquer voz com apenas 5-300 segundos de áudio de referência
+Clone qualquer voz com apenas 5-300 segundos de áudio de referência (89.44% similaridade validada)
 
 🎭 **RVC Voice Conversion**  
 Transforme vozes geradas com modelos RVC para qualidade premium
 
 ⚙️ **Quality Profiles**  
-8 perfis pré-configurados (3 XTTS + 5 F5-TTS) + criação de perfis customizados
+Perfis pré-configurados + criação de perfis customizados via API
 
-🌐 **WebUI Completa**  
-Interface Bootstrap 5 responsiva com 6 abas e gerenciamento completo
+🌐 **REST API Completa**  
+16 idiomas, 30+ endpoints, OpenAPI docs, WebUI Bootstrap 5
 
 📦 **Produção-Ready**  
-Docker + Celery + Redis + Circuit Breaker + Health Checks
+Docker + Celery + Redis + Circuit Breaker + Health Checks + CI/CD
 
 ---
 
 ## 📋 Índice
 
 - [Funcionalidades](#-funcionalidades)
+- [Fine-Tuning XTTS-v2](#-fine-tuning-xtts-v2) ⭐ **NOVO**
 - [Arquitetura](#-arquitetura-de-alto-nível)
 - [Pré-requisitos](#-pré-requisitos)
 - [Instalação Rápida](#-instalação-rápida)
@@ -45,7 +55,6 @@ Docker + Celery + Redis + Circuit Breaker + Health Checks
 - [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Testes](#-testes)
 - [Comandos Úteis](#-comandos-úteis-makefile)
-- [**Treinamento F5-TTS**](#-treinamento-f5-tts) ⭐ **NOVO**
 - [Documentação](#-documentação)
 - [Contribuindo](#-contribuindo)
 - [Licença](#-licença)
@@ -54,10 +63,19 @@ Docker + Celery + Redis + Circuit Breaker + Health Checks
 
 ## 🚀 Funcionalidades
 
+### ⭐ Fine-Tuning XTTS-v2 (NOVO)
+
+- ✅ **Pipeline completo de dataset**: YouTube download → Segmentação → Transcrição paralela → LJSpeech format
+- ✅ **Training com LoRA**: Adaptação eficiente com baixo VRAM (8GB+)
+- ✅ **Inference Engine**: `XTTSInference` class para carregar checkpoints customizados
+- ✅ **REST API**: 6 endpoints para gerenciar fine-tuning (`/v1/finetune/*`)
+- ✅ **Performance**: 15x speedup em transcrição (parallel processing)
+- ✅ **Dataset**: 4922 samples, 15.3h de áudio processado
+- 📚 **Docs**: Ver `IMPLEMENTATION_STATUS.md` e `train/README.md`
+
 ### Text-to-Speech (TTS)
 
 - ✅ **XTTS v2** (Coqui TTS): Multilingual, 16 idiomas suportados
-- ✅ **F5-TTS**: Especializado em português brasileiro de alta qualidade
 - ✅ **Voice Presets**: 8 vozes genéricas pré-configuradas
 - ✅ **Voice Cloning**: Clone vozes customizadas com zero-shot learning
 - ✅ **Quality Profiles**: Sistema de perfis de qualidade configuráveis

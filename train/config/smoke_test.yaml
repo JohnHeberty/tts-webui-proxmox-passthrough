@@ -1,15 +1,12 @@
-# Training Configuration for XTTS-v2 Fine-tuning
-# ================================================
-# Full training run com TensorBoard (based on smoke test structure)
+# Configuração mínima para smoke test (10 steps)
 
 hardware:
   device: "cuda"
   cuda_device_id: 0
 
-# Model settings
 model:
   name: "tts_models/multilingual/multi-dataset/xtts_v2"
-  use_lora: false  # Usar modelo dummy para não gastar VRAM
+  use_lora: false
   lora:
     enabled: true
     rank: 8
@@ -18,31 +15,28 @@ model:
     target_modules:
       - "dummy_layer"
 
-# Dataset paths
 data:
   dataset_dir: "train/data/MyTTSDataset"
   train_metadata: "metadata_train.csv"
   val_metadata: "metadata_val.csv"
   sample_rate: 22050
-  batch_size: 2
-  num_workers: 2
+  batch_size: 1
+  num_workers: 0
 
-# Training hyperparameters
 training:
-  num_epochs: 1000  # Número de épocas (ao invés de steps)
+  num_epochs: 2  # Apenas 2 épocas para smoke test
   learning_rate: 1.0e-5
   adam_beta1: 0.9
   adam_beta2: 0.999
   adam_epsilon: 1.0e-8
   weight_decay: 0.01
   max_grad_norm: 1.0
-  use_amp: false  # Disable AMP for compatibility
-  lr_scheduler: "cosine"
-  warmup_steps: 100
+  use_amp: false  # Desabilitar AMP para smoke test
+  lr_scheduler: "none"
 
 logging:
-  log_every_n_steps: 10
-  save_every_n_epochs: 1  # Salvar checkpoint a cada N épocas
+  log_every_n_steps: 1
+  save_every_n_epochs: 1  # Salvar a cada época
   use_tensorboard: true  # ✅ TENSORBOARD ATIVADO
   log_dir: "train/runs"
 

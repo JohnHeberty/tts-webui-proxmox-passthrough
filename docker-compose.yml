@@ -56,7 +56,6 @@ services:
       - ./voice_profiles:/app/voice_profiles
       - ./models:/app/models
       - ./logs:/app/logs
-      - ./train:/app/train  # Training checkpoints and data
       - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
       - /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
     env_file:

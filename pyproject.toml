@@ -27,6 +27,98 @@ dev = [
     "pre-commit>=3.5.0",
 ]
 
+[tool.black]
+line-length = 120
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | models
+  | voice_profiles
+  | uploads
+  | processed
+  | temp
+  | logs
+  | __pycache__
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+skip_gitignore = true
+known_first_party = ["app", "train"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "train/test"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short --strict-markers --disable-warnings"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "gpu: marks tests that require GPU",
+]
+
+[tool.coverage.run]
+source = ["app", "train"]
+omit = [
+    "*/tests/*",
+    "*/test/*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/models/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+check_untyped_defs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+no_implicit_optional = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "celery.*",
+    "redis.*",
+    "TTS.*",
+    "whisper.*",
+    "yt_dlp.*",
+    "soundfile.*",
+    "librosa.*",
+    "scipy.*",
+]
+ignore_missing_imports = true
+
 [tool.ruff]
 # Configuração do Ruff (linter ultra-rápido, substitui Flake8+isort)
 target-version = "py311"
@@ -81,107 +173,3 @@ known-first-party = ["train", "app"]
 force-single-line = false
 force-sort-within-sections = true
 lines-after-imports = 2
-
-[tool.black]
-# Formatador de código automático
-line-length = 100
-target-version = ['py311']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # Diretórios padrão
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
-
-[tool.mypy]
-# Type checker estático
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false  # Começar com false, depois mudar para true
-disallow_any_unimported = false
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-check_untyped_defs = true
-strict_equality = true
-
-# Módulos sem type stubs (ignorar)
-[[tool.mypy.overrides]]
-module = [
-    "torch.*",
-    "torchaudio.*",
-    "f5_tts.*",
-    "pydub.*",
-    "librosa.*",
-    "soundfile.*",
-    "typer.*",
-    "rich.*",
-    "pydantic.*",
-]
-ignore_missing_imports = true
-
-[tool.pytest.ini_options]
-# Configuração do pytest
-minversion = "7.4"
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = [
-    "-ra",                    # Show summary of all test types
-    "--strict-markers",       # Error on unknown markers
-    "--strict-config",        # Error on invalid pytest config
-    "--showlocals",          # Show local variables in tracebacks
-    "-v",                    # Verbose output
-]
-
-# Markers customizados
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "e2e: marks tests as end-to-end tests",
-    "gpu: marks tests requiring GPU",
-]
-
-# Asyncio configuration
-asyncio_mode = "auto"
-
-[tool.coverage.run]
-# Configuração do coverage
-source = ["train"]
-omit = [
-    "*/tests/*",
-    "*/__pycache__/*",
-    "*/.*",
-    "*/site-packages/*",
-]
-
-[tool.coverage.report]
-# Relatório de coverage
-precision = 2
-show_missing = true
-skip_covered = false
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
-    "@abstractmethod",
-]
-
-[tool.coverage.html]
-directory = "htmlcov"

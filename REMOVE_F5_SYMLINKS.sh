@@ -14,6 +14,7 @@ POSSIBLE_SYMLINKS=(
     "/root/.local/lib/python3.11/data"
     "/root/.cache/huggingface/hub/models--charactr--vocos-mel-24khz"
     "/root/.cache/huggingface/hub/models--firstpixel--F5-TTS-pt-br"
+    "/home/tts-webui-proxmox-passthrough/runs"
 )
 
 SYMLINKS_FOUND=0

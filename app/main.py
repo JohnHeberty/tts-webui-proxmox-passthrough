@@ -32,6 +32,8 @@ from .quality_profiles import (
 from .quality_profile_manager import quality_profile_manager
 from .processor import VoiceProcessor
 from .redis_store import RedisJobStore
+from .finetune_api import router as finetune_router  # Fine-tuning endpoints
+from .training_api import router as training_router  # Training management endpoints
 from .config import get_settings, is_language_supported, get_voice_presets, is_voice_preset_valid, get_supported_languages
 from .logging_config import setup_logging, get_logger
 from .exceptions import (
@@ -53,6 +55,20 @@ app = FastAPI(
 
 # Exception handlers
 app.add_exception_handler(VoiceServiceException, exception_handler)
+
+# Include routers
+app.include_router(finetune_router)
+app.include_router(training_router)
+
+# Include advanced features and metrics routers (Sprint 7)
+try:
+    from app.advanced_features import router as advanced_router
+    from app.metrics import router as metrics_router
+    app.include_router(advanced_router)
+    app.include_router(metrics_router)
+    logger.info("✅ Advanced features and metrics routers loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Advanced features not available: {e}")
 
 # Mount WebUI static files
 webui_path = Path(__file__).parent / "webui"
@@ -1716,6 +1732,38 @@ async def webui():
     # Se arquivo existe, serve ele
     with open(html_path, 'r', encoding='utf-8') as f:
         return HTMLResponse(content=f.read())
+
+
+# ===== TRAINING FILES SERVING =====
+
+@app.get("/files/inference/{filename}")
+async def serve_inference_file(filename: str):
+    """Serve inference audio files"""
+    file_path = Path("temp/inference") / filename
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(
+        path=file_path,
+        media_type="audio/wav",
+        filename=filename
+    )
+
+
+@app.get("/files/ab_test/{filename}")
+async def serve_ab_test_file(filename: str):
+    """Serve A/B test audio files"""
+    file_path = Path("temp/ab_test") / filename
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(
+        path=file_path,
+        media_type="audio/wav",
+        filename=filename
+    )
 
 
 # webui já está montada em /webui acima

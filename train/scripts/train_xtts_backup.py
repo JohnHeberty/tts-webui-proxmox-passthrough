@@ -318,47 +318,6 @@ def validate(model, val_loader, device: torch.device):
     return total_loss / count if count > 0 else 0.0
 
 
-def generate_sample_audio(epoch: int, step: int, config: dict, output_dir: Path):
-    """
-    Gera áudio de teste para validação qualitativa
-    
-    Args:
-        epoch: Época atual
-        step: Step global atual
-        config: Configuração de treinamento
-        output_dir: Diretório de saída para samples
-    """
-    try:
-        import shutil
-        
-        # Criar diretório se não existir
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Procurar arquivo de referência
-        dataset_dir = Path(config["data"]["dataset_dir"])
-        wavs_dir = dataset_dir / "wavs"
-        reference_wavs = list(wavs_dir.glob("*.wav"))[:1]
-        
-        if not reference_wavs:
-            logger.warning("⚠️  Nenhum WAV de referência encontrado")
-            return
-        
-        reference_wav = str(reference_wavs[0])
-        
-        # Copiar referência
-        reference_output = output_dir / f"epoch_{epoch}_step_{step}_reference.wav"
-        shutil.copy(reference_wav, reference_output)
-        
-        # Placeholder para output (em produção, usar modelo para síntese)
-        output_wav = output_dir / f"epoch_{epoch}_step_{step}_output.wav"
-        shutil.copy(reference_wav, output_wav)
-        
-        logger.info(f"📢 Sample: {output_wav.name} + {reference_output.name}")
-        
-    except Exception as e:
-        logger.warning(f"⚠️  Erro ao gerar sample: {e}")
-
-
 def save_checkpoint(model, optimizer, scheduler, step: int, config: dict, best: bool = False):
     """Salva checkpoint"""
     output_dir = project_root / config["checkpointing"]["output_dir"]
@@ -445,14 +404,10 @@ def main(config, resume):
     # Mixed precision training
     scaler = torch.amp.GradScaler() if cfg["training"]["use_amp"] else None
     
-    # Output directories
-    output_base = project_root / "train" / "output"
-    checkpoints_dir = output_base / "checkpoints"
-    samples_dir = output_base / "samples"
+    # Checkpoints directory
+    checkpoints_dir = project_root / cfg["output"]["checkpoint_dir"]
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
-    samples_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"📁 Checkpoints: {checkpoints_dir}")
-    logger.info(f"📁 Samples: {samples_dir}")
     
     # TensorBoard
     writer = None
@@ -461,13 +416,9 @@ def main(config, resume):
         writer = SummaryWriter(log_dir)
         logger.info(f"📊 TensorBoard: {log_dir}")
     
-    # Training configuration
-    num_epochs = cfg["training"].get("num_epochs", 50)
-    save_every_n_epochs = cfg["logging"].get("save_every_n_epochs", 1)
-    log_every_n_steps = cfg["logging"].get("log_every_n_steps", 10)
-    
+    # Training loop
     logger.info("\n🚀 Iniciando treinamento...")
-    logger.info(f"   Epochs: {num_epochs}")
+    logger.info(f"   Max steps: {cfg['training']['max_steps']}")
     logger.info(f"   Batch size: {cfg['data']['batch_size']}")
     logger.info(f"   Learning rate: {cfg['training']['learning_rate']}\n")
     
@@ -494,23 +445,16 @@ def main(config, resume):
     
     logger.info(f"\n📊 Datasets carregados:")
     logger.info(f"   Train: {len(train_dataset)} samples")
-    logger.info(f"   Val: {len(val_dataset)} samples")
-    logger.info(f"   Steps per epoch: {len(train_loader)}\n")
+    logger.info(f"   Val: {len(val_dataset)} samples\n")
     
-    # Training loop - BASEADO EM EPOCHS
-    for epoch in range(1, num_epochs + 1):
-        logger.info(f"\n{'='*60}")
-        logger.info(f"EPOCH {epoch}/{num_epochs}")
-        logger.info(f"{'='*60}\n")
-        
-        epoch_loss = 0.0
-        num_batches = 0
-        
-        for batch_idx, batch in enumerate(train_loader):
+    # Training loop
+    while global_step < cfg["training"]["max_steps"]:
+        for batch in train_loader:
+            if global_step >= cfg["training"]["max_steps"]:
+                break
+            
             # Train step
             loss = train_step(model, batch, optimizer, scaler, cfg, device)
-            epoch_loss += loss
-            num_batches += 1
             
             # Update scheduler
             if scheduler is not None:
@@ -519,65 +463,43 @@ def main(config, resume):
             global_step += 1
             
             # Logging
-            if global_step % log_every_n_steps == 0:
+            if global_step % cfg["logging"]["log_every_n_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']
-                avg_loss = epoch_loss / num_batches
                 logger.info(
-                    f"Epoch {epoch}/{num_epochs} | "
-                    f"Step {batch_idx+1}/{len(train_loader)} | "
-                    f"Loss: {loss:.4f} | Avg: {avg_loss:.4f} | LR: {lr:.2e}"
+                    f"Step {global_step}/{cfg['training']['max_steps']} | "
+                    f"Loss: {loss:.4f} | LR: {lr:.2e}"
                 )
                 
                 if writer is not None:
                     writer.add_scalar('train/loss', loss, global_step)
-                    writer.add_scalar('train/avg_loss', avg_loss, global_step)
                     writer.add_scalar('train/lr', lr, global_step)
-        
-        # Validation após cada época
-        avg_epoch_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
-        val_loss = validate(model, val_loader, device)
-        
-        logger.info(f"\n📊 EPOCH {epoch} COMPLETO")
-        logger.info(f"   Train Loss: {avg_epoch_loss:.4f}")
-        logger.info(f"   Val Loss: {val_loss:.4f}\n")
-        
-        if writer is not None:
-            writer.add_scalar('epoch/train_loss', avg_epoch_loss, epoch)
-            writer.add_scalar('epoch/val_loss', val_loss, epoch)
-        
-        # Salvar checkpoint a cada N épocas
-        if epoch % save_every_n_epochs == 0:
-            checkpoint_path = checkpoints_dir / f"checkpoint_epoch_{epoch}.pt"
-            torch.save({
-                'epoch': epoch,
-                'global_step': global_step,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
-                'train_loss': avg_epoch_loss,
-                'val_loss': val_loss,
-                'config': cfg,
-            }, checkpoint_path)
-            logger.info(f"💾 Checkpoint salvo: {checkpoint_path}")
             
-            # Gerar sample de áudio
-            generate_sample_audio(epoch, global_step, cfg, samples_dir)
-            
-            # Best model
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_model_path = checkpoints_dir / "best_model.pt"
+            # Validation
+            if global_step % cfg["logging"]["save_every_n_steps"] == 0:
+                val_loss = validate(model, val_loader, device)
+                logger.info(f"\n📊 Step {global_step} | Val Loss: {val_loss:.4f}\n")
+                
+                if writer is not None:
+                    writer.add_scalar('val/loss', val_loss, global_step)
+                
+                # Save checkpoint
+                checkpoint_path = checkpoints_dir / f"checkpoint_step_{global_step}.pt"
                 torch.save({
-                    'epoch': epoch,
                     'global_step': global_step,
                     'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
                     'val_loss': val_loss,
-                }, best_model_path)
-                logger.info(f"🏆 Novo melhor modelo! Epoch {epoch} | Val Loss: {val_loss:.4f}\n")
+                    'config': cfg,
+                }, checkpoint_path)
+                logger.info(f"💾 Checkpoint salvo: {checkpoint_path}")
                 
-                # Sample do melhor modelo
-                best_samples_dir = samples_dir / "best"
-                generate_sample_audio(epoch, global_step, cfg, best_samples_dir)
+                # Best model
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    best_model_path = checkpoints_dir / "best_model.pt"
+                    torch.save(model.state_dict(), best_model_path)
+                    logger.info(f"🏆 Novo melhor modelo! Val Loss: {val_loss:.4f}\n")
     
     # Cleanup
     if writer is not None:
@@ -586,11 +508,9 @@ def main(config, resume):
     logger.info("\n" + "="*80)
     logger.info("✅ TREINAMENTO COMPLETO!")
     logger.info("="*80)
-    logger.info(f"Total Epochs: {num_epochs}")
-    logger.info(f"Total Steps: {global_step}")
     logger.info(f"Best Val Loss: {best_val_loss:.4f}")
+    logger.info(f"Total Steps: {global_step}")
     logger.info(f"Checkpoints: {checkpoints_dir}")
-    logger.info(f"Samples: {samples_dir}")
 
 
 if __name__ == "__main__":
