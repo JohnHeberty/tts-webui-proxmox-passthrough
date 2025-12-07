@@ -13,12 +13,12 @@ from .quality_profiles import (
     QualityProfile,
     DEFAULT_XTTS_PROFILES
 )
-from .config import get_settings
+from .settings import get_settings
 import redis
 
 # Criar conexão Redis direta para quality profiles
 settings = get_settings()
-_redis_client = redis.Redis.from_url(settings['redis_url'], decode_responses=True)
+_redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
 
 logger = logging.getLogger(__name__)
 

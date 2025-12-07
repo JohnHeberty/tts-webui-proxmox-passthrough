@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from functools import wraps
 import logging
 
-from .config import get_settings
+from .settings import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -35,7 +35,7 @@ class VRAMManager:
     
     def __init__(self):
         settings = get_settings()
-        self.low_vram_mode = settings.get('low_vram_mode', False)
+        self.low_vram_mode = settings.low_vram_mode
         
         # Debug: Logar valor raw da variável de ambiente e valor parseado
         import os

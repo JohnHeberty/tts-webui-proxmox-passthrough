@@ -10,7 +10,7 @@ sys.path.insert(0, '/app')
 
 from app.redis_store import RedisJobStore
 from app.f5tts_client import F5TTSClient
-from app.config import get_settings
+from app.settings import get_settings
 
 def migrate_profiles():
     """Migra perfis de voz existentes"""

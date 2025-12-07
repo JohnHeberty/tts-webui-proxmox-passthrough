@@ -8,13 +8,13 @@ from .celery_config import celery_app
 from .models import Job, VoiceProfile
 from .processor import VoiceProcessor
 from .redis_store import RedisJobStore
-from .config import get_settings
+from .settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 # Inicializa store
 settings = get_settings()
-job_store = RedisJobStore(redis_url=settings['redis_url'])
+job_store = RedisJobStore(redis_url=settings.redis_url)
 
 # LAZY LOADING: Processor será criado sob demanda
 _processor = None

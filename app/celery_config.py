@@ -2,30 +2,29 @@
 Configuração do Celery para processamento assíncrono
 """
 from celery import Celery
-from .config import get_settings
+from .settings import get_settings
 
 settings = get_settings()
-celery_config = settings['celery']
 
 # Cria instância Celery
 celery_app = Celery(
     'audio_voice_worker',
-    broker=celery_config['broker_url'],
-    backend=celery_config['result_backend']
+    broker=settings.celery_broker_url,
+    backend=settings.celery_result_backend
 )
 
 # Configurações
 celery_app.conf.update(
-    task_serializer=celery_config['task_serializer'],
-    result_serializer=celery_config['result_serializer'],
-    accept_content=celery_config['accept_content'],
-    timezone=celery_config['timezone'],
-    enable_utc=celery_config['enable_utc'],
-    task_track_started=celery_config['task_track_started'],
-    task_time_limit=celery_config['task_time_limit'],
-    task_soft_time_limit=celery_config['task_soft_time_limit'],
-    worker_prefetch_multiplier=celery_config['worker_prefetch_multiplier'],
-    worker_max_tasks_per_child=celery_config['worker_max_tasks_per_child'],
+    task_serializer='json',
+    result_serializer='json',
+    accept_content=['json'],
+    timezone='America/Sao_Paulo',
+    enable_utc=True,
+    task_track_started=True,
+    task_time_limit=settings.task_timeout,
+    task_soft_time_limit=settings.task_timeout - 60,
+    worker_prefetch_multiplier=1,
+    worker_max_tasks_per_child=10,
     
     # Roteamento de tasks
     task_routes={
