@@ -19,7 +19,14 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/webui/assets/css/styles.css?v=3.0">
-    <!-- App JS (defer ensures execution after DOM ready) -->
+    
+    <!-- Sprint 7: Modular JavaScript Architecture -->
+    <!-- Utilities (loaded first) -->
+    <script defer src="/webui/assets/js/utils/error-formatter.js?v=7.0"></script>
+    <script defer src="/webui/assets/js/utils/toast-notifier.js?v=7.0"></script>
+    <!-- API Client -->
+    <script defer src="/webui/assets/js/api/client.js?v=7.0"></script>
+    <!-- Main App (loaded last, depends on utilities) -->
     <script defer src="/webui/assets/js/app.js?v=3.7"></script>
 </head>
 <body>
