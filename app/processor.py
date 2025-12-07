@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from .models import Job, VoiceProfile, JobMode, JobStatus
-from .config import get_settings
+from .settings import get_settings
 from .exceptions import DubbingException, VoiceCloneException
 from .resilience import CircuitBreaker
 from .quality_profile_mapper import map_quality_profile_for_fallback

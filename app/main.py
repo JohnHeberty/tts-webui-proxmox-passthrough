@@ -34,7 +34,7 @@ from .processor import VoiceProcessor
 from .redis_store import RedisJobStore
 from .finetune_api import router as finetune_router  # Fine-tuning endpoints
 from .training_api import router as training_router  # Training management endpoints
-from .config import get_settings, is_language_supported, get_voice_presets, is_voice_preset_valid, get_supported_languages
+from .settings import get_settings, is_language_supported, get_voice_presets, is_voice_preset_valid, get_supported_languages
 from .logging_config import setup_logging, get_logger
 from .exceptions import (
     VoiceServiceException, InvalidLanguageException, TextTooLongException,
@@ -45,7 +45,7 @@ from .dependencies import set_xtts_service, get_xtts_service
 
 # Configuração
 settings = get_settings()
-setup_logging("audio-voice", settings['log_level'])
+setup_logging("audio-voice", settings.log_level)
 logger = get_logger(__name__)
 
 # App FastAPI
@@ -179,7 +179,7 @@ def convert_audio_format(input_path: Path, output_format: str) -> Path:
         )
 
 # Stores e processors
-redis_url = settings['redis_url']
+redis_url = settings.redis_url
 job_store = RedisJobStore(redis_url=redis_url)
 
 # API NÃO carrega modelo XTTS (lazy_load=True)
@@ -206,9 +206,9 @@ async def startup_event():
     # Inicializar XTTS Service com eager loading
     logger.info("Loading XTTS-v2 model (eager load)...")
     xtts_service = XTTSService(
-        model_name="tts_models/multilingual/multi-dataset/xtts_v2",
-        device=settings.get('device', 'cuda'),
-        models_dir=Path(settings.get('models_dir', '/app/models/xtts'))
+        model_name=settings.xtts_model_name,
+        device=settings.xtts_device,
+        models_dir=settings.models_dir
     )
     xtts_service.initialize()
     
