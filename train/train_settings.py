@@ -111,5 +111,19 @@ def get_train_settings() -> TrainingSettings:
     """Get training settings singleton"""
     global _train_settings
     if _train_settings is None:
+        import os
+        
+        # Criar settings base
         _train_settings = TrainingSettings()
+        
+        # Override com variáveis de ambiente
+        if os.getenv("MAX_TRAIN_SAMPLES"):
+            _train_settings.max_train_samples = int(os.getenv("MAX_TRAIN_SAMPLES"))
+        
+        if os.getenv("NUM_EPOCHS"):
+            _train_settings.num_epochs = int(os.getenv("NUM_EPOCHS"))
+        
+        if os.getenv("LOG_EVERY_N_STEPS"):
+            _train_settings.log_every_n_steps = int(os.getenv("LOG_EVERY_N_STEPS"))
+    
     return _train_settings

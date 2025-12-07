@@ -730,8 +730,46 @@ def main(resume):
     logger.info(f"   Learning rate: {settings.learning_rate}")
     logger.info(f"   Log a cada: {log_every_n_steps} steps (ajustável via LOG_EVERY_N_STEPS=1)\n")
     
+    # AUTO-RESUME: Carregar último checkpoint se existir
+    start_epoch = 1
     global_step = 0
     best_val_loss = float('inf')
+    
+    if resume is None:
+        # Procurar checkpoint mais recente automaticamente
+        checkpoints_dir = settings.checkpoint_dir
+        if checkpoints_dir.exists():
+            checkpoints = sorted(checkpoints_dir.glob("checkpoint_epoch_*.pt"))
+            if checkpoints:
+                resume = checkpoints[-1]  # Último checkpoint
+                logger.info(f"📂 Checkpoint encontrado: {resume}")
+    
+    if resume:
+        logger.info(f"🔄 Carregando checkpoint: {resume}")
+        checkpoint = torch.load(resume, map_location=device, weights_only=False)
+        
+        # Restaurar modelo
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model = model.to(device)
+        
+        # Restaurar optimizer
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
+        # Restaurar scheduler se existir
+        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] and scheduler:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        
+        # Restaurar estado de treinamento
+        start_epoch = checkpoint['epoch'] + 1  # Próxima época
+        global_step = checkpoint.get('global_step', 0)
+        best_val_loss = checkpoint.get('val_loss', float('inf'))
+        
+        logger.info(f"✅ Checkpoint carregado!")
+        logger.info(f"   Continuando da época: {start_epoch}")
+        logger.info(f"   Global step: {global_step}")
+        logger.info(f"   Best val loss: {best_val_loss:.4f}\n")
+    else:
+        logger.info(f"📝 Nenhum checkpoint encontrado, iniciando do zero\n")
     
     # Create datasets
     train_dataset, val_dataset = create_dataset(settings)
@@ -763,8 +801,8 @@ def main(resume):
     logger.info(f"   Val: {len(val_dataset)} samples")
     logger.info(f"   Steps per epoch: {len(train_loader)}\n")
     
-    # Training loop - BASEADO EM EPOCHS
-    for epoch in range(1, num_epochs + 1):
+    # Training loop - BASEADO EM EPOCHS (com resume)
+    for epoch in range(start_epoch, num_epochs + 1):
         logger.info(f"\n{'='*60}")
         logger.info(f"EPOCH {epoch}/{num_epochs}")
         logger.info(f"{'='*60}\n")
