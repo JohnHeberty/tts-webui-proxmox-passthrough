@@ -263,16 +263,24 @@ def train_step(model, batch, optimizer, scaler, settings: TrainingSettings, devi
     """
     Executa um step de treinamento usando Pydantic Settings
     
-    NOTA: Implementação placeholder - adaptar para XTTS-v2
-    Em produção, usar TTS.tts.models.xtts para forward pass completo
+    ⚠️⚠️⚠️ MODO TEMPLATE ATIVO ⚠️⚠️⚠️
+    
+    ESTE CÓDIGO NÃO ESTÁ TREINANDO DE VERDADE!
+    Loss é FAKE (0.5 + random) - apenas para demonstração
+    
+    Para treinamento REAL:
+    1. Instalar TTS: pip install TTS
+    2. Implementar load_pretrained_model() com modelo XTTS real
+    3. Implementar forward pass XTTS completo aqui:
+       - GPT encoder/decoder forward
+       - HiFi-GAN vocoder
+       - Multi-task loss (mel, duration, alignment)
+    
+    Ref: TTS.tts.models.xtts.Xtts.forward()
     """
     model.train()
     
-    # Placeholder loss - XTTS training requer:
-    # - GPT encoder/decoder forward
-    # - HiFi-GAN vocoder
-    # - Multi-task loss (mel, duration, alignment)
-    # Ref: TTS.tts.models.xtts.Xtts.forward()
+    # ⚠️ PLACEHOLDER LOSS - NÃO ESTÁ APRENDENDO!
     loss = torch.tensor(0.5 + torch.rand(1).item() * 0.1, device=device, requires_grad=True)
     
     # Backward pass
@@ -334,16 +342,18 @@ def generate_sample_audio(epoch: int, settings: TrainingSettings, output_dir: Pa
         # Criar diretório se não existir
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Procurar arquivo de referência
+        # Procurar arquivos de referência
         dataset_dir = settings.dataset_dir
         wavs_dir = dataset_dir / "wavs"
-        reference_wavs = list(wavs_dir.glob("*.wav"))[:1]
+        reference_wavs = sorted(list(wavs_dir.glob("*.wav")))
         
         if not reference_wavs:
             logger.warning("⚠️  Nenhum WAV de referência encontrado")
             return
         
-        reference_wav = str(reference_wavs[0])
+        # Usar arquivo diferente a cada época (cicla quando acaba)
+        wav_index = (epoch - 1) % len(reference_wavs)
+        reference_wav = str(reference_wavs[wav_index])
         
         # Copiar referência
         reference_output = output_dir / f"epoch_{epoch}_reference.wav"
@@ -353,7 +363,7 @@ def generate_sample_audio(epoch: int, settings: TrainingSettings, output_dir: Pa
         output_wav = output_dir / f"epoch_{epoch}_output.wav"
         shutil.copy(reference_wav, output_wav)
         
-        logger.info(f"📢 Sample: {output_wav.name} + {reference_output.name}")
+        logger.info(f"📢 Sample {wav_index+1}/{len(reference_wavs)}: {Path(reference_wav).name}")
         
     except Exception as e:
         logger.warning(f"⚠️  Erro ao gerar sample: {e}")
@@ -468,6 +478,22 @@ def main(resume):
         log_dir = settings.log_dir
         writer = SummaryWriter(log_dir)
         logger.info(f"📊 TensorBoard: {log_dir}")
+    
+    # ⚠️ AVISO CRÍTICO: MODO TEMPLATE
+    logger.warning("\n" + "="*80)
+    logger.warning("⚠️ ⚠️ ⚠️  MODO TEMPLATE ATIVO - NÃO ESTÁ TREINANDO DE VERDADE  ⚠️ ⚠️ ⚠️")
+    logger.warning("="*80)
+    logger.warning("Loss é FAKE (0.5 + random) - apenas demonstração do pipeline!")
+    logger.warning("Samples são CÓPIAS do dataset - modelo não está gerando áudio!")
+    logger.warning("")
+    logger.warning("Para treinamento REAL com XTTS-v2:")
+    logger.warning("1. pip install TTS")
+    logger.warning("2. Implementar load_pretrained_model() com TTS.api.TTS")
+    logger.warning("3. Implementar train_step() com XTTS forward pass")
+    logger.warning("4. Implementar generate_sample_audio() com síntese real")
+    logger.warning("")
+    logger.warning("Ver: train/docs/DOCUMENTACAO_TECNICA.md#implementação-xtts-real")
+    logger.warning("="*80 + "\n")
     
     # Training configuration
     num_epochs = settings.num_epochs
