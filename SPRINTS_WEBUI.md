@@ -651,13 +651,169 @@ Tasks originais foram implementadas ou movidas para outros sprints.
 
 ---
 
-## Sprint 6 – Refatoração Arquitetural (Clean Code)
+## Sprint 6 – Bugs Críticos de Backend/Training 🐛
+**Duração:** 1 semana  
+**Meta:** Corrigir memory leaks e bugs críticos no sistema de treinamento  
+**Prioridade:** ALTA (afeta estabilidade do sistema)
+
+### 🚨 BUG CRÍTICO: Memory Leak no Training Loop
+
+**Descoberto em:** 2025-12-07 18:01  
+**Severidade:** CRÍTICA  
+**Impacto:** Sistema consome toda RAM disponível e trava após ~5 épocas
+
+**Sintomas:**
+```
+2025-12-07 18:01:03,435 - INFO - 💾 Checkpoint salvo: train/output/checkpoints/checkpoint_epoch_5.pt
+2025-12-07 18:01:05,958 - INFO - 🧹 Liberando VRAM para geração de samples...
+2025-12-07 18:01:06,552 - INFO -    ✅ Modelo de treinamento movido para CPU
+2025-12-07 18:01:06,583 - INFO -    📝 Texto do metadata: 'ah, agora eu estou me ouvindo na tv, entendi. fica...'
+2025-12-07 18:01:06,583 - INFO - 🎤 Gerando sample de áudio (subprocesso CPU)...
+2025-12-07 18:01:06,583 - INFO -    Época: 5
+2025-12-07 18:01:06,583 - INFO -    Referência: audio_00001.wav
+2025-12-07 18:01:06,583 - INFO -    ⚠️  Host PyTorch 2.6 - usando CPU por causa do bug cuFFT
+2025-12-07 18:01:06,583 - INFO -    🚀 Iniciando subprocesso CPU...
+2025-12-07 18:03:53,977 - ERROR -    ❌ Timeout ao gerar sample (>120s)
+2025-12-07 18:03:53,982 - INFO - 📥 Recarregando modelo de treinamento...
+^C
+Aborted!
+```
+
+**Hipóteses:**
+1. **Memory Leak na geração de samples:**
+   - Cada época carrega modelo na RAM para CPU inference
+   - Modelo não é descarregado após geração do sample
+   - Acúmulo progressivo consome toda RAM disponível
+   
+2. **Subprocesso CPU não libera recursos:**
+   - Timeout de 120s indica processo travado
+   - Subprocesso pode não estar sendo terminated corretamente
+   - Memória do subprocesso não é liberada
+
+3. **Bug cuFFT workaround problemático:**
+   - Movimentação modelo GPU→CPU→GPU pode estar duplicando memória
+   - `torch.cuda.empty_cache()` pode não estar sendo chamado
+
+### Tasks:
+
+- [ ] **Task 6.1:** Investigar e corrigir memory leak no training loop
+  - **Arquivos afetados:**
+    - `train/scripts/train_xtts.py` (training loop)
+    - `app/engines/xtts_engine.py` (sample generation)
+  - **Investigação necessária:**
+    1. Adicionar logging de uso de RAM em cada epoch
+    2. Verificar se `del model` + `gc.collect()` é chamado
+    3. Confirmar se subprocesso é `terminate()` + `join()`
+    4. Validar que `torch.cuda.empty_cache()` é executado
+  - **Ações:**
+    ```python
+    # Adicionar monitoramento de memória
+    import psutil
+    process = psutil.Process()
+    print(f"📊 RAM usada: {process.memory_info().rss / 1024**3:.2f}GB")
+    
+    # Garantir limpeza após sample generation
+    try:
+        sample_path = generate_sample(...)
+    finally:
+        # Forçar limpeza
+        if 'model' in locals():
+            del model
+        gc.collect()
+        torch.cuda.empty_cache()
+        
+        # Se usando subprocess, garantir cleanup
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+            if process.is_alive():
+                process.kill()
+    ```
+  - **Tempo estimado:** 8h (investigação + correção + testes)
+  - **Validação:** 
+    - Treinar por 10 épocas sem memory leak
+    - RAM deve permanecer estável (~8-12GB)
+    - Samples gerados em <30s (não 120s timeout)
+
+- [ ] **Task 6.2:** Otimizar sample generation (evitar timeout)
+  - **Problema:** Timeout de 120s é muito longo, indica ineficiência
+  - **Meta:** Reduzir para <20s por sample
+  - **Ações:**
+    1. Mover sample generation de volta para GPU (se cuFFT bug foi resolvido)
+    2. Usar modelo já carregado (não recarregar a cada época)
+    3. Cache de embeddings de referência
+    4. Batch processing se múltiplos samples
+  - **Tempo estimado:** 4h
+  - **Validação:** Sample gerado em <20s consistentemente
+
+- [ ] **Task 6.3:** Adicionar circuit breaker para sample generation
+  - **Ação:** Se sample falhar 3 vezes consecutivas, desabilitar auto
+  - **Implementação:**
+    ```python
+    class SampleGenerationCircuitBreaker:
+        def __init__(self, max_failures=3):
+            self.failures = 0
+            self.max_failures = max_failures
+            self.disabled = False
+            
+        def execute(self, func):
+            if self.disabled:
+                logger.warning("⚠️  Sample generation desabilitada (circuit breaker)")
+                return None
+                
+            try:
+                result = func()
+                self.failures = 0  # Reset on success
+                return result
+            except Exception as e:
+                self.failures += 1
+                logger.error(f"❌ Sample falhou ({self.failures}/{self.max_failures})")
+                
+                if self.failures >= self.max_failures:
+                    self.disabled = True
+                    logger.error("🚫 Circuit breaker ativado - samples desabilitados")
+                raise
+    ```
+  - **Tempo estimado:** 2h
+  - **Validação:** Training continua mesmo se samples falharem
+
+- [ ] **Task 6.4:** Melhorar logging de uso de recursos
+  - **Adicionar métricas:**
+    - RAM usada (host)
+    - VRAM usada (GPU)
+    - Tempo de cada operação (forward, backward, sample)
+  - **Dashboard de recursos:**
+    ```python
+    def log_resource_usage(epoch):
+        import psutil
+        import torch
+        
+        ram_gb = psutil.virtual_memory().used / 1024**3
+        vram_gb = torch.cuda.memory_allocated() / 1024**3
+        
+        logger.info(f"📊 Epoch {epoch} Resources:")
+        logger.info(f"   💾 RAM: {ram_gb:.2f}GB / {psutil.virtual_memory().total / 1024**3:.2f}GB")
+        logger.info(f"   🎮 VRAM: {vram_gb:.2f}GB / {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f}GB")
+    ```
+  - **Tempo estimado:** 2h
+  - **Validação:** Logs mostram uso de recursos a cada época
+
+**Critério de Sucesso Sprint 6:**
+✅ Training roda por 20+ épocas sem memory leak  
+✅ RAM permanece estável (<15GB usado)  
+✅ Samples gerados em <30s (não timeout)  
+✅ Circuit breaker previne crashes se samples falharem  
+✅ Logs mostram métricas de recursos detalhadas
+
+---
+
+## Sprint 7 – Refatoração Arquitetural (Clean Code)
 **Duração:** 2 semanas  
 **Meta:** Modularizar código e eliminar débito técnico
 
 ### Tasks:
 
-- [ ] **Task 4.1:** Extrair `ApiClient` do objeto `app`
+- [ ] **Task 7.1:** Extrair `ApiClient` do objeto `app`
   - **Novo arquivo:** `app/webui/assets/js/api/client.js`
   - **Ação:**
     ```javascript
