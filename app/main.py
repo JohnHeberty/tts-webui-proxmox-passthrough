@@ -52,8 +52,13 @@ logger = get_logger(__name__)
 app = FastAPI(
     title="Audio Voice Service",
     description="Microserviço para dublagem de texto em áudio e clonagem de vozes",
-    version="1.0.0"
+    version="2.0.0"
 )
+
+# Register global error handling middleware (Sprint RESIL-5)
+from app.middleware import error_handler_middleware
+app.middleware("http")(error_handler_middleware)
+logger.info("✅ Error handling middleware registered")
 
 # Exception handlers
 app.add_exception_handler(VoiceServiceException, exception_handler)
