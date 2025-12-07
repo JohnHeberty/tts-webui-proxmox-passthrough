@@ -427,18 +427,100 @@ def generate_sample_audio(
     device: torch.device
 ):
     """
-    Gera sample de áudio usando checkpoint salvo.
+    Gera sample de áudio usando modelo BASE em CPU.
     
-    NOTA: Temporariamente DESABILITADO devido a bug cuFFT no XTTS.
-    O erro ocorre em torch.stft dentro de get_conditioning_latents.
+    WORKAROUND: Devido a bug cuFFT quando carrega XTTS múltiplas vezes
+    na GPU no mesmo processo, esta função usa CPU para inferência.
+    É mais lento mas FUNCIONA.
     
-    TODO: Investigar solução para cuFFT error: CUFFT_INVALID_SIZE
+    FLUXO:
+    1. Carrega XTTS base em CPU (evita cuFFT error)
+    2. Gera áudio
+    3. Limpa memória
     """
-    logger.warning(f"⚠️  Geração de samples TEMPORARIAMENTE DESABILITADA")
-    logger.warning(f"   Motivo: Bug cuFFT no XTTS get_conditioning_latents()")
-    logger.warning(f"   Checkpoint salvo OK em: {checkpoint_path}")
-    logger.warning(f"   Para testar modelo: carregar checkpoint manualmente e usar TTS.tts()")
-    return None
+    import torchaudio
+    from TTS.api import TTS
+    
+    try:
+        # Criar diretório
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Procurar áudio de referência
+        dataset_dir = settings.dataset_dir
+        wavs_dir = dataset_dir / "wavs"
+        reference_wavs = sorted(list(wavs_dir.glob("*.wav")))
+        
+        if not reference_wavs:
+            logger.warning("⚠️  Nenhum WAV de referência encontrado")
+            return None
+        
+        # Usar primeiro arquivo
+        reference_wav_path = reference_wavs[0]
+        
+        # Texto de teste
+        test_text = "Olá, este é um teste de síntese de voz usando XTTS treinado."
+        
+        logger.info(f"🎤 Gerando sample de áudio em CPU (workaround cuFFT)...")
+        logger.info(f"   Época: {epoch}")
+        logger.info(f"   Referência: {reference_wav_path.name}")
+        
+        # Monkey patch para PyTorch 2.6+
+        original_load = torch.load
+        def patched_load(*args, **kwargs):
+            kwargs['weights_only'] = False
+            return original_load(*args, **kwargs)
+        torch.load = patched_load
+        
+        # Carregar TTS API em CPU (evita cuFFT na GPU)
+        logger.info(f"   📥 Carregando XTTS em CPU...")
+        tts = TTS(
+            model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+            gpu=False  # CPU para evitar cuFFT error
+        )
+        
+        # Gerar áudio
+        logger.info(f"   🔊 Sintetizando áudio (CPU - pode demorar)...")
+        wav = tts.tts(
+            text=test_text,
+            language="pt",
+            speaker_wav=str(reference_wav_path)
+        )
+        
+        # Salvar áudio gerado
+        output_wav_path = output_dir / f"epoch_{epoch}_output.wav"
+        
+        import soundfile as sf
+        sf.write(str(output_wav_path), wav, 22050)
+        
+        logger.info(f"   ✅ Sample gerado: {output_wav_path.name}")
+        
+        # Copiar referência também
+        reference_output = output_dir / f"epoch_{epoch}_reference.wav"
+        import shutil
+        shutil.copy2(reference_wav_path, reference_output)
+        logger.info(f"   ✅ Referência copiada: {reference_output.name}")
+        
+        # Limpar memória
+        del tts
+        logger.info(f"   🧹 Modelo de inferência descarregado")
+        
+        # Restaurar torch.load
+        torch.load = original_load
+        
+        return output_wav_path
+        
+    except Exception as e:
+        logger.error(f"   ❌ Erro ao gerar áudio: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        # Limpar memória
+        try:
+            del tts
+        except:
+            pass
+        
+        return None
     import torchaudio
     from TTS.api import TTS
     
@@ -859,8 +941,27 @@ def main(resume):
             }, checkpoint_path)
             logger.info(f"💾 Checkpoint salvo: {checkpoint_path}")
             
-            # Geração de samples (temporariamente desabilitada)
+            # ============================================================
+            # GERAÇÃO DE SAMPLES COM GERENCIAMENTO DE VRAM
+            # ============================================================
+            # PASSO 1: Descarregar modelo de treinamento da VRAM
+            logger.info(f"🧹 Liberando VRAM para geração de samples...")
+            model = model.cpu()
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
+            logger.info(f"   ✅ Modelo de treinamento movido para CPU")
+            
+            # PASSO 2: Gerar sample (função carrega TTS separado)
             generate_sample_audio(checkpoint_path, epoch, settings, samples_dir, device)
+            
+            # PASSO 3: Recarregar modelo de treinamento na VRAM
+            logger.info(f"📥 Recarregando modelo de treinamento...")
+            checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            model = model.to(device)
+            model.train()
+            logger.info(f"   ✅ Modelo de treinamento restaurado na GPU\n")
+            # ============================================================
             
             # Best model
             if val_loss < best_val_loss:
@@ -874,9 +975,21 @@ def main(resume):
                 }, best_model_path)
                 logger.info(f"🏆 Novo melhor modelo! Epoch {epoch} | Val Loss: {val_loss:.4f}\n")
                 
-                # Sample do melhor modelo
+                # Sample do melhor modelo (COM GERENCIAMENTO DE VRAM)
+                logger.info(f"🧹 Liberando VRAM para sample do melhor modelo...")
+                model = model.cpu()
+                if device.type == 'cuda':
+                    torch.cuda.empty_cache()
+                
                 best_samples_dir = samples_dir / "best"
                 generate_sample_audio(best_model_path, epoch, settings, best_samples_dir, device)
+                
+                # Recarregar modelo de treinamento
+                logger.info(f"📥 Recarregando modelo de treinamento...")
+                model.load_state_dict(checkpoint['model_state_dict'])
+                model = model.to(device)
+                model.train()
+                logger.info(f"   ✅ Modelo restaurado\n")
     
     # Cleanup
     if writer is not None:
