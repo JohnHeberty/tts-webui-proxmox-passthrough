@@ -177,8 +177,8 @@ def create_dataset(settings: TrainingSettings):
     logger.info("📊 Carregando dataset...")
     
     dataset_dir = settings.dataset_dir
-    train_metadata = dataset_dir / "train_metadata.csv"
-    val_metadata = dataset_dir / "val_metadata.csv"
+    train_metadata = dataset_dir / settings.train_metadata
+    val_metadata = dataset_dir / settings.val_metadata
     
     logger.info(f"   Dataset: {dataset_dir}")
     logger.info(f"   Train: {train_metadata}")
