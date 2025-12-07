@@ -2676,6 +2676,17 @@ const app = {
         const maxDuration = document.getElementById('segment-max-duration').value;
         const vadThreshold = document.getElementById('vad-threshold').value;
 
+        // Sprint 4 Task 4.1: Loading state
+        const btn = document.getElementById('btn-segment-audio');
+        const btnIcon = btn.querySelector('.btn-icon');
+        const btnText = btn.querySelector('.btn-text');
+        const btnSpinner = btn.querySelector('.btn-spinner');
+        
+        btn.disabled = true;
+        btnIcon.classList.add('d-none');
+        btnSpinner.classList.remove('d-none');
+        btnText.textContent = 'Segmentando...';
+
         try {
             const response = await this.fetchJson('/training/dataset/segment', {
                 method: 'POST',
@@ -2689,11 +2700,16 @@ const app = {
             });
 
             const result = await response.json();
-            this.showToast('Segmentação iniciada', 'success');
+            this.showToast('✅ Segmentação iniciada com sucesso', 'success');
             this.loadDatasetStats();
         } catch (error) {
             console.error('❌ Error segmenting audio:', error);
-            this.showToast('Erro ao segmentar áudio', 'danger');
+            this.showToast('Erro ao segmentar áudio: ' + error.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btnIcon.classList.remove('d-none');
+            btnSpinner.classList.add('d-none');
+            btnText.textContent = 'Segmentar Áudios';
         }
     },
 
@@ -2703,6 +2719,17 @@ const app = {
     async transcribeDataset() {
         const folder = document.getElementById('dataset-folder').value;
 
+        // Sprint 4 Task 4.1: Loading state
+        const btn = document.getElementById('btn-transcribe-dataset');
+        const btnIcon = btn.querySelector('.btn-icon');
+        const btnText = btn.querySelector('.btn-text');
+        const btnSpinner = btn.querySelector('.btn-spinner');
+        
+        btn.disabled = true;
+        btnIcon.classList.add('d-none');
+        btnSpinner.classList.remove('d-none');
+        btnText.textContent = 'Transcrevendo...';
+
         try {
             const response = await this.fetchJson('/training/dataset/transcribe', {
                 method: 'POST',
@@ -2711,10 +2738,15 @@ const app = {
             });
 
             const result = await response.json();
-            this.showToast('Transcrição iniciada', 'success');
+            this.showToast('✅ Transcrição iniciada com sucesso', 'success');
         } catch (error) {
             console.error('❌ Error transcribing dataset:', error);
-            this.showToast('Erro ao transcrever dataset', 'danger');
+            this.showToast('Erro ao transcrever dataset: ' + error.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btnIcon.classList.remove('d-none');
+            btnSpinner.classList.add('d-none');
+            btnText.textContent = 'Gerar Transcrições';
         }
     },
 
@@ -2837,6 +2869,17 @@ const app = {
             return;
         }
 
+        // Sprint 4 Task 4.1: Loading state
+        const btn = document.getElementById('btn-download-videos');
+        const btnIcon = btn.querySelector('.btn-icon');
+        const btnText = btn.querySelector('.btn-text');
+        const btnSpinner = btn.querySelector('.btn-spinner');
+        
+        btn.disabled = true;
+        btnIcon.classList.add('d-none');
+        btnSpinner.classList.remove('d-none');
+        btnText.textContent = 'Baixando...';
+
         try {
             const progressDiv = document.getElementById('download-progress');
             progressDiv.style.display = 'block';
@@ -2854,11 +2897,17 @@ const app = {
             progressBar.style.width = '100%';
             document.getElementById('download-status').textContent = `${result.downloaded} vídeos baixados`;
 
-            this.showToast('Download concluído', 'success');
+            this.showToast(`✅ Download concluído: ${result.downloaded} vídeos`, 'success');
             this.loadDatasetStats();
         } catch (error) {
             console.error('❌ Error downloading videos:', error);
-            this.showToast('Erro ao baixar vídeos', 'danger');
+            this.showToast('Erro ao baixar vídeos: ' + error.message, 'danger');
+        } finally {
+            // Restore button state
+            btn.disabled = false;
+            btnIcon.classList.remove('d-none');
+            btnSpinner.classList.add('d-none');
+            btnText.textContent = 'Iniciar Download';
         }
     },
 
