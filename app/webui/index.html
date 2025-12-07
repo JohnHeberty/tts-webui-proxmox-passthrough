@@ -24,9 +24,14 @@
     <!-- Utilities (loaded first) -->
     <script defer src="/webui/assets/js/utils/error-formatter.js?v=7.0"></script>
     <script defer src="/webui/assets/js/utils/toast-notifier.js?v=7.0"></script>
-    <!-- API Client -->
+    <!-- API Layer -->
+    <script defer src="/webui/assets/js/api/routes.js?v=7.0"></script>
     <script defer src="/webui/assets/js/api/client.js?v=7.0"></script>
-    <!-- Main App (loaded last, depends on utilities) -->
+    <!-- Services (domain logic) -->
+    <script defer src="/webui/assets/js/services/training-service.js?v=7.0"></script>
+    <script defer src="/webui/assets/js/services/jobs-service.js?v=7.0"></script>
+    <script defer src="/webui/assets/js/services/voice-profiles-service.js?v=7.0"></script>
+    <!-- Main App (loaded last, depends on utilities & services) -->
     <script defer src="/webui/assets/js/app.js?v=3.7"></script>
 </head>
 <body>
