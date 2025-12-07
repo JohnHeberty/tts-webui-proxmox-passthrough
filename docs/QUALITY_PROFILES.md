@@ -1,21 +1,23 @@
 # Quality Profiles - Guia de Uso
 
-> ⚠️ **PARTIALLY DEPRECATED**: F5-TTS was removed in v2.0 (2025-12-06)
+> ⚠️ **UPDATED FOR v2.0** (2025-12-07)
 > 
-> Sections documenting F5-TTS quality profiles (f5tts_*) are obsolete.
+> **F5-TTS profiles removed** - XTTS-v2 only architecture
 > 
-> **Current stack**: XTTS-v2 only. See [DEPLOYMENT_SUCCESS.md](../DEPLOYMENT_SUCCESS.md)
+> **Current profiles:** `xtts_fast`, `xtts_balanced`, `xtts_high_quality`
+> 
+> See [CHANGELOG.md](CHANGELOG.md) for v2.0 migration guide.
 
 ## 📋 Visão Geral
 
-O sistema de Quality Profiles permite controlar finamente a qualidade de áudio gerado por cada engine TTS ~~(XTTS e F5-TTS)~~ **XTTS apenas**. Existem dois tipos de perfis:
+O sistema de Quality Profiles permite controlar finamente a qualidade de áudio gerado pelo **XTTS-v2** engine. Existem dois tipos de perfis:
 
 - **🔒 Perfis Padrão (Imutáveis)**: Definidos em código, não podem ser modificados ou deletados
 - **✏️ Perfis Customizados**: Criados via API, armazenados no Redis, podem ser editados/deletados
 
-## 🎯 Perfis Padrão XTTS
+## 🎯 Perfis Padrão XTTS (v2.0)
 
-### `xtts_balanced` ⭐ (Padrão)
+### `xtts_balanced` ⭐ (Recomendado)
 **Equilíbrio entre qualidade e velocidade**
 
 ```json
@@ -33,17 +35,78 @@ O sistema de Quality Profiles permite controlar finamente a qualidade de áudio 
 **Quando usar:**
 - ✅ Uso geral (90% dos casos)
 - ✅ Produção com boa qualidade
-- ✅ Latência aceitável (~500ms)
+- ✅ Latência aceitável (~3s)
 
 **Características:**
 - Estabilidade: 9/10
 - Qualidade: 8/10
 - Velocidade: Média
+- **Latência:** ~3s
 
 ---
 
-### `xtts_expressive`
+### `xtts_fast` 🚀 (NEW in v2.0)
+**Mínima latência, qualidade adequada**
+
+```json
+{
+  "temperature": 0.70,
+  "repetition_penalty": 1.4,
+  "top_p": 0.85,
+  "top_k": 50,
+  "length_penalty": 1.0,
+  "speed": 1.1,
+  "enable_text_splitting": false
+}
+```
+
+**Quando usar:**
+- ✅ Testes rápidos
+- ✅ Prototipagem
+- ✅ Aplicações em tempo real
+
+**Características:**
+- Estabilidade: 8/10
+- Qualidade: 7/10
+- Velocidade: Rápida
+- **Latência:** ~2s
+
+---
+
+### `xtts_high_quality` 💎 (NEW in v2.0)
+**Máxima qualidade com denoising**
+
+```json
+{
+  "temperature": 0.75,
+  "repetition_penalty": 1.6,
+  "top_p": 0.92,
+  "top_k": 65,
+  "length_penalty": 1.3,
+  "speed": 0.95,
+  "enable_text_splitting": true,
+  "denoise": true
+}
+```
+
+**Quando usar:**
+- ✅ Produção final de alta qualidade
+- ✅ Audiolivros profissionais
+- ✅ Conteúdo comercial
+
+**Características:**
+- Estabilidade: 10/10
+- Qualidade: 10/10
+- Velocidade: Lenta
+- **Latência:** ~5s
+- **Denoise:** Ativado (remove ruído de fundo)
+
+---
+
+### `xtts_expressive` (DEPRECATED in v2.0)
 **Máxima expressividade e emoção**
+
+> ⚠️ **DEPRECATED:** Use `xtts_high_quality` com ajustes customizados se necessário
 
 ```json
 {
@@ -56,20 +119,12 @@ O sistema de Quality Profiles permite controlar finamente a qualidade de áudio 
 }
 ```
 
-**Quando usar:**
-- ✅ Conteúdo emocional/dramático
-- ✅ Audiolivros com narração expressiva
-- ⚠️ Pode ter pequenos artefatos
-
-**Características:**
-- Estabilidade: 7/10
-- Qualidade: 7.5/10
-- Expressividade: 10/10
-
 ---
 
-### `xtts_stable`
+### `xtts_stable` (DEPRECATED in v2.0)
 **Máxima estabilidade para produção em escala**
+
+> ⚠️ **DEPRECATED:** Use `xtts_balanced` (now default stable profile)
 
 ```json
 {

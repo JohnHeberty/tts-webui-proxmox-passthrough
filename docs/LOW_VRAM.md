@@ -1,53 +1,57 @@
 # LOW VRAM Mode - Implementation Guide
 
-Guia de implementação do modo LOW_VRAM para economizar memória da GPU.
+⚠️ **DEPRECATED - v2.0 Update**  
+> **Note:** This document references **F5-TTS** and **RVC**, which have been removed in v2.0.  
+> For XTTS-v2 only architecture, VRAM requirements are now **8GB minimum** (12GB+ recommended).  
+> LOW_VRAM mode is no longer necessary with the streamlined v2.0 architecture.
 
 ---
 
-## 🎯 Objetivo
+## 🎯 Objetivo (Legacy)
 
-Permitir que o sistema rode em GPUs com pouca VRAM (4GB-6GB) através de:
-1. **Carregamento sob demanda**: Modelo só é carregado quando necessário
-2. **Descarregamento imediato**: Modelo é removido da VRAM após uso
-3. **Pipeline sequencial**: TTS → RVC (um de cada vez)
+~~Permitir que o sistema rode em GPUs com pouca VRAM (4GB-6GB) através de:~~
+1. ~~**Carregamento sob demanda**: Modelo só é carregado quando necessário~~
+2. ~~**Descarregamento imediato**: Modelo é removido da VRAM após uso~~
+3. ~~**Pipeline sequencial**: TTS → RVC (um de cada vez)~~
+
+**v2.0 Update:**  
+XTTS-v2 only mode requires less VRAM naturally:
+- **Minimum:** 8GB VRAM
+- **Recommended:** 12GB+ VRAM
+- **No RVC:** Eliminates 4-6GB overhead
+- **No F5-TTS:** Eliminates 3-8GB overhead
 
 ---
 
 ## 📊 Comparação de VRAM
 
-### Modo NORMAL (LOW_VRAM=false)
+### ~~Modo NORMAL (LOW_VRAM=false)~~ (DEPRECATED)
 ```
-GPU VRAM Usage:
+GPU VRAM Usage (v1.x - with RVC + F5-TTS):
 ├─ XTTS model: ~2-4GB (sempre carregado)
-├─ F5-TTS model: ~3-8GB (sempre carregado)
-├─ RVC model: ~2-4GB (sempre carregado)
+├─ F5-TTS model: ~3-8GB (sempre carregado) ❌ REMOVED in v2.0
+├─ RVC model: ~2-4GB (sempre carregado) ❌ REMOVED in v2.0
 └─ Total Peak: ~10-16GB VRAM
 ```
 
-### Modo LOW VRAM (LOW_VRAM=true)
+### **v2.0 Mode (XTTS-v2 Only)** ⭐ NEW
 ```
-GPU VRAM Usage (sequential):
-├─ Step 1: XTTS generates audio
-│   └─ VRAM: ~2-4GB
-├─ Step 2: Unload XTTS
-│   └─ VRAM: ~0GB
-├─ Step 3: RVC processes audio
-│   └─ VRAM: ~2-4GB
-├─ Step 4: Unload RVC
-│   └─ VRAM: ~0GB
-└─ Total Peak: ~4GB VRAM (vs 16GB)
+GPU VRAM Usage (v2.0 - XTTS only):
+├─ XTTS model: ~2-4GB (eagerly loaded on startup)
+├─ Quality profile overhead: +2-4GB (high_quality with denoise)
+└─ Total Peak: ~8-12GB VRAM (vs 10-16GB v1.x)
 ```
 
-**Economia**: ~70-75% de VRAM
+**Economia natural em v2.0**: ~25-30% de VRAM sem LOW_VRAM mode
 
 ---
 
-## ⚙️ Configuração
+## ⚙️ Configuração (LEGACY)
 
-### Variável de Ambiente
+### Variável de Ambiente (DEPRECATED)
 
 ```bash
-# Ativar modo LOW_VRAM
+# ❌ DEPRECATED (v1.x) - Ativar modo LOW_VRAM
 export LOW_VRAM=true
 
 # Desativar (modo normal)
