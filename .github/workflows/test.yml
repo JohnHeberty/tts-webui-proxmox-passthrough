@@ -1,0 +1,138 @@
+name: WebUI Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'app/webui/**'
+      - '.github/workflows/test.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'app/webui/**'
+
+jobs:
+  unit-tests:
+    name: Unit Tests (Jest)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: app/webui/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: app/webui
+        run: npm ci
+      
+      - name: Run unit tests
+        working-directory: app/webui
+        run: npm test -- --coverage --ci
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./app/webui/coverage/lcov.info
+          flags: unittests
+          name: webui-unit-tests
+      
+      - name: Archive coverage report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: coverage-report
+          path: app/webui/coverage/
+
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: app/webui/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: app/webui
+        run: npm ci
+      
+      - name: Install Playwright Browsers
+        working-directory: app/webui
+        run: npx playwright install --with-deps chromium
+      
+      - name: Start Docker services
+        run: |
+          docker-compose up -d
+          sleep 10
+      
+      - name: Wait for server to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -f http://localhost:8005/health > /dev/null 2>&1; then
+              echo "Server is ready!"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+          echo "Server failed to start"
+          docker-compose logs
+          exit 1
+      
+      - name: Run E2E tests
+        working-directory: app/webui
+        run: npx playwright test
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: playwright-report
+          path: app/webui/playwright-report/
+      
+      - name: Upload test videos
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: playwright-videos
+          path: app/webui/test-results/
+      
+      - name: Stop Docker services
+        if: always()
+        run: docker-compose down
+
+  lint:
+    name: Code Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check JavaScript syntax
+        run: |
+          find app/webui/assets/js -name "*.js" | while read file; do
+            if ! node -c "$file" 2>/dev/null; then
+              echo "Syntax error in: $file"
+              exit 1
+            fi
+          done
+      
+      - name: Check for console.log (warnings only)
+        run: |
+          if grep -r "console\\.log" app/webui/assets/js/ --exclude-dir=vendor; then
+            echo "⚠️  Warning: console.log found in code"
+          fi
+        continue-on-error: true
