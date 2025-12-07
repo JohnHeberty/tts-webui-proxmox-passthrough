@@ -10,14 +10,13 @@ Key Features:
     - GPT-based autoregressive TTS architecture
     - High-quality voice cloning (only needs reference WAV)
     - Optimized for 16 languages (including PT-BR)
-    - Lower VRAM usage (2-4GB vs F5-TTS 3-8GB)
-    - Faster inference (RTF 0.3-0.5 vs F5-TTS 0.5-2.0)
-    - RVC integration for voice conversion
+    - Lower VRAM usage (2-4GB for inference)
+    - Faster inference (RTF 0.3-0.5)
     - Quality profiles (balanced, expressive, stable)
 
 Performance:
     - Sample Rate: 24kHz
-    - RTF: 0.3-0.5 (2-4x faster than F5-TTS)
+    - RTF: 0.3-0.5 (real-time factor)
     - VRAM: 2-4GB
     - Parameters: ~500M
 
@@ -50,7 +49,7 @@ builtins.input = _auto_accept_tos
 from TTS.api import TTS
 
 from .base import TTSEngine
-from ..models import VoiceProfile, QualityProfile, XTTSParameters, RvcModel, RvcParameters
+from ..models import VoiceProfile, QualityProfile, XTTSParameters
 from ..exceptions import InvalidAudioException, TTSEngineException
 from ..resilience import retry_async, with_timeout
 from ..vram_manager import vram_manager
@@ -143,9 +142,6 @@ class XttsEngine(TTSEngine):
             raise TTSEngineException(
                 f"XTTS initialization failed: {e}"
             ) from e
-        
-        # RVC client (lazy load)
-        self.rvc_client = None
     
     def _select_device(self, device: Optional[str], fallback_to_cpu: bool) -> str:
         """Select computation device with fallback logic"""
@@ -174,25 +170,6 @@ class XttsEngine(TTSEngine):
             self._model_loaded = True
             logger.info("✅ XTTS model loaded (lazy)")
         return self.tts
-    
-    def _load_rvc_client(self):
-        """
-        Load RVC client (lazy loading).
-        
-        Only loads when RVC is needed, saving 2-4GB VRAM.
-        Idempotent (multiple calls don't recreate instance).
-        """
-        if self.rvc_client is not None:
-            return  # Already loaded
-        
-        from ..rvc_client import RvcClient
-        
-        logger.info("Initializing RVC client (lazy load)")
-        self.rvc_client = RvcClient(
-            device=self.device,
-            fallback_to_cpu=True
-        )
-        logger.info("RVC client ready")
     
     @property
     def engine_name(self) -> str:
@@ -390,15 +367,6 @@ class XttsEngine(TTSEngine):
             # Read generated audio
             audio_data, sr = sf.read(output_path)
             
-            # RVC integration (voice conversion)
-            if kwargs.get('enable_rvc'):
-                audio_data = await self._apply_rvc(
-                    audio_data,
-                    sr,
-                    kwargs.get('rvc_model'),
-                    kwargs.get('rvc_params')
-                )
-            
             # Convert to WAV bytes
             buffer = io.BytesIO()
             sf.write(buffer, audio_data, sr, format='WAV')
@@ -573,53 +541,4 @@ class XttsEngine(TTSEngine):
             return 'pt'
         return language
     
-    async def _apply_rvc(
-        self,
-        audio_data,
-        sample_rate: int,
-        rvc_model: Optional[RvcModel],
-        rvc_params: Optional[RvcParameters]
-    ):
-        """
-        Apply RVC voice conversion.
-        
-        Args:
-            audio_data: Audio numpy array
-            sample_rate: Sample rate
-            rvc_model: RVC model
-            rvc_params: RVC parameters
-        
-        Returns:
-            Converted audio array
-        """
-        if rvc_model is None:
-            logger.warning("RVC enabled but no model provided, skipping")
-            return audio_data
-        
-        try:
-            logger.info(f"Applying RVC conversion with model: {rvc_model.name}")
-            
-            # Load RVC client (lazy)
-            self._load_rvc_client()
-            
-            # Use default params if not provided
-            if rvc_params is None:
-                rvc_params = RvcParameters()
-            
-            # Apply RVC conversion
-            converted_audio, _ = await self.rvc_client.convert_audio(
-                audio_data=audio_data,
-                sample_rate=sample_rate,
-                rvc_model=rvc_model,
-                params=rvc_params
-            )
-            
-            logger.info("✅ RVC conversion successful")
-            
-            return converted_audio
-            
-        except Exception as e:
-            # Fallback: return original audio if RVC fails
-            logger.error(f"RVC conversion failed, using XTTS audio: {e}")
-            logger.warning("Falling back to XTTS-only audio")
-            return audio_data
+
