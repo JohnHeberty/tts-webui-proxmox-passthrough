@@ -30,7 +30,7 @@ Cria novo job de Text-to-Speech.
 ```json
 {
   "text": "string (required, max 10000 chars)",
-  "engine": "xtts | f5tts (optional, default: xtts)",
+  "engine": "xtts (only engine available in v2.0)",
   "mode": "preset | voice (required)",
   "preset": "female_generic | male_generic | ... (se mode=preset)",
   "voice_id": "string (se mode=voice)",
@@ -282,7 +282,7 @@ Clona voz a partir de áudio de referência.
 - `name` (string, required): Nome da voz
 - `language` (string, required): `pt-BR`, `en`, etc.
 - `description` (string, optional): Descrição
-- `ref_text` (string, optional): Transcrição do áudio (para F5-TTS)
+- `ref_text` (string, optional): **DEPRECATED** - Was used for F5-TTS (removed in v2.0)
 
 **Response (202 Accepted):**
 
@@ -713,7 +713,7 @@ Serve interface web estática (Bootstrap 5 SPA).
 **URL:** http://localhost:8005/webui
 
 **Features:**
-- 6 abas: Jobs, F5-TTS, Voices, RVC Models, Quality Profiles, About
+- 4 abas: Jobs, Voices, Quality Profiles, About (v2.0: F5-TTS and RVC removed)
 - Formulários validados
 - Toast notifications
 - Progress tracking em tempo real

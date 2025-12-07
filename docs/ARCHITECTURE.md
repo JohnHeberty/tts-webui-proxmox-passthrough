@@ -3,7 +3,7 @@
 **Serviço:** Audio Voice Service  
 **Versão:** 2.0.1  
 **Data:** Dezembro 2025  
-**Stack:** FastAPI + Celery + Redis + XTTS v2 + F5-TTS + RVC
+**Stack:** FastAPI + Celery + Redis + XTTS v2 (v2.0: F5-TTS and RVC removed)
 
 ---
 
@@ -15,7 +15,7 @@ Microserviço de **Text-to-Speech (TTS)** e **Voice Cloning** com suporte a múl
 
 1. **Text-to-Speech Multi-Engine**
    - **XTTS v2** (Coqui TTS): Motor principal, multilingual (16 idiomas)
-   - **F5-TTS**: Motor especializado em português brasileiro
+   - **F5-TTS**: **REMOVED in v2.0** (Previously: specialized PT-BR engine)
    - Sistema de Quality Profiles (8 perfis configuráveis)
    - Vozes genéricas pré-configuradas (8 presets)
    - Vozes clonadas customizadas via zero-shot cloning
