@@ -2722,13 +2722,38 @@ const app = {
      * Stop training
      */
     async stopTraining() {
+        // Sprint 3 Task 3.4: Show loading state
+        const btnStop = document.getElementById('btn-stop-training');
+        const btnIcon = btnStop.querySelector('.btn-icon');
+        const btnText = btnStop.querySelector('.btn-text');
+        const btnSpinner = btnStop.querySelector('.btn-spinner');
+        
+        btnStop.disabled = true;
+        btnIcon.classList.add('d-none');
+        btnSpinner.classList.remove('d-none');
+        btnText.textContent = 'Parando...';
+
         try {
             await this.fetchJson('/training/stop', {method: 'POST'});
-            this.showToast('Treinamento interrompido', 'warning');
+            this.showToast('Treinamento interrompido com sucesso', 'warning');
+            
             document.getElementById('btn-start-training').style.display = 'block';
-            document.getElementById('btn-stop-training').style.display = 'none';
+            btnStop.style.display = 'none';
+            
+            // Restore button state
+            btnStop.disabled = false;
+            btnIcon.classList.remove('d-none');
+            btnSpinner.classList.add('d-none');
+            btnText.textContent = 'Parar';
         } catch (error) {
             console.error('❌ Error stopping training:', error);
+            this.showToast('Erro ao parar treinamento: ' + error.message, 'danger');
+            
+            // Restore button state
+            btnStop.disabled = false;
+            btnIcon.classList.remove('d-none');
+            btnSpinner.classList.add('d-none');
+            btnText.textContent = 'Parar';
         }
     },
 
@@ -2854,6 +2879,17 @@ const app = {
             return;
         }
 
+        // Sprint 3 Task 3.4: Show loading state
+        const btnStart = document.getElementById('btn-start-training');
+        const btnIcon = btnStart.querySelector('.btn-icon');
+        const btnText = btnStart.querySelector('.btn-text');
+        const btnSpinner = btnStart.querySelector('.btn-spinner');
+        
+        btnStart.disabled = true;
+        btnIcon.classList.add('d-none');
+        btnSpinner.classList.remove('d-none');
+        btnText.textContent = 'Iniciando...';
+
         try {
             const response = await this.fetchJson('/training/start', {
                 method: 'POST',
@@ -2870,54 +2906,138 @@ const app = {
 
             const result = await response.json();
             
-            this.showToast('Treinamento iniciado', 'success');
-            document.getElementById('btn-start-training').style.display = 'none';
+            this.showToast('Treinamento iniciado com sucesso', 'success');
+            btnStart.style.display = 'none';
             document.getElementById('btn-stop-training').style.display = 'block';
 
             // Start polling training status
             this.pollTrainingStatus();
         } catch (error) {
             console.error('❌ Error starting training:', error);
-            this.showToast('Erro ao iniciar treinamento', 'danger');
+            this.showToast('Erro ao iniciar treinamento: ' + error.message, 'danger');
+            
+            // Restore button state
+            btnStart.disabled = false;
+            btnIcon.classList.remove('d-none');
+            btnSpinner.classList.add('d-none');
+            btnText.textContent = 'Iniciar Treinamento';
         }
     },
 
     /**
      * Poll training status
+     * Sprint 3 Task 3.2: Enhanced status polling with visual feedback
      */
     async pollTrainingStatus() {
         const interval = setInterval(async () => {
             try {
                 const status = await this.fetchJson('/training/status');
+                
+                this.updateTrainingStatus(status);
 
                 if (status.state === 'completed' || status.state === 'failed') {
                     clearInterval(interval);
                     document.getElementById('btn-start-training').style.display = 'block';
                     document.getElementById('btn-stop-training').style.display = 'none';
+                    
+                    // Reload checkpoints and samples after training completes
+                    this.loadCheckpoints();
+                    this.loadTrainingSamples();
                 }
-
-                // Update status display
-                const statusDiv = document.getElementById('training-status');
-                statusDiv.innerHTML = `
-                    <p><strong>Estado:</strong> ${status.state}</p>
-                    <p><strong>Epoch:</strong> ${status.epoch}/${status.total_epochs}</p>
-                    <p><strong>Loss:</strong> ${status.loss?.toFixed(4) || 'N/A'}</p>
-                    <div class="progress">
-                        <div class="progress-bar" style="width: ${status.progress}%">${status.progress}%</div>
-                    </div>
-                `;
-
-                // Update logs
-                if (status.logs) {
-                    document.getElementById('training-logs').textContent = status.logs;
-                }
-
-                // Reload checkpoints if new ones are available
-                this.loadCheckpoints();
 
             } catch (error) {
                 console.error('❌ Error polling training status:', error);
                 clearInterval(interval);
+            }
+        }, 5000); // Poll every 5 seconds
+    },
+
+    /**
+     * Update training status display
+     * Sprint 3 Task 3.1: Rich visual status feedback
+     */
+    updateTrainingStatus(status) {
+        const statusDiv = document.getElementById('training-status');
+        const statusHeader = document.getElementById('training-status-header');
+        const statusCard = document.getElementById('training-status-card');
+        
+        if (!statusDiv) return;
+
+        // Update card header color based on state
+        statusHeader.className = 'card-header';
+        statusCard.className = 'card';
+        
+        if (status.state === 'training') {
+            statusHeader.classList.add('bg-primary', 'text-white');
+            statusCard.classList.add('border-primary');
+        } else if (status.state === 'completed') {
+            statusHeader.classList.add('bg-success', 'text-white');
+            statusCard.classList.add('border-success');
+        } else if (status.state === 'failed') {
+            statusHeader.classList.add('bg-danger', 'text-white');
+            statusCard.classList.add('border-danger');
+        } else {
+            statusHeader.classList.add('bg-secondary', 'text-white');
+        }
+
+        // Build status HTML based on state
+        if (status.state === 'idle') {
+            statusDiv.innerHTML = `
+                <div class="text-center text-muted py-3">
+                    <i class="bi bi-hourglass" style="font-size: 2rem;"></i>
+                    <p class="mb-0 mt-2">Aguardando início</p>
+                </div>
+            `;
+        } else if (status.state === 'training') {
+            const progress = status.total_epochs > 0 
+                ? Math.round((status.epoch / status.total_epochs) * 100) 
+                : 0;
+            
+            statusDiv.innerHTML = `
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span><strong>Época:</strong></span>
+                        <span class="badge bg-primary">${status.epoch}/${status.total_epochs}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span><strong>Loss:</strong></span>
+                        <span class="badge bg-info">${status.loss?.toFixed(4) || 'N/A'}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span><strong>Progresso:</strong></span>
+                        <span class="badge bg-secondary">${progress}%</span>
+                    </div>
+                    <div class="progress" style="height: 25px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                             style="width: ${progress}%">
+                            ${progress}%
+                        </div>
+                    </div>
+                </div>
+                <div class="d-grid">
+                    <a href="http://localhost:6006" target="_blank" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-graph-up"></i> Abrir TensorBoard
+                    </a>
+                </div>
+            `;
+        } else if (status.state === 'completed') {
+            statusDiv.innerHTML = `
+                <div class="text-center text-success py-3">
+                    <i class="bi bi-check-circle" style="font-size: 2rem;"></i>
+                    <p class="mb-0 mt-2 fw-bold">Treinamento Completo!</p>
+                    <small class="text-muted">${status.total_epochs} épocas concluídas</small>
+                </div>
+            `;
+        } else if (status.state === 'failed') {
+            statusDiv.innerHTML = `
+                <div class="text-center text-danger py-3">
+                    <i class="bi bi-x-circle" style="font-size: 2rem;"></i>
+                    <p class="mb-0 mt-2 fw-bold">Treinamento Falhou</p>
+                    <small class="text-muted">Verifique os logs</small>
+                </div>
+            `;
+        }
+    },
             }
         }, 5000); // Poll every 5 seconds
     },
