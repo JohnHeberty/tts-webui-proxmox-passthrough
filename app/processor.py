@@ -1,7 +1,6 @@
 """
 Processor para jobs de dublagem e clonagem de voz
-Sprint 4: Multi-Engine Support (XTTS + F5-TTS)
-SPRINT-03: Quality Profile Mapping for Engine Fallback
+v2.0: Integrado com XTTSService (SOLID architecture)
 """
 import logging
 from pathlib import Path
@@ -12,37 +11,36 @@ from .settings import get_settings
 from .exceptions import DubbingException, VoiceCloneException
 from .resilience import CircuitBreaker
 from .quality_profile_mapper import map_quality_profile_for_fallback
+from .services.xtts_service import XTTSService
 
 logger = logging.getLogger(__name__)
 
 
 class VoiceProcessor:
-    """Processa jobs de dublagem e clonagem de voz usando múltiplos engines TTS"""
+    """
+    Processa jobs de dublagem e clonagem de voz.
     
-    def __init__(self, lazy_load: bool = False):
+    v2.0 Changes:
+    - Usa XTTSService via dependency injection
+    - Sem lazy loading de engines (XTTS já eager loaded)
+    - Simplificado para usar apenas XTTS
+    """
+    
+    def __init__(self, xtts_service: XTTSService):
         """
-        Inicializa o processador
+        Inicializa o processador com XTTS service injetado.
         
         Args:
-            lazy_load: Se True, não carrega modelos TTS imediatamente.
-                      Usado pela API para economizar VRAM (~2GB).
-                      Worker deve usar lazy_load=False para carregar modelo.
+            xtts_service: Instância do XTTSService (eager loaded)
         """
         self.settings = get_settings()
-        self.engines = {}  # Cache de engines: {engine_name: engine_instance}
-        self.lazy_load = lazy_load
+        self.xtts_service = xtts_service
         
-        # Circuit breaker para proteção contra falhas em cascata
-        resilience_config = self.settings.get('resilience', {})
+        # Circuit breaker para proteção contra falhas
         self.circuit_breaker = CircuitBreaker(
-            failure_threshold=resilience_config.get('circuit_breaker_threshold', 5),
-            timeout_seconds=resilience_config.get('circuit_breaker_timeout', 60)
+            failure_threshold=5,
+            timeout_seconds=60
         )
-        
-        # Só carrega engine default se não for lazy_load (worker)
-        if not lazy_load:
-            default_engine = self.settings.get('tts_engine_default', 'xtts')
-            self._load_engine(default_engine)
         
         self.job_store = None  # Será injetado no main.py
     
@@ -86,7 +84,7 @@ class VoiceProcessor:
     
     async def process_dubbing_job(self, job: Job, voice_profile: Optional[VoiceProfile] = None) -> Job:
         """
-        Processa job de dublagem
+        Processa job de dublagem usando XTTS service.
         
         Args:
             job: Job a processar
@@ -96,58 +94,12 @@ class VoiceProcessor:
             Job atualizado
         """
         try:
-            # Determina qual engine usar
-            engine_type_requested = job.tts_engine or self.settings.get('tts_engine_default', 'xtts')
+            logger.info(f"Processing dubbing job {job.id}: mode={job.mode}")
             
-            # === SPRINT-02: Track requested engine ===
-            job.tts_engine_requested = engine_type_requested
-            
-            logger.info("Processing dubbing job %s: mode=%s, engine=%s", job.id, job.mode, engine_type_requested)
-            
-            # Garante que engine esteja carregado (lazy load)
-            try:
-                engine = self._get_engine(engine_type_requested)
-                
-                # === SPRINT-02: Track actual engine used ===
-                job.tts_engine_used = engine.engine_name
-                job.engine_fallback = (job.tts_engine_requested != job.tts_engine_used)
-                
-                if job.engine_fallback:
-                    job.fallback_reason = f"Failed to load {job.tts_engine_requested}, using {job.tts_engine_used}"
-                    logger.warning(
-                        f"⚠️  Engine fallback occurred: {job.tts_engine_requested} → {job.tts_engine_used}",
-                        extra={
-                            "job_id": job.id,
-                            "requested": job.tts_engine_requested,
-                            "used": job.tts_engine_used,
-                            "fallback": True
-                        }
-                    )
-                    
-                    # === SPRINT-03: Map quality profile for fallback ===
-                    if job.quality_profile:
-                        original_profile = job.quality_profile
-                        mapped_profile = map_quality_profile_for_fallback(
-                            profile_id=original_profile,
-                            requested_engine=job.tts_engine_requested,
-                            actual_engine=job.tts_engine_used
-                        )
-                        
-                        if mapped_profile and mapped_profile != original_profile:
-                            job.quality_profile = mapped_profile
-                            job.quality_profile_mapped = True
-                            logger.info(
-                                f"📊 Quality profile adapted for fallback: {original_profile} → {mapped_profile}"
-                            )
-                        elif not mapped_profile:
-                            # No mapping found, clear profile to use engine default
-                            job.quality_profile = None
-                            job.quality_profile_mapped = True
-                            logger.warning(
-                                f"⚠️  Quality profile '{original_profile}' incompatible with {job.tts_engine_used}, using engine default"
-                            )
-                else:
-                    logger.debug(f"✅ Using requested engine: {job.tts_engine_used}")
+            # v2.0: Sempre usa XTTS (único engine disponível)
+            job.tts_engine_requested = "xtts"
+            job.tts_engine_used = "xtts"
+            job.engine_fallback = False
                     
             except Exception as e:
                 logger.error(f"Failed to load engine {engine_type_requested}: {e}", exc_info=True)
