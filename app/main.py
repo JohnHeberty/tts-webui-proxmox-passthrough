@@ -198,6 +198,7 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Inicializa sistema com eager loading de modelos"""
+    global processor
     import time
     start_time = time.time()
     
@@ -214,6 +215,11 @@ async def startup_event():
     
     # Registrar service globalmente para dependency injection
     set_xtts_service(xtts_service)
+    
+    # Criar processor com XTTS service injetado
+    logger.info("Initializing VoiceProcessor with XTTSService...")
+    processor = VoiceProcessor(xtts_service=xtts_service)
+    processor.job_store = job_store
     
     # Warm-up: primeira síntese para pré-alocar CUDA
     try:
