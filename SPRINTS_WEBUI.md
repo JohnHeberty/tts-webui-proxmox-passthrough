@@ -633,11 +633,58 @@ Tasks originais foram implementadas ou movidas para outros sprints.
 
 ---
 
-## Sprint 5 – Testes Automatizados 🧪
-**Duração:** 1 semana  
-**Meta:** Garantir qualidade com testes automatizados
+## Sprint 5 – Testes Automatizados 🧪 ✅ COMPLETO
+**Duração:** 6 horas (2025-12-07)  
+**Meta:** Garantir qualidade com testes automatizados  
+**Status:** 100% Completo
 
 **NOTA:** Sprint focado exclusivamente em testes, conforme solicitado pelo usuário.
+
+### Tasks Executadas:
+
+- [x] **Task 5.1:** Configurar Jest para testes unitários ✅
+  - `package.json` com Jest 29.7.0
+  - `jest.config.js` com threshold 70%
+  - `tests/setup.js` com mocks Bootstrap/fetch
+  - Commit: aa940fd
+
+- [x] **Task 5.2:** Testes unitários (70%+ coverage) ✅
+  - `tests/app.test.js`: 15 testes (formatError, showToast, validation)
+  - `tests/api.test.js`: 11 testes (fetchJson, timeout, AbortController)
+  - Total: 26 unit tests passing
+  - Coverage: >70% nas funções críticas
+  - Commit: aa940fd
+
+- [x] **Task 5.3:** Configurar Playwright (E2E) ✅
+  - `playwright.config.js` completo
+  - Base URL configurada (localhost:8005)
+  - Reporter HTML + artifacts
+  - Commit: 051ccd3
+
+- [x] **Task 5.4:** Testes E2E críticos ✅
+  - `e2e/training.spec.js`: 7 testes (navigation, datasets, validation)
+  - `e2e/jobs.spec.js`: 9 testes (form validation, character counter)
+  - Total: 16 E2E tests
+  - Commit: 051ccd3
+
+- [x] **Task 5.5:** CI/CD com GitHub Actions ✅
+  - `.github/workflows/test.yml` criado
+  - 3 jobs: unit-tests, e2e-tests, lint
+  - Codecov integration
+  - Docker compose para E2E
+  - Commit: 051ccd3
+
+**Critério de Sucesso Sprint 5:**
+✅ Jest configurado e rodando  
+✅ Testes unitários com >70% coverage (26 tests)  
+✅ Playwright configurado  
+✅ Testes E2E cobrem fluxos críticos (16 tests)  
+✅ CI/CD automático no GitHub Actions  
+✅ Artifacts e reports configurados
+
+---
+
+## Sprint 5 – Testes Automatizados 🧪 (ORIGINAL - Substituído)
 
 ### Tasks:
 
