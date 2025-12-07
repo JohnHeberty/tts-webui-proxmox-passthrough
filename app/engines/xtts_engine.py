@@ -212,9 +212,6 @@ class XttsEngine(TTSEngine):
             quality_profile: Quality preset (balanced, expressive, stable)
             speed: Speech speed (0.5-2.0)
             **kwargs: Engine-specific parameters:
-                - enable_rvc: Use RVC for voice conversion
-                - rvc_model: RVC model to use
-                - rvc_params: RVC parameters
                 - temperature: Temperature override (0.1-1.0)
         
         Returns:

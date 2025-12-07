@@ -5,7 +5,7 @@ Quando LOW_VRAM=true, este módulo:
 1. Carrega modelo apenas quando necessário
 2. Processa áudio
 3. Descarrega modelo da VRAM imediatamente
-4. Repete para próximo modelo (RVC, etc)
+4. Repete para próximo modelo
 
 Benefícios:
 - Permite rodar em GPUs com pouca VRAM (4GB-6GB)

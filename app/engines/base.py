@@ -50,7 +50,7 @@ class TTSEngine(ABC):
             voice_profile: Optional voice profile for cloning
             quality_profile: Quality preset (balanced, expressive, stable)
             speed: Speech speed (0.5-2.0)
-            **kwargs: Engine-specific parameters (enable_rvc, rvc_model, etc.)
+            **kwargs: Engine-specific parameters
         
         Returns:
             Tuple[bytes, float]: (WAV audio bytes, duration in seconds)

@@ -167,11 +167,7 @@ class VoiceProcessor:
                 language=job.source_language or job.target_language or 'en',
                 voice_profile=voice_profile,
                 quality_profile=job.quality_profile,
-                speed=1.0,
-                # Parâmetros RVC (Sprint 4)
-                enable_rvc=job.enable_rvc or False,
-                rvc_model=rvc_model,
-                rvc_params=rvc_params
+                speed=1.0
             )
             
             job.progress = 80.0

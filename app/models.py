@@ -248,56 +248,6 @@ class Job(BaseModel):
         description="Quality profile ID (ex: 'xtts_balanced', 'f5tts_ultra_quality')"
     )
     
-    # === SPRINT 4: Parâmetros RVC ===
-    enable_rvc: Optional[bool] = Field(
-        default=False,
-        description="Se True, aplica conversão RVC após XTTS"
-    )
-    rvc_model_id: Optional[str] = Field(
-        default=None,
-        description="ID do modelo RVC a usar (obrigatório se enable_rvc=True)"
-    )
-    rvc_pitch: Optional[int] = Field(
-        default=0,
-        ge=-12,
-        le=12,
-        description="Pitch shift em semitons (±12)"
-    )
-    rvc_index_rate: Optional[float] = Field(
-        default=0.75,
-        ge=0.0,
-        le=1.0,
-        description="Taxa de influência do index (0-1)"
-    )
-    rvc_protect: Optional[float] = Field(
-        default=0.33,
-        ge=0.0,
-        le=0.5,
-        description="Proteção de consoantes sem voz (0-0.5)"
-    )
-    rvc_rms_mix_rate: Optional[float] = Field(
-        default=0.25,
-        ge=0.0,
-        le=1.0,
-        description="Taxa de mix de envelope RMS (0-1)"
-    )
-    rvc_filter_radius: Optional[int] = Field(
-        default=3,
-        ge=0,
-        le=7,
-        description="Raio do filtro mediano de pitch (0-7)"
-    )
-    rvc_f0_method: Optional[str] = Field(
-        default='rmvpe',
-        description="Método de extração de pitch (rmvpe/fcpe/pm/harvest/dio/crepe)"
-    )
-    rvc_hop_length: Optional[int] = Field(
-        default=128,
-        ge=1,
-        le=512,
-        description="Hop length para extração de pitch (1-512)"
-    )
-    
     # Clonagem de voz
     voice_name: Optional[str] = None       # Nome do perfil a criar
     voice_description: Optional[str] = None

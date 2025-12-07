@@ -268,16 +268,6 @@ async def create_job(
     - **quality_profile_id**: ID do perfil de qualidade XTTS (ex: 'xtts_balanced', 'xtts_stable')
     - Se None, usa perfil padrão XTTS
     - Use GET /quality-profiles para listar perfis disponíveis
-    
-    **RVC Parameters:**
-    - **enable_rvc**: Enable RVC voice conversion (default: False)
-    - **rvc_model_id**: RVC model ID (required if enable_rvc=True)
-    - **rvc_pitch**: Pitch shift in semitones (-12 to +12, default: 0)
-    - **rvc_index_rate**: Index rate for retrieval (0.0-1.0, default: 0.75)
-    - **rvc_filter_radius**: Median filter radius (0-7, default: 3)
-    - **rvc_rms_mix_rate**: RMS mix rate (0.0-1.0, default: 0.25)
-    - **rvc_protect**: Protect voiceless consonants (0.0-0.5, default: 0.33)
-    - **rvc_f0_method**: Pitch extraction method - DROPDOWN (rmvpe/fcpe/pm/harvest/dio/crepe)
     """
     try:
         # ===== SPRINT-06: Validação de Enums =====
@@ -300,9 +290,6 @@ async def create_job(
                 status_code=400,
                 detail="F5-TTS engine has been removed from this service. Please use 'xtts' instead."
             )
-        
-        # Validar rvc_f0_method
-        rvc_f0_method_enum = validate_enum_string(rvc_f0_method, RvcF0Method, "rvc_f0_method", case_sensitive=False)
         
         # Logging estruturado
         logger.info(
@@ -368,17 +355,6 @@ async def create_job(
             # Usa perfil padrão do engine
             default_profile_id = f"{tts_engine_enum.value}_balanced"
             new_job.quality_profile = default_profile_id
-        
-        # Adiciona parâmetros RVC (Sprint 7) - rvc_f0_method_enum já é RvcF0Method enum
-        if enable_rvc:
-            new_job.enable_rvc = True
-            new_job.rvc_model_id = rvc_model_id
-            new_job.rvc_pitch = rvc_pitch
-            new_job.rvc_index_rate = rvc_index_rate
-            new_job.rvc_filter_radius = rvc_filter_radius
-            new_job.rvc_rms_mix_rate = rvc_rms_mix_rate
-            new_job.rvc_protect = rvc_protect
-            new_job.rvc_f0_method = rvc_f0_method_enum.value  # Converte enum para string
         
         # Verifica cache
         existing_job = job_store.get_job(new_job.id)
