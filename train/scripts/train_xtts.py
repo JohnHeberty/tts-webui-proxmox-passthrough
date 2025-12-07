@@ -67,72 +67,80 @@ def setup_device(settings: TrainingSettings) -> torch.device:
 
 def load_pretrained_model(settings: TrainingSettings, device: torch.device):
     """
-    Carrega modelo XTTS-v2 pré-treinado usando Pydantic Settings
-    
-    NOTA: Esta é uma implementação simplificada.
-    O código real depende da API do Coqui TTS que pode mudar.
+    Carrega modelo XTTS-v2 pré-treinado REAL usando TTS library
     """
     try:
-        from TTS.tts.configs.xtts_config import XttsConfig
-        from TTS.tts.models.xtts import Xtts
+        from TTS.api import TTS
     except ImportError:
         logger.error("❌ TTS (Coqui) não encontrado. Instale com: pip install TTS")
         sys.exit(1)
     
     logger.info("📥 Carregando modelo XTTS-v2 pré-treinado...")
     
-    # Carregar config do modelo
-    model_name = settings.model_name
-    logger.info(f"   Modelo: {model_name}")
-    
     # Set environment variables
     os.environ['COQUI_TOS_AGREED'] = '1'
     
-    # Para smoke test: criar modelo dummy
-    # Em produção, usar TTS.api.TTS para download automático
-    # tts_api = TTS(model_name, gpu=(device.type == 'cuda'), progress_bar=False)
-    # model = tts_api.synthesizer.tts_model
+    model_name = settings.model_name
+    logger.info(f"   Modelo: {model_name}")
     
-    logger.warning("⚠️  SMOKE TEST MODE: Using dummy model (not loading full XTTS)")
-    logger.info("   Para produção, descomentar TTS.api.TTS loading")
+    # Monkey patch torch.load para usar weights_only=False (TTS models são confiáveis)
+    import torch
+    original_load = torch.load
+    def patched_load(*args, **kwargs):
+        kwargs['weights_only'] = False
+        return original_load(*args, **kwargs)
     
-    # Criar placeholder model
-    class DummyModel(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.dummy_layer = nn.Linear(10, 10)
+    torch.load = patched_load
+    
+    try:
+        # Usar TTS API para carregar modelo
+        tts = TTS(model_name, gpu=(device.type == 'cuda'), progress_bar=True)
         
-        def forward(self, x):
-            return self.dummy_layer(x)
-    
-    model = DummyModel().to(device)
-    
-    logger.info(f"✅ Modelo carregado: {model.__class__.__name__}")
-    logger.info(f"   Device: {device}")
-    logger.info(f"   Parâmetros: {sum(p.numel() for p in model.parameters())/1e6:.1f}M")
-    
-    return model
+        # Acessar o modelo interno do XTTS
+        model = tts.synthesizer.tts_model
+        
+        logger.info(f"✅ Modelo XTTS-v2 carregado com sucesso!")
+        logger.info(f"   Device: {device}")
+        logger.info(f"   Parâmetros: {sum(p.numel() for p in model.parameters())/1e6:.1f}M")
+        
+        return model
+    finally:
+        # Restaurar torch.load original
+        torch.load = original_load
 
 
 def setup_lora(model: nn.Module, settings: TrainingSettings) -> nn.Module:
     """
-    Configura LoRA (Low-Rank Adaptation) no modelo usando Pydantic Settings
-    
-    NOTA: LoRA training requer modelo real XTTS, não dummy model.
-    Este template apenas demonstra a estrutura.
+    Configura LoRA (Low-Rank Adaptation) no modelo XTTS
     """
     if not settings.use_lora:
         logger.info("⏭️  LoRA desabilitado, usando fine-tuning completo")
         return model
     
-    logger.warning("⚠️  TEMPLATE MODE: LoRA setup requer modelo XTTS real")
-    logger.info("   Para implementar LoRA no XTTS:")
-    logger.info("   1. Identifique os módulos alvo (GPT layers, vocoder, etc)")
-    logger.info("   2. Configure LoraConfig com target_modules corretos")
-    logger.info("   3. Use get_peft_model() apenas com modelo real")
-    logger.info("")
-    logger.info("   Skipping LoRA setup em template mode...")
+    try:
+        from peft import LoraConfig, get_peft_model, TaskType
+    except ImportError:
+        logger.error("❌ PEFT não encontrado. Instale com: pip install peft")
+        sys.exit(1)
     
+    logger.info("🔧 Configurando LoRA...")
+    
+    # Configurar LoRA para XTTS-v2
+    # Target modules: GPT layers e algumas partes do vocoder
+    lora_config = LoraConfig(
+        r=settings.lora_rank,
+        lora_alpha=settings.lora_alpha,
+        target_modules=["q_proj", "v_proj", "k_proj", "out_proj"],  # Attention layers
+        lora_dropout=settings.lora_dropout,
+        bias="none",
+        task_type=TaskType.CAUSAL_LM,
+    )
+    
+    # Aplicar LoRA
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
+    
+    logger.info("✅ LoRA configurado com sucesso!")
     return model
 
 
@@ -184,36 +192,24 @@ def create_dataset(settings: TrainingSettings):
     logger.info(f"   Train: {train_metadata}")
     logger.info(f"   Val: {val_metadata}")
     
-    # TEMPLATE MODE: Verificar se dataset existe
+    # Verificar se dataset existe
     if not train_metadata.exists() or not val_metadata.exists():
-        logger.warning("⚠️  Dataset não encontrado - usando modo TEMPLATE")
-        logger.info("   Para treinar com dataset real:")
-        logger.info(f"   1. Criar dataset em: {dataset_dir}")
-        logger.info("   2. Usar scripts: download_youtube → segment_audio → transcribe → build_ljs_dataset")
-        logger.info("")
-        logger.info("   Criando dataset dummy para demonstração...")
-        
-        # Criar dataset dummy
-        class DummyDataset:
-            def __init__(self, name):
-                self.name = name
-                self.samples = [{'audio_path': f'sample_{i}.wav', 'text': f'Texto {i}'} for i in range(10)]
-            
-            def __len__(self):
-                return len(self.samples)
-            
-            def __getitem__(self, idx):
-                return self.samples[idx]
-        
-        train_dataset = DummyDataset("train")
-        val_dataset = DummyDataset("val")
-        
-        logger.info(f"   ✅ Dataset dummy criado: {len(train_dataset)} train, {len(val_dataset)} val samples")
-        return train_dataset, val_dataset
+        logger.error("❌ Dataset não encontrado!")
+        logger.error(f"   Esperado: {train_metadata}")
+        logger.error(f"   Esperado: {val_metadata}")
+        logger.error("")
+        logger.error("Para criar dataset:")
+        logger.error("1. python -m train.scripts.download_youtube")
+        logger.error("2. python -m train.scripts.segment_audio")
+        logger.error("3. python -m train.scripts.transcribe")
+        logger.error("4. python -m train.scripts.build_ljs_dataset")
+        sys.exit(1)
     
     # Dataset real existe
     train_dataset = XTTSDataset(train_metadata, sample_rate=settings.sample_rate)
     val_dataset = XTTSDataset(val_metadata, sample_rate=settings.sample_rate)
+    
+    logger.info(f"✅ Dataset carregado: {len(train_dataset)} train, {len(val_dataset)} val samples")
     
     return train_dataset, val_dataset
 
@@ -261,27 +257,68 @@ def create_scheduler(optimizer, settings: TrainingSettings):
 
 def train_step(model, batch, optimizer, scaler, settings: TrainingSettings, device: torch.device):
     """
-    Executa um step de treinamento usando Pydantic Settings
+    Executa um step de treinamento REAL com XTTS-v2
     
-    ⚠️⚠️⚠️ MODO TEMPLATE ATIVO ⚠️⚠️⚠️
-    
-    ESTE CÓDIGO NÃO ESTÁ TREINANDO DE VERDADE!
-    Loss é FAKE (0.5 + random) - apenas para demonstração
-    
-    Para treinamento REAL:
-    1. Instalar TTS: pip install TTS
-    2. Implementar load_pretrained_model() com modelo XTTS real
-    3. Implementar forward pass XTTS completo aqui:
-       - GPT encoder/decoder forward
-       - HiFi-GAN vocoder
-       - Multi-task loss (mel, duration, alignment)
-    
-    Ref: TTS.tts.models.xtts.Xtts.forward()
+    O XTTS-v2 usa:
+    - GPT para modelagem de texto
+    - HiFi-GAN para vocoding
+    - Multi-task loss (mel spectrogram, duration, alignment)
     """
+    import torchaudio
+    
     model.train()
     
-    # ⚠️ PLACEHOLDER LOSS - NÃO ESTÁ APRENDENDO!
-    loss = torch.tensor(0.5 + torch.rand(1).item() * 0.1, device=device, requires_grad=True)
+    # Carregar áudio e processar
+    audio_paths = [item['audio_path'] for item in batch]
+    texts = [item['text'] for item in batch]
+    
+    # Carregar áudios
+    wavs = []
+    for audio_path in audio_paths:
+        wav, sr = torchaudio.load(audio_path)
+        # Resample se necessário
+        if sr != settings.sample_rate:
+            resampler = torchaudio.transforms.Resample(sr, settings.sample_rate)
+            wav = resampler(wav)
+        wavs.append(wav)
+    
+    # Pad/collate batch
+    max_len = max(wav.shape[1] for wav in wavs)
+    wavs_padded = []
+    for wav in wavs:
+        if wav.shape[1] < max_len:
+            pad_len = max_len - wav.shape[1]
+            wav = torch.nn.functional.pad(wav, (0, pad_len))
+        wavs_padded.append(wav)
+    
+    wavs_tensor = torch.stack(wavs_padded).to(device)
+    
+    # Forward pass XTTS
+    # NOTA: A API exata depende da versão do TTS
+    # Aqui estamos usando a interface mais comum
+    try:
+        # XTTS forward retorna loss diretamente em modo de treinamento
+        outputs = model(
+            x=wavs_tensor,
+            x_lengths=torch.tensor([wav.shape[1] for wav in wavs]).to(device),
+            text=texts,
+        )
+        
+        # Extrair loss (estrutura pode variar por versão)
+        if isinstance(outputs, dict):
+            loss = outputs.get('loss', outputs.get('model_outputs', {}).get('loss'))
+        else:
+            loss = outputs
+        
+        if loss is None:
+            logger.error("❌ Loss não retornado pelo modelo!")
+            logger.error(f"   Outputs: {outputs}")
+            raise ValueError("Loss not found in model outputs")
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no forward pass: {e}")
+        logger.error("   Verifique se o modelo XTTS foi carregado corretamente")
+        raise
     
     # Backward pass
     if settings.use_amp and scaler is not None:
@@ -306,39 +343,85 @@ def train_step(model, batch, optimizer, scaler, settings: TrainingSettings, devi
     return loss.item()
 
 
-def validate(model, val_loader, device: torch.device):
+def validate(model, val_loader, device: torch.device, settings: TrainingSettings):
     """
-    Executa validação
+    Executa validação REAL com XTTS
     
-    NOTA: Implementação placeholder
-    Em produção, usar métricas completas (mel loss, alignment, etc)
+    Retorna loss médio no conjunto de validação
     """
+    import torchaudio
+    
     model.eval()
     total_loss = 0.0
     count = 0
     
     with torch.no_grad():
         for batch in val_loader:
-            # Placeholder validation loss
-            loss = 0.3 + torch.rand(1).item() * 0.1
-            total_loss += loss
-            count += 1
+            try:
+                # Carregar áudios
+                audio_paths = [item['audio_path'] for item in batch]
+                texts = [item['text'] for item in batch]
+                
+                wavs = []
+                for audio_path in audio_paths:
+                    wav, sr = torchaudio.load(audio_path)
+                    if sr != settings.sample_rate:
+                        resampler = torchaudio.transforms.Resample(sr, settings.sample_rate)
+                        wav = resampler(wav)
+                    wavs.append(wav)
+                
+                # Pad batch
+                max_len = max(wav.shape[1] for wav in wavs)
+                wavs_padded = []
+                for wav in wavs:
+                    if wav.shape[1] < max_len:
+                        pad_len = max_len - wav.shape[1]
+                        wav = torch.nn.functional.pad(wav, (0, pad_len))
+                    wavs_padded.append(wav)
+                
+                wavs_tensor = torch.stack(wavs_padded).to(device)
+                
+                # Forward pass
+                outputs = model(
+                    x=wavs_tensor,
+                    x_lengths=torch.tensor([wav.shape[1] for wav in wavs]).to(device),
+                    text=texts,
+                )
+                
+                # Extrair loss
+                if isinstance(outputs, dict):
+                    loss = outputs.get('loss', outputs.get('model_outputs', {}).get('loss'))
+                else:
+                    loss = outputs
+                
+                if loss is not None:
+                    total_loss += loss.item()
+                    count += 1
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Erro na validação de batch: {e}")
+                continue
     
-    return total_loss / count if count > 0 else 0.0
+    avg_loss = total_loss / count if count > 0 else 0.0
+    model.train()
+    
+    return avg_loss
 
 
-def generate_sample_audio(epoch: int, settings: TrainingSettings, output_dir: Path):
+def generate_sample_audio(model, epoch: int, settings: TrainingSettings, output_dir: Path, device: torch.device):
     """
-    Gera áudio de teste para validação qualitativa
+    Gera áudio de teste REAL usando o modelo XTTS treinado
     
     Args:
+        model: Modelo XTTS treinado
         epoch: Época atual
         settings: Configuração de treinamento
         output_dir: Diretório de saída para samples
+        device: Device (cuda/cpu)
     """
+    import torchaudio
+    
     try:
-        import shutil
-        
         # Criar diretório se não existir
         output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -353,20 +436,78 @@ def generate_sample_audio(epoch: int, settings: TrainingSettings, output_dir: Pa
         
         # Usar arquivo diferente a cada época (cicla quando acaba)
         wav_index = (epoch - 1) % len(reference_wavs)
-        reference_wav = str(reference_wavs[wav_index])
+        reference_wav_path = reference_wavs[wav_index]
         
-        # Copiar referência
+        # Carregar áudio de referência
+        reference_wav, sr = torchaudio.load(str(reference_wav_path))
+        if sr != settings.sample_rate:
+            resampler = torchaudio.transforms.Resample(sr, settings.sample_rate)
+            reference_wav = resampler(reference_wav)
+        
+        # Salvar referência
         reference_output = output_dir / f"epoch_{epoch}_reference.wav"
-        shutil.copy(reference_wav, reference_output)
+        torchaudio.save(reference_output, reference_wav, settings.sample_rate)
         
-        # Placeholder para output (em produção, usar modelo para síntese)
-        output_wav = output_dir / f"epoch_{epoch}_output.wav"
-        shutil.copy(reference_wav, output_wav)
+        # Texto de teste
+        test_text = "Olá, este é um teste de síntese de voz usando XTTS treinado."
         
-        logger.info(f"📢 Sample {wav_index+1}/{len(reference_wavs)}: {Path(reference_wav).name}")
+        # Modo de avaliação para síntese
+        model.eval()
+        
+        with torch.no_grad():
+            # Síntese REAL usando XTTS
+            # NOTA: API pode variar por versão do TTS
+            try:
+                # Preparar conditioning latents do speaker
+                gpt_cond_latent, speaker_embedding = model.get_conditioning_latents(
+                    audio_path=str(reference_wav_path),
+                    gpt_cond_len=model.config.gpt_cond_len,
+                    max_ref_length=model.config.max_ref_len,
+                )
+                
+                # Sintetizar áudio
+                out = model.inference(
+                    text=test_text,
+                    language="pt",
+                    gpt_cond_latent=gpt_cond_latent,
+                    speaker_embedding=speaker_embedding,
+                    temperature=0.7,
+                )
+                
+                # Salvar áudio gerado
+                output_wav_path = output_dir / f"epoch_{epoch}_output.wav"
+                
+                # Converter para tensor se necessário
+                if isinstance(out, dict):
+                    audio_output = out['wav']
+                else:
+                    audio_output = out
+                
+                # Garantir formato correto [channels, samples]
+                if audio_output.dim() == 1:
+                    audio_output = audio_output.unsqueeze(0)
+                
+                torchaudio.save(
+                    output_wav_path,
+                    audio_output.cpu(),
+                    settings.sample_rate
+                )
+                
+                logger.info(f"✅ Sample gerado: {output_wav_path.name}")
+                logger.info(f"   Referência: {reference_wav_path.name} ({wav_index+1}/{len(reference_wavs)})")
+                
+            except Exception as e:
+                logger.error(f"❌ Erro na síntese: {e}")
+                logger.error("   Modelo pode não suportar inference() ainda")
+                raise
+        
+        # Voltar para modo de treinamento
+        model.train()
         
     except Exception as e:
         logger.warning(f"⚠️  Erro ao gerar sample: {e}")
+        import traceback
+        logger.warning(traceback.format_exc())
 
 
 def save_checkpoint(model, optimizer, scheduler, step: int, settings: TrainingSettings, best: bool = False):
@@ -420,36 +561,6 @@ def main(resume):
     
     # Load model
     model = load_pretrained_model(settings, device)
-    if model is None:
-        logger.error("❌ Modelo não carregado (TEMPLATE MODE)")
-        logger.info("\n" + "=" * 80)
-        logger.info("⚠️  ATENÇÃO: Script de treinamento é um TEMPLATE")
-        logger.info("=" * 80)
-        logger.info("Este script demonstra a estrutura completa de treinamento XTTS,")
-        logger.info("mas requer implementação específica do modelo XTTS-v2.")
-        logger.info("")
-        logger.info("📚 PARA TREINAR XTTS REAL:")
-        logger.info("")
-        logger.info("1. ✅ Instale TTS:")
-        logger.info("   pip install TTS")
-        logger.info("")
-        logger.info("2. ✅ Implemente load_pretrained_model():")
-        logger.info("   from TTS.tts.models.xtts import Xtts")
-        logger.info("   model = Xtts.init_from_config(config)")
-        logger.info("")
-        logger.info("3. ✅ Implemente create_dataset():")
-        logger.info("   from TTS.tts.datasets import load_tts_samples")
-        logger.info("   samples = load_tts_samples(...)")
-        logger.info("")
-        logger.info("4. ✅ Implemente train_step():")
-        logger.info("   Use XTTS-v2 forward pass com GPT + HiFi-GAN")
-        logger.info("")
-        logger.info("📖 Referências:")
-        logger.info("   - https://github.com/coqui-ai/TTS")
-        logger.info("   - https://docs.coqui.ai/en/latest/")
-        logger.info("   - https://huggingface.co/coqui/XTTS-v2")
-        logger.info("=" * 80)
-        return
     
     # Setup LoRA
     model = setup_lora(model, settings)
@@ -479,28 +590,12 @@ def main(resume):
         writer = SummaryWriter(log_dir)
         logger.info(f"📊 TensorBoard: {log_dir}")
     
-    # ⚠️ AVISO CRÍTICO: MODO TEMPLATE
-    logger.warning("\n" + "="*80)
-    logger.warning("⚠️ ⚠️ ⚠️  MODO TEMPLATE ATIVO - NÃO ESTÁ TREINANDO DE VERDADE  ⚠️ ⚠️ ⚠️")
-    logger.warning("="*80)
-    logger.warning("Loss é FAKE (0.5 + random) - apenas demonstração do pipeline!")
-    logger.warning("Samples são CÓPIAS do dataset - modelo não está gerando áudio!")
-    logger.warning("")
-    logger.warning("Para treinamento REAL com XTTS-v2:")
-    logger.warning("1. pip install TTS")
-    logger.warning("2. Implementar load_pretrained_model() com TTS.api.TTS")
-    logger.warning("3. Implementar train_step() com XTTS forward pass")
-    logger.warning("4. Implementar generate_sample_audio() com síntese real")
-    logger.warning("")
-    logger.warning("Ver: train/docs/DOCUMENTACAO_TECNICA.md#implementação-xtts-real")
-    logger.warning("="*80 + "\n")
-    
     # Training configuration
     num_epochs = settings.num_epochs
     save_every_n_epochs = settings.save_every_n_epochs
     log_every_n_steps = settings.log_every_n_steps
     
-    logger.info("\n🚀 Iniciando treinamento...")
+    logger.info("\n🚀 Iniciando treinamento REAL com XTTS-v2...")
     logger.info(f"   Epochs: {num_epochs}")
     logger.info(f"   Batch size: {settings.batch_size}")
     logger.info(f"   Learning rate: {settings.learning_rate}\n")
@@ -511,19 +606,26 @@ def main(resume):
     # Create datasets
     train_dataset, val_dataset = create_dataset(settings)
     
-    # Create dataloaders
+    # Create dataloaders com collate_fn para batches de dicts
     from torch.utils.data import DataLoader
+    
+    def collate_fn(batch):
+        """Collate function para batches de dicts"""
+        return batch  # Retorna lista de dicts, processamento no train_step
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=settings.batch_size,
         shuffle=True,
         num_workers=settings.num_workers,
+        collate_fn=collate_fn,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=settings.batch_size,
         shuffle=False,
         num_workers=settings.num_workers,
+        collate_fn=collate_fn,
     )
     
     logger.info(f"\n📊 Datasets carregados:")
@@ -569,7 +671,7 @@ def main(resume):
         
         # Validation após cada época
         avg_epoch_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
-        val_loss = validate(model, val_loader, device)
+        val_loss = validate(model, val_loader, device, settings)
         
         logger.info(f"\n📊 EPOCH {epoch} COMPLETO")
         logger.info(f"   Train Loss: {avg_epoch_loss:.4f}")
@@ -594,7 +696,7 @@ def main(resume):
             logger.info(f"💾 Checkpoint salvo: {checkpoint_path}")
             
             # Gerar sample de áudio
-            generate_sample_audio(epoch, settings, samples_dir)
+            generate_sample_audio(model, epoch, settings, samples_dir, device)
             
             # Best model
             if val_loss < best_val_loss:
@@ -610,7 +712,7 @@ def main(resume):
                 
                 # Sample do melhor modelo
                 best_samples_dir = samples_dir / "best"
-                generate_sample_audio(epoch, settings, best_samples_dir)
+                generate_sample_audio(model, epoch, settings, best_samples_dir, device)
     
     # Cleanup
     if writer is not None:

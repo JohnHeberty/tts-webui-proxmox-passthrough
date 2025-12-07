@@ -19,7 +19,7 @@ class TrainingSettings(BaseModel):
         default="tts_models/multilingual/multi-dataset/xtts_v2",
         description="Base XTTS model"
     )
-    use_lora: bool = Field(default=True, description="Enable LoRA fine-tuning")
+    use_lora: bool = Field(default=False, description="Enable LoRA fine-tuning (TODO: fix target modules)")
     lora_rank: int = Field(default=8, description="LoRA rank")
     lora_alpha: int = Field(default=16, description="LoRA alpha")
     lora_dropout: float = Field(default=0.1, description="LoRA dropout")
