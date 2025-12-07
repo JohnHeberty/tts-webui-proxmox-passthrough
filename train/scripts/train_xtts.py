@@ -581,6 +581,8 @@ def main(resume):
         log_dir = settings.log_dir
         writer = SummaryWriter(log_dir)
         logger.info(f"📊 TensorBoard: {log_dir}")
+        logger.info(f"   Visualizar: http://localhost:6006")
+        logger.info(f"   Comando: tensorboard --logdir={log_dir}")
     
     # Training configuration
     num_epochs = settings.num_epochs
@@ -660,6 +662,7 @@ def main(resume):
                     writer.add_scalar('train/loss', loss, global_step)
                     writer.add_scalar('train/avg_loss', avg_loss, global_step)
                     writer.add_scalar('train/lr', lr, global_step)
+                    writer.flush()  # Forçar escrita no disco
         
         # Validation após cada época
         avg_epoch_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
@@ -672,6 +675,7 @@ def main(resume):
         if writer is not None:
             writer.add_scalar('epoch/train_loss', avg_epoch_loss, epoch)
             writer.add_scalar('epoch/val_loss', val_loss, epoch)
+            writer.flush()  # Forçar escrita no disco
         
         # Salvar checkpoint a cada N épocas
         if epoch % save_every_n_epochs == 0:
