@@ -40,7 +40,7 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="app.navigate('create-job')">
-                            <i class="bi bi-plus-circle"></i> Dublar Texto
+                            <i class="bi bi-plus-circle"></i> Criar Job
                         </a>
                     </li>
                     <li class="nav-item">
@@ -230,11 +230,11 @@
                         <!-- Modo -->
                         <div class="mb-3">
                             <label class="form-label">
-                                <i class="bi bi-toggles"></i> Modo de Dublagem *
+                                <i class="bi bi-toggles"></i> Modo de Operação *
                             </label>
                             <select class="form-select" id="job-mode" required>
-                                <option value="dubbing">Dubbing (Voz Genérica)</option>
-                                <option value="dubbing_with_clone">Dubbing com Voz Clonada</option>
+                                <option value="dubbing">Voz Genérica (Preset)</option>
+                                <option value="dubbing_with_clone">Voz Clonada</option>
                             </select>
                         </div>
 
@@ -263,20 +263,11 @@
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">
                                     <i class="bi bi-cpu"></i> Engine de TTS *
-                                    <i class="bi bi-info-circle text-primary" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-placement="top"
-                                       title="XTTS: Estável, rápido (padrão). F5-TTS: Experimental, alta qualidade, melhor naturalidade. Seleção agora funciona corretamente!"></i>
                                 </label>
                                 <select class="form-select" id="job-tts-engine" required>
-                                    <option value="xtts">XTTS (Estável/Padrão)</option>
-                                    <option value="f5tts">F5-TTS (Experimental/Alta Qualidade)</option>
+                                    <option value="xtts">XTTS</option>
+                                    <option value="rvc">RVC</option>
                                 </select>
-                                <div class="form-text">
-                                    <small class="text-success">
-                                        <i class="bi bi-patch-check-fill"></i> Bug de seleção corrigido (2024-12-04)
-                                    </small>
-                                </div>
                             </div>
 
                             <!-- Perfil de Qualidade -->
@@ -291,11 +282,11 @@
                             </div>
                         </div>
 
-                        <!-- Ref Text (F5-TTS) -->
+                        <!-- Ref Text (Optional) -->
                         <div class="mb-3">
                             <label class="form-label">
-                                <i class="bi bi-file-text"></i> Texto de Referência (F5-TTS)
-                                <small class="text-muted">(opcional, auto-transcrito se vazio)</small>
+                                <i class="bi bi-file-text"></i> Texto de Referência
+                                <small class="text-muted">(opcional)</small>
                             </label>
                             <input type="text" class="form-control" id="job-ref-text"
                                 placeholder="Deixe vazio para transcrição automática">
@@ -540,20 +531,11 @@
                             <div class="col-md-4 mb-3">
                                 <label class="form-label">
                                     <i class="bi bi-cpu"></i> Engine de TTS *
-                                    <i class="bi bi-info-circle text-primary" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-placement="top"
-                                       title="XTTS: Estável, rápido, funciona com qualquer áudio. F5-TTS: Experimental, alta qualidade, melhor prosódia (requer mais recursos). Bug de seleção corrigido em 2024-12-04."></i>
                                 </label>
                                 <select class="form-select" id="clone-tts-engine" required>
-                                    <option value="xtts">XTTS (Padrão - Estável)</option>
-                                    <option value="f5tts">F5-TTS (Experimental - Alta Qualidade)</option>
+                                    <option value="xtts">XTTS</option>
+                                    <option value="rvc">RVC</option>
                                 </select>
-                                <div class="form-text">
-                                    <small class="text-success">
-                                        <i class="bi bi-check-circle-fill"></i> Seleção de engine funcionando corretamente
-                                    </small>
-                                </div>
                             </div>
 
                             <div class="col-md-4 mb-3">
@@ -712,42 +694,11 @@
                 </button>
             </div>
 
-            <!-- Tabs XTTS / F5-TTS -->
-            <ul class="nav nav-tabs" id="profile-tabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="xtts-tab" data-bs-toggle="tab" 
-                        data-bs-target="#xtts-profiles" type="button" role="tab">
-                        <i class="bi bi-mic"></i> XTTS
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="f5tts-tab" data-bs-toggle="tab" 
-                        data-bs-target="#f5tts-profiles" type="button" role="tab">
-                        <i class="bi bi-stars"></i> F5-TTS
-                    </button>
-                </li>
-            </ul>
-
-            <div class="tab-content" id="profile-tabs-content">
-                <!-- XTTS Profiles -->
-                <div class="tab-pane fade show active" id="xtts-profiles" role="tabpanel">
-                    <div class="card mt-3">
-                        <div class="card-body" id="xtts-profiles-container">
-                            <div class="text-center">
-                                <div class="spinner-border text-primary" role="status"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- F5-TTS Profiles -->
-                <div class="tab-pane fade" id="f5tts-profiles" role="tabpanel">
-                    <div class="card mt-3">
-                        <div class="card-body" id="f5tts-profiles-container">
-                            <div class="text-center">
-                                <div class="spinner-border text-primary" role="status"></div>
-                            </div>
-                        </div>
+            <!-- Quality Profiles -->
+            <div class="card mt-3">
+                <div class="card-body" id="xtts-profiles-container">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status"></div>
                     </div>
                 </div>
             </div>
@@ -1286,9 +1237,8 @@
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Engine *</label>
-                                <select class="form-select" id="qp-engine" required onchange="app.toggleQualityProfileEngine(this.value)">
-                                    <option value="xtts">XTTS (Stable)</option>
-                                    <option value="f5tts">F5-TTS (Experimental)</option>
+                                <select class="form-select" id="qp-engine" required>
+                                    <option value="xtts">XTTS</option>
                                 </select>
                             </div>
                         </div>
@@ -1375,98 +1325,9 @@
                             </div>
                         </div>
 
-                        <!-- Parâmetros F5-TTS -->
-                        <div id="qp-f5tts-params" class="params-group" style="display: none;">
-                            <h6 class="text-success mb-3">
-                                <i class="bi bi-sliders"></i> Parâmetros F5-TTS
-                            </h6>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">
-                                        NFE Steps (8 - 64)
-                                        <i class="bi bi-info-circle" title="Diffusion steps. Maior = melhor qualidade, mais lento"></i>
-                                    </label>
-                                    <input type="number" class="form-control" id="qp-f5tts-nfe-step" 
-                                        min="8" max="64" step="4" value="32">
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">
-                                        CFG Scale (1.0 - 5.0)
-                                        <i class="bi bi-info-circle" title="Classifier-free guidance - fidelidade à referência"></i>
-                                    </label>
-                                    <input type="number" class="form-control" id="qp-f5tts-cfg-scale" 
-                                        min="1.0" max="5.0" step="0.5" value="2.0">
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">
-                                        Velocidade (0.5 - 2.0)
-                                        <i class="bi bi-info-circle" title="Velocidade da fala"></i>
-                                    </label>
-                                    <input type="number" class="form-control" id="qp-f5tts-speed" 
-                                        min="0.5" max="2.0" step="0.1" value="1.0">
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">
-                                        Sway Sampling Coef (-1.0 - 1.0)
-                                        <i class="bi bi-info-circle" title="Controle de variação. -1 = automático"></i>
-                                    </label>
-                                    <input type="number" class="form-control" id="qp-f5tts-sway-sampling-coef" 
-                                        min="-1.0" max="1.0" step="0.1" value="-1.0">
-                                </div>
-                            </div>
-                            
-                            <h6 class="mt-4 mb-3">Pós-Processamento</h6>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="qp-f5tts-denoise-audio" checked>
-                                        <label class="form-check-label" for="qp-f5tts-denoise-audio">
-                                            Aplicar denoising no áudio de referência
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Força da Redução de Ruído (0.0 - 1.0)</label>
-                                    <input type="number" class="form-control" id="qp-f5tts-noise-reduction-strength" 
-                                        min="0.0" max="1.0" step="0.1" value="0.7">
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="qp-f5tts-enhance-prosody" checked>
-                                        <label class="form-check-label" for="qp-f5tts-enhance-prosody">
-                                            Melhorar prosódia (entonação, ritmo, ênfase)
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Força da Melhoria de Prosódia (0.0 - 1.0)</label>
-                                    <input type="number" class="form-control" id="qp-f5tts-prosody-strength" 
-                                        min="0.0" max="1.0" step="0.1" value="0.8">
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="qp-f5tts-apply-normalization" checked>
-                                        <label class="form-check-label" for="qp-f5tts-apply-normalization">
-                                            Normalizar volume do áudio final
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">LUFS Alvo (-30 a -10)</label>
-                                    <input type="number" class="form-control" id="qp-f5tts-target-loudness" 
-                                        min="-30" max="-10" step="1" value="-20">
-                                </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
                             </div>
                             
                             <div class="row">
@@ -1616,136 +1477,6 @@
                                 <input class="form-check-input" type="checkbox" id="edit-qp-xtts-enable-text-splitting">
                                 <label class="form-check-label" for="edit-qp-xtts-enable-text-splitting">
                                     Dividir texto longo em sentenças
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Parâmetros F5-TTS -->
-                        <div id="edit-qp-f5tts-params" class="params-group" style="display: none;">
-                            <h6 class="text-success mb-3">
-                                <i class="bi bi-sliders"></i> Parâmetros F5-TTS
-                            </h6>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">NFE Steps (8 - 64)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-nfe-step" 
-                                        min="8" max="64" step="4">
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">CFG Scale (1.0 - 5.0)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-cfg-scale" 
-                                        min="1.0" max="5.0" step="0.5">
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Velocidade (0.5 - 2.0)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-speed" 
-                                        min="0.5" max="2.0" step="0.1">
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Sway Sampling Coef (-1.0 - 1.0)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-sway-sampling-coef" 
-                                        min="-1.0" max="1.0" step="0.1">
-                                </div>
-                            </div>
-                            
-                            <h6 class="mt-4 mb-3">Pós-Processamento</h6>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="edit-qp-f5tts-denoise-audio">
-                                        <label class="form-check-label" for="edit-qp-f5tts-denoise-audio">
-                                            Aplicar denoising no áudio de referência
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Força da Redução de Ruído (0.0 - 1.0)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-noise-reduction-strength" 
-                                        min="0.0" max="1.0" step="0.1">
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="edit-qp-f5tts-enhance-prosody">
-                                        <label class="form-check-label" for="edit-qp-f5tts-enhance-prosody">
-                                            Melhorar prosódia
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Força da Melhoria de Prosódia (0.0 - 1.0)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-prosody-strength" 
-                                        min="0.0" max="1.0" step="0.1">
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="edit-qp-f5tts-apply-normalization">
-                                        <label class="form-check-label" for="edit-qp-f5tts-apply-normalization">
-                                            Normalizar volume do áudio final
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">LUFS Alvo (-30 a -10)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-target-loudness" 
-                                        min="-30" max="-10" step="1">
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-4 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="edit-qp-f5tts-apply-declipping">
-                                        <label class="form-check-label" for="edit-qp-f5tts-apply-declipping">
-                                            Remover clipping
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="edit-qp-f5tts-apply-deessing">
-                                        <label class="form-check-label" for="edit-qp-f5tts-apply-deessing">
-                                            Reduzir sibilância
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <label class="form-label">Freq. De-essing (Hz)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-deessing-frequency" 
-                                        min="4000" max="10000" step="500">
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="edit-qp-f5tts-add-breathing">
-                                        <label class="form-check-label" for="edit-qp-f5tts-add-breathing">
-                                            Adicionar respiração natural
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Intensidade da Respiração (0.0 - 1.0)</label>
-                                    <input type="number" class="form-control" id="edit-qp-f5tts-breathing-strength" 
-                                        min="0.0" max="1.0" step="0.1">
-                                </div>
-                            </div>
-                            
-                            <div class="form-check mb-3">
-                                <input class="form-check-input" type="checkbox" id="edit-qp-f5tts-pause-optimization">
-                                <label class="form-check-label" for="edit-qp-f5tts-pause-optimization">
-                                    Otimizar pausas entre frases
                                 </label>
                             </div>
                         </div>

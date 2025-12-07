@@ -94,7 +94,7 @@ const app = {
         presets: [],
         voices: [],
         rvcModels: [],
-        qualityProfiles: { xtts_profiles: [], f5tts_profiles: [] },
+        qualityProfiles: { xtts_profiles: [] },
         cloningJobs: {}, // Job IDs de clonagens em andamento
         jobsAutoRefreshInterval: null,
         currentJobMonitorInterval: null, // Intervalo de monitoramento do job buscado
@@ -1472,21 +1472,14 @@ const app = {
         
         if (!refTextLabel) return;
         
-        // F5-TTS + dubbing_with_clone: ref_text é importante
-        if (engine === 'f5tts' && mode === 'dubbing_with_clone') {
-            refTextLabel.innerHTML = `
-                <i class="bi bi-file-text"></i> Texto de Referência (F5-TTS) 
-                <span class="badge bg-warning text-dark">Recomendado</span>
-                <small class="text-muted">(transcrição do áudio de referência)</small>
-            `;
-            refTextContainer.style.display = 'block';
-        } 
-        // F5-TTS + dubbing: ref_text não faz sentido
-        else if (engine === 'f5tts' && mode === 'dubbing') {
+        // Show ref text for cloned voice mode
+        if (mode === 'dubbing_with_clone') {
             refTextLabel.innerHTML = `
                 <i class="bi bi-file-text"></i> Texto de Referência
-                <small class="text-muted">(não aplicável para modo dubbing)</small>
+                <small class="text-muted">(opcional)</small>
             `;
+            refTextContainer.style.display = 'block';
+        } else {
             refTextContainer.style.display = 'none';
         }
         // XTTS: ref_text opcional
@@ -2110,11 +2103,9 @@ const app = {
     // ==================== QUALITY PROFILES ====================
     async loadQualityProfiles() {
         const xttsContainer = document.getElementById('xtts-profiles-container');
-        const f5ttsContainer = document.getElementById('f5tts-profiles-container');
         
         try {
             if (xttsContainer) xttsContainer.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
-            if (f5ttsContainer) f5ttsContainer.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
             
             const data = await this.fetchJson(`${API_BASE}/quality-profiles`);
             this.state.qualityProfiles = data;
@@ -2125,18 +2116,11 @@ const app = {
                     : this.renderEmptyState('Nenhum perfil XTTS');
             }
             
-            if (f5ttsContainer) {
-                f5ttsContainer.innerHTML = data.f5tts_profiles?.length > 0
-                    ? data.f5tts_profiles.map(p => this.renderProfileItem(p, 'f5tts')).join('')
-                    : this.renderEmptyState('Nenhum perfil F5-TTS');
-            }
-            
             // Also update job form select
             this.loadQualityProfilesForEngine(document.getElementById('job-tts-engine')?.value || 'xtts');
             
         } catch (error) {
             if (xttsContainer) xttsContainer.innerHTML = `<div class="alert alert-danger">Erro: ${error.message}</div>`;
-            if (f5ttsContainer) f5ttsContainer.innerHTML = `<div class="alert alert-danger">Erro: ${error.message}</div>`;
         }
     },
 
@@ -2144,13 +2128,10 @@ const app = {
         const select = document.getElementById('job-quality-profile');
         if (!select) return;
         
-        // BUG-01 FIX: Filtrar perfis apenas do engine selecionado
-        const profiles = engine === 'xtts' 
-            ? this.state.qualityProfiles.xtts_profiles 
-            : this.state.qualityProfiles.f5tts_profiles;
+        const profiles = this.state.qualityProfiles.xtts_profiles || [];
         
-        let html = `<option value="">Usar padrão do ${engine.toUpperCase()}</option>`;
-        if (profiles && profiles.length > 0) {
+        let html = `<option value="">Usar padrão</option>`;
+        if (profiles.length > 0) {
             html += profiles.map(p => `<option value="${p.id}">${p.name}${p.is_default ? ' (padrão)' : ''}</option>`).join('');
         }
         
@@ -2195,22 +2176,6 @@ const app = {
                 </div>
             </div>
         `;
-    },
-
-    /**
-     * Toggle engine-specific parameters in Quality Profile form
-     */
-    toggleQualityProfileEngine(engine) {
-        const xttsParams = document.getElementById('qp-xtts-params');
-        const f5ttsParams = document.getElementById('qp-f5tts-params');
-        
-        if (engine === 'xtts') {
-            xttsParams.style.display = 'block';
-            f5ttsParams.style.display = 'none';
-        } else if (engine === 'f5tts') {
-            xttsParams.style.display = 'none';
-            f5ttsParams.style.display = 'block';
-        }
     },
 
     /**
