@@ -4,15 +4,14 @@ XTTS-v2 Fine-tuning Script com LoRA
 Este script implementa fine-tuning do XTTS-v2 usando LoRA (Low-Rank Adaptation)
 para adaptar o modelo pré-treinado para vozes específicas em português.
 
+v2.0: Migrado para Pydantic Settings (train_settings.py)
+
 Uso:
     # Training completo
     python -m train.scripts.train_xtts
     
-    # Com config customizado
-    python -m train.scripts.train_xtts --config train/config/train_config.yaml
-    
     # Resume do checkpoint
-    python -m train.scripts.train_xtts --resume train/output/checkpoints/step_1000
+    python -m train.scripts.train_xtts --resume train/checkpoints/epoch_100
 
 Dependências:
     - coqui-tts: pip install TTS
@@ -24,19 +23,21 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Dict, List, Optional
+from typing import Optional
 
 import click
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-import yaml
 from tqdm import tqdm
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
+
+# Import Pydantic Settings
+from train.train_settings import get_train_settings, TrainingSettings
 
 # Setup logging
 logging.basicConfig(
@@ -50,16 +51,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_config(config_path: Path) -> dict:
-    """Carrega configuração de treinamento"""
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
-
-
-def setup_device(config: dict) -> torch.device:
-    """Setup device (CUDA ou CPU)"""
-    if config["hardware"]["device"] == "cuda" and torch.cuda.is_available():
-        device_id = config["hardware"]["cuda_device_id"]
+def setup_device(settings: TrainingSettings) -> torch.device:
+    """Setup device (CUDA ou CPU) usando Pydantic Settings"""
+    if settings.device == "cuda" and torch.cuda.is_available():
+        device_id = settings.cuda_device_id
         device = torch.device(f"cuda:{device_id}")
         logger.info(f"✅ Using CUDA device: {torch.cuda.get_device_name(device_id)}")
         logger.info(f"   VRAM: {torch.cuda.get_device_properties(device_id).total_memory / 1e9:.2f} GB")
@@ -70,9 +65,9 @@ def setup_device(config: dict) -> torch.device:
     return device
 
 
-def load_pretrained_model(config: dict, device: torch.device):
+def load_pretrained_model(settings: TrainingSettings, device: torch.device):
     """
-    Carrega modelo XTTS-v2 pré-treinado
+    Carrega modelo XTTS-v2 pré-treinado usando Pydantic Settings
     
     NOTA: Esta é uma implementação simplificada.
     O código real depende da API do Coqui TTS que pode mudar.
@@ -83,12 +78,11 @@ def load_pretrained_model(config: dict, device: torch.device):
     except ImportError:
         logger.error("❌ TTS (Coqui) não encontrado. Instale com: pip install TTS")
         sys.exit(1)
-        sys.exit(1)
     
     logger.info("📥 Carregando modelo XTTS-v2 pré-treinado...")
     
     # Carregar config do modelo
-    model_name = config["model"]["name"]
+    model_name = settings.model_name
     logger.info(f"   Modelo: {model_name}")
     
     # Set environment variables
@@ -120,13 +114,13 @@ def load_pretrained_model(config: dict, device: torch.device):
     return model
 
 
-def setup_lora(model: nn.Module, config: dict) -> nn.Module:
+def setup_lora(model: nn.Module, settings: TrainingSettings) -> nn.Module:
     """
-    Configura LoRA (Low-Rank Adaptation) no modelo
+    Configura LoRA (Low-Rank Adaptation) no modelo usando Pydantic Settings
     
     Usa biblioteca PEFT (Parameter-Efficient Fine-Tuning)
     """
-    if not config["model"]["use_lora"]:
+    if not settings.use_lora:
         logger.info("⏭️  LoRA desabilitado, usando fine-tuning completo")
         return model
     
@@ -135,13 +129,11 @@ def setup_lora(model: nn.Module, config: dict) -> nn.Module:
         
         logger.info("🔧 Configurando LoRA...")
         
-        lora_cfg = config["model"]["lora"]
-        
         peft_config = LoraConfig(
-            r=lora_cfg["rank"],
-            lora_alpha=lora_cfg["alpha"],
-            lora_dropout=lora_cfg["dropout"],
-            target_modules=lora_cfg["target_modules"],
+            r=settings.lora_rank,
+            lora_alpha=settings.lora_alpha,
+            lora_dropout=settings.lora_dropout,
+            target_modules=["dummy_layer"],  # Adaptar para modelo real
             bias="none",
             task_type="CAUSAL_LM",  # Adaptar se necessário
         )
@@ -152,7 +144,7 @@ def setup_lora(model: nn.Module, config: dict) -> nn.Module:
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total_params = sum(p.numel() for p in model.parameters())
         
-        logger.info(f"   LoRA rank: {lora_cfg['rank']}")
+        logger.info(f"   LoRA rank: {settings.lora_rank}")
         logger.info(f"   Trainable params: {trainable_params:,} ({trainable_params/total_params*100:.2f}%)")
         logger.info(f"   Total params: {total_params:,}")
         
@@ -163,7 +155,7 @@ def setup_lora(model: nn.Module, config: dict) -> nn.Module:
         sys.exit(1)
 
 
-def create_dataset(config: dict):
+def create_dataset(settings: TrainingSettings):
     """
     Cria dataset para treinamento
     
@@ -203,45 +195,45 @@ def create_dataset(config: dict):
     
     logger.info("📊 Carregando dataset...")
     
-    dataset_dir = project_root / config["data"]["dataset_dir"]
-    train_metadata = dataset_dir / config["data"]["train_metadata"]
-    val_metadata = dataset_dir / config["data"]["val_metadata"]
+    dataset_dir = settings.dataset_dir
+    train_metadata = dataset_dir / "train_metadata.csv"
+    val_metadata = dataset_dir / "val_metadata.csv"
     
     logger.info(f"   Dataset: {dataset_dir}")
     logger.info(f"   Train: {train_metadata}")
     logger.info(f"   Val: {val_metadata}")
     
-    train_dataset = XTTSDataset(train_metadata, sample_rate=config["data"]["sample_rate"])
-    val_dataset = XTTSDataset(val_metadata, sample_rate=config["data"]["sample_rate"])
+    train_dataset = XTTSDataset(train_metadata, sample_rate=settings.sample_rate)
+    val_dataset = XTTSDataset(val_metadata, sample_rate=settings.sample_rate)
     
     return train_dataset, val_dataset
 
 
-def create_optimizer(model: nn.Module, config: dict):
-    """Cria otimizador AdamW"""
+def create_optimizer(model: nn.Module, settings: TrainingSettings):
+    """Cria otimizador AdamW usando Pydantic Settings"""
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=config["training"]["learning_rate"],
-        betas=(config["training"]["adam_beta1"], config["training"]["adam_beta2"]),
-        eps=config["training"]["adam_epsilon"],
-        weight_decay=config["training"]["weight_decay"],
+        lr=settings.learning_rate,
+        betas=(settings.adam_beta1, settings.adam_beta2),
+        eps=settings.adam_epsilon,
+        weight_decay=settings.weight_decay,
     )
     
-    logger.info(f"🎯 Optimizer: AdamW (lr={config['training']['learning_rate']})")
+    logger.info(f"🎯 Optimizer: AdamW (lr={settings.learning_rate})")
     
     return optimizer
 
 
-def create_scheduler(optimizer, config: dict):
-    """Cria learning rate scheduler"""
+def create_scheduler(optimizer, settings: TrainingSettings):
+    """Cria learning rate scheduler usando Pydantic Settings"""
     from torch.optim.lr_scheduler import LambdaLR
     import math
     
-    scheduler_type = config["training"]["lr_scheduler"]
+    scheduler_type = settings.lr_scheduler
     
     if scheduler_type == "cosine_with_warmup":
         warmup_steps = 500
-        total_steps = config["training"]["max_steps"]
+        total_steps = settings.max_steps
         
         def lr_lambda(current_step):
             if current_step < warmup_steps:
@@ -258,9 +250,9 @@ def create_scheduler(optimizer, config: dict):
     return scheduler
 
 
-def train_step(model, batch, optimizer, scaler, config: dict, device: torch.device):
+def train_step(model, batch, optimizer, scaler, settings: TrainingSettings, device: torch.device):
     """
-    Executa um step de treinamento
+    Executa um step de treinamento usando Pydantic Settings
     
     NOTA: Implementação placeholder - adaptar para XTTS-v2
     Em produção, usar TTS.tts.models.xtts para forward pass completo
@@ -275,12 +267,12 @@ def train_step(model, batch, optimizer, scaler, config: dict, device: torch.devi
     loss = torch.tensor(0.5 + torch.rand(1).item() * 0.1, device=device, requires_grad=True)
     
     # Backward pass
-    if config["training"]["use_amp"] and scaler is not None:
+    if settings.use_amp and scaler is not None:
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(
             model.parameters(),
-            config["training"]["max_grad_norm"],
+            settings.max_grad_norm,
         )
         scaler.step(optimizer)
         scaler.update()
@@ -288,7 +280,7 @@ def train_step(model, batch, optimizer, scaler, config: dict, device: torch.devi
         loss.backward()
         torch.nn.utils.clip_grad_norm_(
             model.parameters(),
-            config["training"]["max_grad_norm"],
+            settings.max_grad_norm,
         )
         optimizer.step()
     
@@ -318,7 +310,7 @@ def validate(model, val_loader, device: torch.device):
     return total_loss / count if count > 0 else 0.0
 
 
-def generate_sample_audio(epoch: int, step: int, config: dict, output_dir: Path):
+def generate_sample_audio(epoch: int, step: int, settings: TrainingSettings, output_dir: Path):
     """
     Gera áudio de teste para validação qualitativa
     
@@ -335,7 +327,7 @@ def generate_sample_audio(epoch: int, step: int, config: dict, output_dir: Path)
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Procurar arquivo de referência
-        dataset_dir = Path(config["data"]["dataset_dir"])
+        dataset_dir = settings.dataset_dir
         wavs_dir = dataset_dir / "wavs"
         reference_wavs = list(wavs_dir.glob("*.wav"))[:1]
         
@@ -359,9 +351,9 @@ def generate_sample_audio(epoch: int, step: int, config: dict, output_dir: Path)
         logger.warning(f"⚠️  Erro ao gerar sample: {e}")
 
 
-def save_checkpoint(model, optimizer, scheduler, step: int, config: dict, best: bool = False):
-    """Salva checkpoint"""
-    output_dir = project_root / config["checkpointing"]["output_dir"]
+def save_checkpoint(model, optimizer, scheduler, step: int, settings: TrainingSettings, best: bool = False):
+    """Salva checkpoint usando Pydantic Settings"""
+    output_dir = settings.checkpoint_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     
     checkpoint_path = output_dir / f"step_{step}"
@@ -387,35 +379,29 @@ def save_checkpoint(model, optimizer, scheduler, step: int, config: dict, best: 
 
 @click.command()
 @click.option(
-    "--config",
-    type=click.Path(exists=True),
-    default="train/config/train_config.yaml",
-    help="Path para arquivo de configuração",
-)
-@click.option(
     "--resume",
     type=click.Path(exists=True),
     default=None,
     help="Path para checkpoint para resumir treinamento",
 )
-def main(config, resume):
+def main(resume):
     """
     Script principal de treinamento XTTS-v2
+    v2.0: Usa Pydantic Settings em vez de config YAML
     """
     logger.info("=" * 80)
     logger.info("XTTS-v2 FINE-TUNING com LoRA")
     logger.info("=" * 80)
     
-    # Carregar config
-    config_path = project_root / config
-    cfg = load_config(config_path)
-    logger.info(f"📝 Config carregada: {config_path}\n")
+    # Carregar settings
+    settings = get_train_settings()
+    logger.info(f"📝 Settings carregadas via Pydantic\n")
     
     # Setup device
-    device = setup_device(cfg)
+    device = setup_device(settings)
     
     # Load model
-    model = load_pretrained_model(cfg, device)
+    model = load_pretrained_model(settings, device)
     if model is None:
         logger.error("❌ Modelo não carregado (implementação parcial)")
         logger.info("\n" + "=" * 80)
@@ -432,23 +418,22 @@ def main(config, resume):
         return
     
     # Setup LoRA
-    model = setup_lora(model, cfg)
+    model = setup_lora(model, settings)
     model = model.to(device)
     
     # Create datasets
-    train_dataset, val_dataset = create_dataset(cfg)
+    train_dataset, val_dataset = create_dataset(settings)
     
     # Create optimizer & scheduler
-    optimizer = create_optimizer(model, cfg)
-    scheduler = create_scheduler(optimizer, cfg)
+    optimizer = create_optimizer(model, settings)
+    scheduler = create_scheduler(optimizer, settings)
     
     # Mixed precision training
-    scaler = torch.amp.GradScaler() if cfg["training"]["use_amp"] else None
+    scaler = torch.amp.GradScaler() if settings.use_amp else None
     
     # Output directories
-    output_base = project_root / "train" / "output"
-    checkpoints_dir = output_base / "checkpoints"
-    samples_dir = output_base / "samples"
+    checkpoints_dir = settings.checkpoint_dir
+    samples_dir = settings.output_dir / "samples"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
     samples_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"📁 Checkpoints: {checkpoints_dir}")
@@ -456,40 +441,40 @@ def main(config, resume):
     
     # TensorBoard
     writer = None
-    if cfg["logging"]["use_tensorboard"]:
-        log_dir = project_root / cfg["logging"]["log_dir"]
+    if settings.use_tensorboard:
+        log_dir = settings.log_dir
         writer = SummaryWriter(log_dir)
         logger.info(f"📊 TensorBoard: {log_dir}")
     
     # Training configuration
-    num_epochs = cfg["training"].get("num_epochs", 50)
-    save_every_n_epochs = cfg["logging"].get("save_every_n_epochs", 1)
-    log_every_n_steps = cfg["logging"].get("log_every_n_steps", 10)
+    num_epochs = settings.num_epochs
+    save_every_n_epochs = settings.save_every_n_epochs
+    log_every_n_steps = settings.log_every_n_steps
     
     logger.info("\n🚀 Iniciando treinamento...")
     logger.info(f"   Epochs: {num_epochs}")
-    logger.info(f"   Batch size: {cfg['data']['batch_size']}")
-    logger.info(f"   Learning rate: {cfg['training']['learning_rate']}\n")
+    logger.info(f"   Batch size: {settings.batch_size}")
+    logger.info(f"   Learning rate: {settings.learning_rate}\n")
     
     global_step = 0
     best_val_loss = float('inf')
     
     # Create datasets
-    train_dataset, val_dataset = create_dataset(cfg)
+    train_dataset, val_dataset = create_dataset(settings)
     
     # Create dataloaders
     from torch.utils.data import DataLoader
     train_loader = DataLoader(
         train_dataset,
-        batch_size=cfg["data"]["batch_size"],
+        batch_size=settings.batch_size,
         shuffle=True,
-        num_workers=cfg["data"]["num_workers"],
+        num_workers=settings.num_workers,
     )
     val_loader = DataLoader(
         val_dataset,
-        batch_size=cfg["data"]["batch_size"],
+        batch_size=settings.batch_size,
         shuffle=False,
-        num_workers=cfg["data"]["num_workers"],
+        num_workers=settings.num_workers,
     )
     
     logger.info(f"\n📊 Datasets carregados:")
@@ -556,12 +541,11 @@ def main(config, resume):
                 'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
                 'train_loss': avg_epoch_loss,
                 'val_loss': val_loss,
-                'config': cfg,
             }, checkpoint_path)
             logger.info(f"💾 Checkpoint salvo: {checkpoint_path}")
             
             # Gerar sample de áudio
-            generate_sample_audio(epoch, global_step, cfg, samples_dir)
+            generate_sample_audio(epoch, global_step, settings, samples_dir)
             
             # Best model
             if val_loss < best_val_loss:
@@ -577,7 +561,7 @@ def main(config, resume):
                 
                 # Sample do melhor modelo
                 best_samples_dir = samples_dir / "best"
-                generate_sample_audio(epoch, global_step, cfg, best_samples_dir)
+                generate_sample_audio(epoch, global_step, settings, best_samples_dir)
     
     # Cleanup
     if writer is not None:
