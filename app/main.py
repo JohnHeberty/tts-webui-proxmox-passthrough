@@ -85,6 +85,14 @@ if webui_path.exists():
 else:
     logger.warning(f"⚠️ WebUI directory not found: {webui_path}")
 
+# Mount training samples for playback (Sprint 0 Fix)
+samples_path = Path("train/output/samples")
+if samples_path.exists():
+    app.mount("/static/samples", StaticFiles(directory=str(samples_path)), name="samples")
+    logger.info(f"✅ Training samples mounted at /static/samples")
+else:
+    logger.info(f"ℹ️ Training samples directory not found (will be created during training): {samples_path}")
+
 # Formatos de áudio suportados para download
 SUPPORTED_AUDIO_FORMATS = {
     'wav': {'mime': 'audio/wav', 'extension': '.wav'},

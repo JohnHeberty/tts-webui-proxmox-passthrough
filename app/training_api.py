@@ -76,6 +76,7 @@ class InferenceSynthesizeRequest(BaseModel):
     """Request to synthesize with checkpoint"""
     checkpoint: str = Field(..., description="Path to checkpoint")
     text: str = Field(..., description="Text to synthesize")
+    speaker_wav: Optional[str] = Field(default=None, description="Reference speaker audio file")
     temperature: float = Field(default=0.7, ge=0.1, le=1.5)
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
 
@@ -219,45 +220,136 @@ async def transcribe_dataset(request: DatasetTranscribeRequest, background_tasks
 
 
 @router.get("/dataset/stats")
-async def get_dataset_stats(folder: str = "datasets/my_voice"):
+async def get_dataset_stats(folder: str = "train/data"):
     """
-    Get dataset statistics
+    Get dataset statistics from train/data folder
+    
+    Scans all datasets in train/data/ (e.g., MyTTSDataset/)
     """
     try:
-        segments_dir = Path(folder) / "segments"
+        data_dir = Path(folder)
         
-        if not segments_dir.exists():
+        if not data_dir.exists():
+            logger.warning(f"Dataset folder not found: {data_dir}")
             return {
                 "files": 0,
                 "total_hours": 0,
-                "transcribed_percent": 0
+                "transcribed_percent": 0,
+                "datasets": []
             }
         
-        # Count audio files
-        audio_files = list(segments_dir.glob("*.wav"))
-        
-        # Count transcribed files
-        metadata_file = segments_dir / "metadata.csv"
+        total_files = 0
+        total_duration = 0
         transcribed_count = 0
+        datasets_info = []
         
-        if metadata_file.exists():
-            with open(metadata_file, "r", encoding="utf-8") as f:
-                transcribed_count = sum(1 for _ in f) - 1  # -1 for header
+        # Scan all dataset folders
+        for dataset_dir in data_dir.iterdir():
+            if not dataset_dir.is_dir() or dataset_dir.name in ['raw', 'processed', 'subtitles']:
+                continue
+            
+            # Check for wavs folder
+            wavs_dir = dataset_dir / "wavs"
+            if not wavs_dir.exists():
+                continue
+            
+            audio_files = list(wavs_dir.glob("*.wav"))
+            dataset_files = len(audio_files)
+            
+            # Check metadata.csv for transcriptions
+            metadata_file = dataset_dir / "metadata.csv"
+            dataset_transcribed = 0
+            
+            if metadata_file.exists():
+                try:
+                    with open(metadata_file, "r", encoding="utf-8") as f:
+                        dataset_transcribed = sum(1 for _ in f)
+                except Exception as e:
+                    logger.error(f"Error reading metadata: {e}")
+            
+            # Check duration.json if available
+            duration_file = dataset_dir / "duration.json"
+            dataset_duration = 0
+            if duration_file.exists():
+                try:
+                    import json
+                    with open(duration_file, "r") as f:
+                        duration_data = json.load(f)
+                        # duration.json has structure {"duration": [float, float, ...]}
+                        if isinstance(duration_data, dict) and "duration" in duration_data:
+                            dataset_duration = sum(duration_data["duration"])
+                        elif isinstance(duration_data, dict) and "total_duration" in duration_data:
+                            dataset_duration = duration_data["total_duration"]
+                except Exception as e:
+                    logger.error(f"Error reading duration: {e}")
+                    dataset_duration = dataset_files * 10  # Estimate 10s per file
+            else:
+                dataset_duration = dataset_files * 10
+            
+            total_files += dataset_files
+            total_duration += dataset_duration
+            transcribed_count += dataset_transcribed
+            
+            datasets_info.append({
+                "name": dataset_dir.name,
+                "files": dataset_files,
+                "transcribed": dataset_transcribed,
+                "duration_seconds": round(dataset_duration, 2)
+            })
         
-        # Calculate total duration (estimate 10s per file)
-        total_seconds = len(audio_files) * 10
-        total_hours = total_seconds / 3600
-        
-        transcribed_percent = (transcribed_count / len(audio_files) * 100) if audio_files else 0
+        total_hours = total_duration / 3600
+        transcribed_percent = (transcribed_count / total_files * 100) if total_files > 0 else 0
         
         return {
-            "files": len(audio_files),
+            "files": total_files,
             "total_hours": round(total_hours, 2),
-            "transcribed_percent": round(transcribed_percent, 1)
+            "transcribed_percent": round(transcribed_percent, 1),
+            "datasets": datasets_info
         }
         
     except Exception as e:
         logger.error(f"❌ Error getting dataset stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/datasets")
+async def list_datasets(folder: str = "train/data"):
+    """
+    List available datasets in train/data folder
+    
+    Returns all folders containing wavs/ subdirectory and metadata.csv
+    """
+    try:
+        data_dir = Path(folder)
+        
+        if not data_dir.exists():
+            logger.warning(f"Dataset folder not found: {data_dir}")
+            return {"datasets": []}
+        
+        datasets = []
+        
+        for dataset_dir in data_dir.iterdir():
+            if not dataset_dir.is_dir() or dataset_dir.name in ['raw', 'processed', 'subtitles']:
+                continue
+            
+            wavs_dir = dataset_dir / "wavs"
+            metadata_file = dataset_dir / "metadata.csv"
+            
+            if wavs_dir.exists():
+                audio_files = list(wavs_dir.glob("*.wav"))
+                has_metadata = metadata_file.exists()
+                
+                datasets.append({
+                    "name": dataset_dir.name,
+                    "path": str(dataset_dir),
+                    "files": len(audio_files),
+                    "has_metadata": has_metadata
+                })
+        
+        return {"datasets": datasets}
+        
+    except Exception as e:
+        logger.error(f"❌ Error listing datasets: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -478,8 +570,14 @@ async def list_checkpoints(model_name: Optional[str] = None):
             # Scan all models
             output_root = Path("train/output")
             if output_root.exists():
+                # Check direct checkpoints folder (train/output/checkpoints/)
+                direct_checkpoint_dir = output_root / "checkpoints"
+                if direct_checkpoint_dir.exists():
+                    checkpoints.extend(_scan_checkpoint_dir(direct_checkpoint_dir))
+                
+                # Also check model-specific folders (train/output/{model_name}/checkpoints/)
                 for model_dir in output_root.iterdir():
-                    if model_dir.is_dir():
+                    if model_dir.is_dir() and model_dir.name != "checkpoints" and model_dir.name != "samples":
                         checkpoint_dir = model_dir / "checkpoints"
                         if checkpoint_dir.exists():
                             checkpoints.extend(_scan_checkpoint_dir(checkpoint_dir))
@@ -498,7 +596,7 @@ def _scan_checkpoint_dir(checkpoint_dir: Path) -> List[Dict[str, Any]]:
     """Scan checkpoint directory"""
     checkpoints = []
     
-    for ckpt_file in checkpoint_dir.glob("*.pth"):
+    for ckpt_file in checkpoint_dir.glob("*.pt"):
         stat = ckpt_file.stat()
         
         # Extract epoch from filename (e.g., checkpoint_epoch_100.pth)
@@ -518,6 +616,50 @@ def _scan_checkpoint_dir(checkpoint_dir: Path) -> List[Dict[str, Any]]:
         })
     
     return checkpoints
+
+
+@router.get("/samples")
+async def list_training_samples(model_name: Optional[str] = None):
+    """
+    List training samples (epoch_N_output.wav files)
+    
+    Returns audio samples generated during training for quality evaluation.
+    Sprint 0 Fix: Enable WebUI to display and play training samples.
+    """
+    import re
+    try:
+        samples = []
+        samples_root = Path("train/output/samples")
+        
+        if not samples_root.exists():
+            logger.info("Samples directory not found")
+            return []
+        
+        # Scan for epoch_*_output.wav
+        for wav_file in sorted(samples_root.glob("epoch_*_output.wav")):
+            # Extract epoch number from filename
+            epoch_match = re.search(r"epoch_(\d+)", wav_file.stem)
+            epoch = int(epoch_match.group(1)) if epoch_match else 0
+            
+            stat = wav_file.stat()
+            
+            samples.append({
+                "epoch": epoch,
+                "filename": wav_file.name,
+                "path": f"/static/samples/{wav_file.name}",
+                "size_mb": round(stat.st_size / 1024 / 1024, 2),
+                "date": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+            })
+        
+        # Sort by epoch (newest first)
+        samples.sort(key=lambda x: x["epoch"], reverse=True)
+        
+        logger.info(f"Found {len(samples)} training samples")
+        return samples
+        
+    except Exception as e:
+        logger.error(f"❌ Error listing samples: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/checkpoints/load")
@@ -558,10 +700,31 @@ async def synthesize_with_checkpoint(request: InferenceSynthesizeRequest):
     logger.info(f"🎤 Synthesizing with checkpoint: {request.checkpoint}")
     
     try:
-        # Verify checkpoint exists
-        ckpt_path = Path(request.checkpoint)
-        if not ckpt_path.exists():
-            raise HTTPException(status_code=404, detail="Checkpoint not found")
+        # Handle "base" keyword for base model
+        if request.checkpoint.lower() == "base":
+            ckpt_path = None  # Will use base XTTS-v2 model
+        else:
+            # Verify checkpoint exists
+            ckpt_path = Path(request.checkpoint)
+            if not ckpt_path.exists():
+                raise HTTPException(status_code=404, detail=f"Checkpoint not found: {request.checkpoint}")
+        
+        # Auto-select speaker_wav if not provided
+        speaker_wav = request.speaker_wav
+        if not speaker_wav:
+            # Try reference samples first
+            reference_samples = list(Path("train/output/samples").glob("*_reference.wav"))
+            if reference_samples:
+                speaker_wav = str(reference_samples[0])
+            else:
+                # Fallback to dataset wavs
+                dataset_wavs = list(Path("train/data/MyTTSDataset/wavs").glob("*.wav"))
+                if dataset_wavs:
+                    speaker_wav = str(dataset_wavs[0])
+                else:
+                    raise HTTPException(status_code=400, detail="No speaker reference found. Provide speaker_wav or add samples to train/output/samples/")
+        
+        logger.info(f"   Speaker reference: {speaker_wav}")
         
         # Create temp output file
         output_dir = Path("temp/inference")
@@ -571,12 +734,16 @@ async def synthesize_with_checkpoint(request: InferenceSynthesizeRequest):
         # Run inference script
         cmd = [
             "python", "-m", "train.scripts.xtts_inference",
-            "--checkpoint", str(ckpt_path),
             "--text", request.text,
+            "--speaker", speaker_wav,
             "--output", str(output_file),
             "--temperature", str(request.temperature),
             "--speed", str(request.speed)
         ]
+        
+        # Add checkpoint if not base model
+        if ckpt_path:
+            cmd.extend(["--checkpoint", str(ckpt_path)])
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         

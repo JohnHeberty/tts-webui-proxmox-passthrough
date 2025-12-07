@@ -81,7 +81,7 @@ RUN python scripts/create_default_speaker.py
 RUN useradd -m -u 1000 appuser
 
 RUN mkdir -p /app/uploads /app/processed /app/temp /app/logs \
-    /app/voice_profiles /app/models /app/models/f5tts /app/models/whisper /app/models/rvc \
+    /app/voice_profiles /app/models /app/models/whisper \
  && chown -R appuser:appuser /app \
  && chmod -R 755 /app \
  && chmod -R 777 /app/uploads /app/processed /app/temp /app/logs /app/voice_profiles /app/models

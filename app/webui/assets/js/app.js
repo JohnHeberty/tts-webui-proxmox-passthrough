@@ -1476,19 +1476,11 @@ const app = {
         if (mode === 'dubbing_with_clone') {
             refTextLabel.innerHTML = `
                 <i class="bi bi-file-text"></i> Texto de Referência
-                <small class="text-muted">(opcional)</small>
+                <small class="text-muted">(opcional, auto-transcrito se vazio)</small>
             `;
             refTextContainer.style.display = 'block';
         } else {
             refTextContainer.style.display = 'none';
-        }
-        // XTTS: ref_text opcional
-        else {
-            refTextLabel.innerHTML = `
-                <i class="bi bi-file-text"></i> Texto de Referência
-                <small class="text-muted">(opcional, auto-transcrito se vazio)</small>
-            `;
-            refTextContainer.style.display = 'block';
         }
     },
 
@@ -2697,6 +2689,7 @@ const app = {
         console.log('🎓 Loading training section');
         this.loadDatasetStats();
         this.loadCheckpoints();
+        this.loadTrainingSamples();  // Sprint 0 Fix: Load training samples
     },
 
     /**
@@ -2704,8 +2697,7 @@ const app = {
      */
     async loadDatasetStats() {
         try {
-            const response = await this.api('/training/dataset/stats');
-            const stats = await response.json();
+            const stats = await this.fetchJson('/training/dataset/stats');
             
             const statsContainer = document.getElementById('dataset-stats');
             if (!stats.files || stats.files === 0) {
@@ -2713,9 +2705,27 @@ const app = {
                     <div class="text-center text-muted">
                         <i class="bi bi-folder-x" style="font-size: 3rem;"></i>
                         <p class="mt-2">Nenhum dataset carregado</p>
+                        <small>Verifique a pasta /train/data/</small>
                     </div>
                 `;
                 return;
+            }
+
+            // Build datasets list
+            let datasetsHTML = '';
+            if (stats.datasets && stats.datasets.length > 0) {
+                datasetsHTML = '<div class="mt-3"><h6 class="text-muted mb-2">Datasets:</h6>';
+                stats.datasets.forEach(ds => {
+                    const hours = (ds.duration_seconds / 3600).toFixed(1);
+                    datasetsHTML += `
+                        <div class="alert alert-secondary mb-2 py-2">
+                            <strong>${ds.name}</strong>
+                            <br>
+                            <small>${ds.files} arquivos • ${hours}h • ${ds.transcribed} transcritos</small>
+                        </div>
+                    `;
+                });
+                datasetsHTML += '</div>';
             }
 
             statsContainer.innerHTML = `
@@ -2725,10 +2735,10 @@ const app = {
                         <small class="text-muted">Arquivos</small>
                     </div>
                     <div class="col-6 mb-3">
-                        <h3 class="mb-0">${Math.round(stats.total_hours * 10) / 10}h</h3>
+                        <h3 class="mb-0">${stats.total_hours.toFixed(1)}h</h3>
                         <small class="text-muted">Duração Total</small>
                     </div>
-                    <div class="col-12">
+                    <div class="col-12 mb-3">
                         <div class="progress" style="height: 20px;">
                             <div class="progress-bar bg-success" style="width: ${stats.transcribed_percent}%">
                                 ${stats.transcribed_percent}% Transcrito
@@ -2736,9 +2746,19 @@ const app = {
                         </div>
                     </div>
                 </div>
+                ${datasetsHTML}
             `;
         } catch (error) {
             console.error('❌ Error loading dataset stats:', error);
+            const statsContainer = document.getElementById('dataset-stats');
+            if (statsContainer) {
+                statsContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Erro ao carregar estatísticas
+                    </div>
+                `;
+            }
         }
     },
 
@@ -2746,18 +2766,28 @@ const app = {
      * Load checkpoints list
      */
     async loadCheckpoints() {
+        console.log('📦 Loading checkpoints...');
         try {
-            const response = await this.api('/training/checkpoints');
-            const checkpoints = await response.json();
+            const checkpoints = await this.fetchJson('/training/checkpoints');
+            
+            console.log('📦 Checkpoints received:', checkpoints);
             
             const checkpointList = document.getElementById('checkpoint-list');
             const inferenceSelect = document.getElementById('inference-checkpoint');
             
+            console.log('📦 Elements found:', {
+                checkpointList: !!checkpointList,
+                inferenceSelect: !!inferenceSelect
+            });
+            
             if (!checkpoints || checkpoints.length === 0) {
+                console.warn('⚠️ No checkpoints found');
                 checkpointList.innerHTML = '<p class="p-3 text-muted mb-0">Nenhum checkpoint disponível</p>';
                 inferenceSelect.innerHTML = '<option value="">Selecione um checkpoint...</option>';
                 return;
             }
+
+            console.log(`📦 Populating ${checkpoints.length} checkpoints`);
 
             // Update checkpoint list
             checkpointList.innerHTML = checkpoints.map(cp => `
@@ -2766,10 +2796,10 @@ const app = {
                         <div>
                             <strong>${cp.name}</strong>
                             <br>
-                            <small class="text-muted">Epoch ${cp.epoch} • ${cp.date}</small>
+                            <small class="text-muted">Epoch ${cp.epoch} • ${cp.date} • ${cp.size_mb.toFixed(0)}MB</small>
                         </div>
                         <button class="btn btn-sm btn-primary" onclick="app.loadCheckpoint('${cp.path}')">
-                            <i class="bi bi-box-arrow-in-down"></i>
+                            <i class="bi bi-box-arrow-in-down"></i> Usar
                         </button>
                     </div>
                 </div>
@@ -2778,9 +2808,77 @@ const app = {
             // Update inference select
             inferenceSelect.innerHTML = '<option value="">Selecione um checkpoint...</option>' +
                 checkpoints.map(cp => `<option value="${cp.path}">${cp.name} (Epoch ${cp.epoch})</option>`).join('');
+            
+            console.log('✅ Checkpoints loaded successfully');
 
         } catch (error) {
             console.error('❌ Error loading checkpoints:', error);
+            const checkpointList = document.getElementById('checkpoint-list');
+            const inferenceSelect = document.getElementById('inference-checkpoint');
+            if (checkpointList) {
+                checkpointList.innerHTML = `
+                    <div class="alert alert-danger m-3">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Erro ao carregar checkpoints: ${error.message}
+                    </div>
+                `;
+            }
+            if (inferenceSelect) {
+                inferenceSelect.innerHTML = '<option value="">Erro ao carregar...</option>';
+            }
+        }
+    },
+
+    /**
+     * Load training samples (Sprint 0 Fix)
+     */
+    async loadTrainingSamples() {
+        console.log('🎵 Loading training samples...');
+        try {
+            const samples = await this.fetchJson('/training/samples');
+            
+            console.log('🎵 Samples received:', samples);
+            
+            const container = document.getElementById('training-samples-list');
+            
+            if (!container) {
+                console.warn('⚠️ training-samples-list container not found');
+                return;
+            }
+            
+            if (!samples || samples.length === 0) {
+                console.warn('⚠️ No samples found');
+                container.innerHTML = '<p class="p-3 text-muted mb-0">Nenhuma amostra disponível</p>';
+                return;
+            }
+            
+            console.log(`🎵 Populating ${samples.length} samples`);
+            
+            container.innerHTML = samples.map(s => `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong>Epoch ${s.epoch}</strong>
+                        <small class="text-muted">${s.date} • ${s.size_mb.toFixed(2)} MB</small>
+                    </div>
+                    <audio controls class="w-100" src="${s.path}">
+                        Seu navegador não suporta reprodução de áudio.
+                    </audio>
+                </div>
+            `).join('');
+            
+            console.log(`✅ Training samples loaded successfully`);
+            
+        } catch (error) {
+            console.error('❌ Error loading samples:', error);
+            const container = document.getElementById('training-samples-list');
+            if (container) {
+                container.innerHTML = `
+                    <div class="alert alert-danger m-3">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Erro ao carregar samples: ${error.message}
+                    </div>
+                `;
+            }
         }
     },
 
@@ -2794,7 +2892,7 @@ const app = {
         const vadThreshold = document.getElementById('vad-threshold').value;
 
         try {
-            const response = await this.api('/training/dataset/segment', {
+            const response = await this.fetchJson('/training/dataset/segment', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -2821,7 +2919,7 @@ const app = {
         const folder = document.getElementById('dataset-folder').value;
 
         try {
-            const response = await this.api('/training/dataset/transcribe', {
+            const response = await this.fetchJson('/training/dataset/transcribe', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({folder})
@@ -2840,7 +2938,7 @@ const app = {
      */
     async stopTraining() {
         try {
-            await this.api('/training/stop', {method: 'POST'});
+            await this.fetchJson('/training/stop', {method: 'POST'});
             this.showToast('Treinamento interrompido', 'warning');
             document.getElementById('btn-start-training').style.display = 'block';
             document.getElementById('btn-stop-training').style.display = 'none';
@@ -2889,7 +2987,7 @@ const app = {
         }
 
         try {
-            const response = await this.api('/training/inference/ab-test', {
+            const response = await this.fetchJson('/training/inference/ab-test', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({checkpoint, text})
@@ -2933,7 +3031,7 @@ const app = {
             const progressDiv = document.getElementById('download-progress');
             progressDiv.style.display = 'block';
 
-            const response = await this.api('/training/dataset/download', {
+            const response = await this.fetchJson('/training/dataset/download', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({urls, folder})
@@ -2966,7 +3064,7 @@ const app = {
         const useDeepspeed = document.getElementById('training-use-deepspeed').checked;
 
         try {
-            const response = await this.api('/training/start', {
+            const response = await this.fetchJson('/training/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -2999,8 +3097,7 @@ const app = {
     async pollTrainingStatus() {
         const interval = setInterval(async () => {
             try {
-                const response = await this.api('/training/status');
-                const status = await response.json();
+                const status = await this.fetchJson('/training/status');
 
                 if (status.state === 'completed' || status.state === 'failed') {
                     clearInterval(interval);
@@ -3049,7 +3146,7 @@ const app = {
         }
 
         try {
-            const response = await this.api('/training/inference/synthesize', {
+            const result = await this.fetchJson('/training/inference/synthesize', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -3059,17 +3156,16 @@ const app = {
                     speed: parseFloat(speed)
                 })
             });
-
-            const result = await response.json();
             
             const resultDiv = document.getElementById('inference-result');
             resultDiv.style.display = 'block';
             document.getElementById('inference-audio').src = result.audio_url;
 
-            this.showToast('Síntese concluída', 'success');
+            this.showToast('✅ Síntese concluída!', 'success');
         } catch (error) {
             console.error('❌ Error running inference:', error);
-            this.showToast('Erro ao sintetizar', 'danger');
+            const errorMsg = error.message || 'Erro desconhecido ao sintetizar';
+            this.showToast(`❌ Erro: ${errorMsg}`, 'danger');
         }
     },
 };
@@ -3114,6 +3210,15 @@ document.addEventListener('DOMContentLoaded', () => {
     tooltipTriggerList.map(function (tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
+    
+    // Sprint 0 Fix: Add event listener for training tab
+    const trainingTab = document.getElementById('training-config-tab');
+    if (trainingTab) {
+        trainingTab.addEventListener('shown.bs.tab', function (event) {
+            console.log('🎓 Training tab shown - loading data...');
+            app.loadTrainingSection();
+        });
+    }
 });
 
 /**

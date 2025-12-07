@@ -552,7 +552,6 @@ body {
 
 /* Dashboard stat items (cards inside cards) */
 #dashboard-stats .border.rounded,
-#dashboard-rvc-stats .border.rounded,
 #dashboard-api-status .border.rounded {
     background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
     border: 2px solid rgba(0, 0, 0, 0.1) !important;
@@ -562,7 +561,6 @@ body {
 }
 
 #dashboard-stats .border.rounded:hover,
-#dashboard-rvc-stats .border.rounded:hover,
 #dashboard-api-status .border.rounded:hover {
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
     border-color: rgba(0, 0, 0, 0.15) !important;
@@ -572,23 +570,19 @@ body {
 
 /* Make icons more prominent */
 #dashboard-stats .border.rounded i,
-#dashboard-rvc-stats .border.rounded i,
 #dashboard-api-status .border.rounded i {
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
 /* Enhance numbers */
 #dashboard-stats .border.rounded h4,
-#dashboard-stats .border.rounded h5,
-#dashboard-rvc-stats .border.rounded h4,
-#dashboard-rvc-stats .border.rounded h5 {
+#dashboard-stats .border.rounded h5 {
     color: #212529;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 /* Improve small text readability */
-#dashboard-stats .border.rounded small,
-#dashboard-rvc-stats .border.rounded small {
+#dashboard-stats .border.rounded small {
     color: #6c757d !important;
     font-weight: 500;
 }
@@ -626,3 +620,108 @@ body {
     display: block;
     margin-top: 0.25rem;
 }
+
+/* ==================== TRAINING TAB IMPROVEMENTS ==================== */
+
+/* Enhanced contrast for training section cards */
+#training-panel .card {
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+#training-panel .card-header {
+    font-weight: 600;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Dataset stats - better visibility */
+#dataset-stats h3 {
+    color: #0d6efd;
+    font-weight: 700;
+}
+
+#dataset-stats .text-muted {
+    color: #495057 !important;
+    font-weight: 500;
+}
+
+/* Checkpoint list items */
+#checkpoint-list .list-group-item {
+    border-left: 3px solid #0d6efd;
+    margin-bottom: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+#checkpoint-list .list-group-item:hover {
+    background-color: #f8f9fa;
+    border-left-color: #0a58ca;
+    transform: translateX(5px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+#checkpoint-list strong {
+    color: #212529;
+    font-size: 1.05rem;
+}
+
+/* Training samples */
+#training-samples-list .list-group-item {
+    border-left: 3px solid #198754;
+    padding: 1rem;
+}
+
+#training-samples-list .list-group-item:hover {
+    background-color: #f8f9fa;
+}
+
+#training-samples-list audio {
+    margin-top: 0.5rem;
+    height: 35px;
+}
+
+/* Progress bars - better contrast */
+#training-panel .progress {
+    background-color: #e9ecef;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+#training-panel .progress-bar {
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Alert boxes in datasets */
+#dataset-stats .alert-secondary {
+    background-color: #f8f9fa;
+    border-left: 3px solid #6c757d;
+    color: #212529;
+}
+
+#dataset-stats .alert-secondary strong {
+    color: #0d6efd;
+}
+
+/* Form controls in training section */
+#training-panel .form-control,
+#training-panel .form-select {
+    border: 2px solid #dee2e6;
+    font-weight: 500;
+}
+
+#training-panel .form-control:focus,
+#training-panel .form-select:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
+/* Buttons in training section */
+#training-panel .btn {
+    font-weight: 600;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#training-panel .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+

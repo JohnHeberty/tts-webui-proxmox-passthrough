@@ -1,6 +1,6 @@
 """
-Quality Profiles System - Engine-Specific Audio Quality Presets
-Perfis de qualidade separados por engine (XTTS e F5-TTS) com armazenamento Redis
+Quality Profiles System - Audio Quality Presets for XTTS-v2
+Perfis de qualidade para XTTS-v2 com armazenamento Redis (v2.0: F5-TTS removed)
 """
 from enum import Enum
 from typing import Optional, Dict, List, Any, Union, Literal
@@ -124,9 +124,9 @@ class QualityProfileUpdate(BaseModel):
 
 
 class QualityProfileList(BaseModel):
-    """Response com lista de perfis XTTS e F5-TTS (vazio)"""
+    """Response com lista de perfis XTTS (v2.0: XTTS-only)"""
     xtts_profiles: List[XTTSQualityProfile] = Field(default_factory=list)
-    f5tts_profiles: List[Any] = Field(default_factory=list)  # Empty for compatibility
+    f5tts_profiles: List[Any] = Field(default_factory=list)  # Empty (kept for API compatibility)
     total_count: int = 0
 
 

@@ -1,0 +1,72 @@
+Sprint 0: Fix critical WebUI blockers - checkpoints + training samples
+
+## Changes
+
+### 1. Fixed checkpoint extension bug (BLOCKER #1)
+- Changed glob pattern from `*.pth` to `*.pt` in training_api.py
+- Training generates .pt files, but WebUI was searching for .pth
+- Added direct scan of train/output/checkpoints/ folder
+- Result: 3 checkpoints now visible (epoch_1, epoch_2, best_model)
+
+### 2. Added training samples endpoint (BLOCKER #2)
+- Created GET /training/samples endpoint in training_api.py
+- Returns list of epoch_*_output.wav files from train/output/samples/
+- Includes metadata: epoch number, filename, size, timestamp
+- Result: 2 audio samples now accessible via API
+
+### 3. Mounted static samples directory
+- Added /static/samples mount in main.py
+- Points to train/output/samples/ for audio playback
+- Enables browser to stream audio files directly
+- Result: Audio files accessible at /static/samples/epoch_N_output.wav
+
+### 4. Added WebUI training samples section
+- Created Training Samples card in index.html
+- Implemented loadTrainingSamples() function in app.js
+- Added HTML5 audio players for each sample
+- Result: Users can listen to training progress in browser
+
+### 5. Fixed Docker volume mounts
+- Added ./train:/app/train mount to docker-compose.yml
+- Both audio-voice-service and celery-worker now have access
+- Result: Training files accessible inside containers
+
+## Testing
+
+✅ API endpoints validated:
+- GET /training/checkpoints → 3 items
+- GET /training/samples → 2 items
+- GET /static/samples/epoch_2_output.wav → HTTP 200
+
+✅ Frontend components verified:
+- HTML: training-samples-list container exists
+- JS: loadTrainingSamples() function integrated
+- Docker: train/ folder mounted and accessible
+
+## Impact
+
+### Users
+- Can now see training checkpoints in WebUI
+- Can listen to audio samples generated during training
+- Can evaluate voice quality without SSH/terminal access
+
+### Developers
+- Established pattern for training monitoring features
+- Fixed infrastructure gaps (Docker mounts, static files)
+- Resolved file extension inconsistency
+
+## Files Modified
+- app/training_api.py (+50 lines)
+- app/main.py (+4 lines)
+- app/webui/assets/js/app.js (+25 lines)
+- app/webui/index.html (+15 lines)
+- docker-compose.yml (+2 lines)
+
+## References
+- Fixes: ARCH-02, UI-02 (see MORE.md)
+- Sprint: Sprint 0 (see SPRINTS.md, CHECKLIST_SPRINT0.md)
+- Implementation: IMPLEMENTATION_GUIDE.md → Critical Blockers
+
+## Next Steps
+- Sprint 1: Remove F5-TTS/RVC legacy code
+- See SPRINTS.md for complete roadmap (7 sprints, ~24 hours)

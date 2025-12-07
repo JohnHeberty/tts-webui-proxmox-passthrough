@@ -360,36 +360,33 @@ def get_inference_engine(
 
 
 if __name__ == "__main__":
-    # Exemplo de uso
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="XTTS Inference CLI")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Path to fine-tuned checkpoint")
+    parser.add_argument("--text", type=str, required=True, help="Text to synthesize")
+    parser.add_argument("--speaker", type=str, default=None, help="Reference speaker WAV file")
+    parser.add_argument("--output", type=str, required=True, help="Output WAV file path")
+    parser.add_argument("--language", type=str, default="pt", help="Language code (default: pt)")
+    parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature")
+    parser.add_argument("--speed", type=float, default=1.0, help="Speech speed")
+    
+    args = parser.parse_args()
+    
+    # Setup logging
     logging.basicConfig(level=logging.INFO)
     
-    print("🎤 XTTS Inference - Smoke Test\n")
+    # Initialize inference engine
+    inference = XTTSInference(checkpoint_path=args.checkpoint)
     
-    # Teste com modelo base
-    print("1. Testando modelo base...")
-    inference = XTTSInference()
-    
-    # Info do modelo
-    info = inference.get_model_info()
-    print(f"\n📊 Model Info:")
-    for k, v in info.items():
-        print(f"   {k}: {v}")
-    
-    # Sintetizar texto
-    print("\n2. Sintetizando texto...")
-    audio = inference.synthesize(
-        "Este é um teste do sistema de síntese de voz.",
-        language="pt"
+    # Synthesize
+    inference.synthesize_to_file(
+        text=args.text,
+        output_path=args.output,
+        speaker_wav=args.speaker,
+        language=args.language,
+        temperature=args.temperature,
+        speed=args.speed
     )
-    print(f"   ✅ Áudio gerado: {len(audio)} samples")
     
-    # Salvar em arquivo
-    print("\n3. Salvando arquivo...")
-    output_path = inference.synthesize_to_file(
-        "Teste de salvamento em arquivo.",
-        "test_output.wav",
-        language="pt"
-    )
-    print(f"   ✅ Salvo em: {output_path}")
-    
-    print("\n✅ Smoke test completo!")
+    print(f"✅ Audio saved to: {args.output}")

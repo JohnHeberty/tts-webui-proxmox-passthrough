@@ -40,9 +40,8 @@ class TTSJobMode(str, Enum):
 
 
 class TTSEngine(str, Enum):
-    """TTS Engines disponíveis"""
+    """TTS Engine disponível (XTTS-v2 only)"""
     XTTS = "xtts"
-    F5TTS = "f5tts"
 
 
 class JobDownloadRequest(BaseModel):
@@ -129,9 +128,9 @@ class VoiceProfile(BaseModel):
     source_audio_path: str  # Caminho da amostra original de áudio (.wav)
     profile_path: str       # Caminho do perfil serializado (.wav para XTTS)
     
-    # F5-TTS/E2-TTS specific fields (Sprint 8)
-    ref_text: Optional[str] = None  # Reference transcription for F5-TTS voice cloning
-    engine: Optional[str] = None    # TTS engine used: 'xtts' or 'f5tts'
+    # TTS metadata
+    ref_text: Optional[str] = None  # Reference transcription (legacy field, kept for compatibility)
+    engine: Optional[str] = None    # TTS engine used: 'xtts' (only option in v2.0)
     
     # Metadata
     duration: Optional[float] = None  # Duração da amostra em segundos
@@ -209,10 +208,10 @@ class Job(BaseModel):
     voice_preset: Optional[str] = None     # Voz genérica (string do enum)
     voice_id: Optional[str] = None         # ID de voz clonada (se mode=dubbing_with_clone)
     
-    # === SPRINT 4: Multi-Engine Support ===
+    # === Engine Selection (v2.0: XTTS-only) ===
     tts_engine: Optional[str] = Field(
         default='xtts',
-        description="TTS engine to use: 'xtts' (default/stable) or 'f5tts' (experimental/high-quality)"
+        description="TTS engine to use: 'xtts' (only option in v2.0)"
     )
     tts_engine_used: Optional[str] = Field(
         default=None,
@@ -239,13 +238,13 @@ class Job(BaseModel):
     
     ref_text: Optional[str] = Field(
         default=None,
-        description="Reference audio transcription (REQUIRED for F5-TTS voice cloning, auto-transcribed if None)"
+        description="Reference audio transcription (legacy field, kept for API compatibility)"
     )
     
     # Qualidade
     quality_profile: Optional[str] = Field(
         default=None,
-        description="Quality profile ID (ex: 'xtts_balanced', 'f5tts_ultra_quality')"
+        description="Quality profile ID (ex: 'xtts_balanced', 'xtts_high_quality')"
     )
     
     # Clonagem de voz

@@ -74,7 +74,7 @@ def check_cuda() -> bool:
         if vram_total_gb < 4.0:
             logger.warning("⚠️  GPU MUITO PEQUENA (< 4GB)!")
             logger.warning("    Recomendação: Use CPU para TTS")
-            logger.warning("    Configure: XTTS_DEVICE=cpu F5TTS_DEVICE=cpu")
+            logger.warning("    Configure: XTTS_DEVICE=cpu no .env")
         
         elif vram_total_gb < 6.0:
             logger.warning("⚠️  GPU PEQUENA (< 6GB) DETECTADA!")
@@ -97,7 +97,7 @@ def check_cuda() -> bool:
         
         else:
             logger.info("✅ GPU grande detectada (>= 8GB)")
-            logger.info("   Pode rodar XTTS + F5-TTS simultaneamente")
+            logger.info("   XTTS rodará com desempenho máximo")
             logger.info("   LOW_VRAM=false é seguro")
         
         return True

@@ -7,6 +7,7 @@ services:
       - "${PORT:-8005}:8005"
     volumes:
       - ./app:/app/app
+      - ./train:/app/train
       - ./uploads:/app/uploads
       - ./processed:/app/processed
       - ./temp:/app/temp
@@ -50,6 +51,7 @@ services:
     command: python -m celery -A app.celery_config worker --loglevel=info --concurrency=1 --pool=solo --queues=audio_voice_queue
     volumes:
       - ./app:/app/app
+      - ./train:/app/train
       - ./uploads:/app/uploads
       - ./processed:/app/processed
       - ./temp:/app/temp
