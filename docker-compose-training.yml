@@ -1,0 +1,49 @@
+version: '3.8'
+
+# Docker Compose para TREINAMENTO XTTS
+# Usa mesmo ambiente do app (PyTorch 2.4.0+cu118)
+
+services:
+  xtts-training:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xtts-training
+    volumes:
+      - ./app:/app/app
+      - ./train:/app/train
+      - ./runs:/app/runs
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./train/logs:/app/train/logs
+      - ./scripts:/app/scripts
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.1:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - FORCE_CUDA=1
+      - MAX_TRAIN_SAMPLES=50
+      - NUM_EPOCHS=2
+    deploy:
+      resources:
+        limits:
+          memory: 20G
+        reservations:
+          memory: 16G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    working_dir: /app
+    user: root
+    command: python3 -m train.scripts.train_xtts
+    stdin_open: true
+    tty: true
+    labels:
+      - "com.example.service=xtts-training"
+      - "com.example.version=1.0.0"

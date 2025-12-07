@@ -41,12 +41,11 @@ sys.path.insert(0, str(project_root))
 # Import Pydantic Settings
 from train.train_settings import get_train_settings, TrainingSettings
 
-# Setup logging
+# Setup logging (apenas StreamHandler para Docker)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(project_root / "train" / "logs" / "train_xtts.log"),
         logging.StreamHandler(),
     ],
 )
@@ -431,23 +430,23 @@ def generate_sample_audio(
     device: torch.device
 ):
     """
-    Gera sample de áudio usando SUBPROCESSO isolado em CPU.
+    Gera sample de áudio com GPU (se disponível) ou CPU.
     
-    MOTIVO CPU: Bug cuFFT persistente no ambiente CUDA deste sistema.
-    Mesmo em subprocesso limpo, torch.stft falha com CUFFT_INVALID_SIZE.
+    ESTRATÉGIA DOCKER-AWARE:
+    - PyTorch 2.4.0+cu118 (Docker): GPU funciona ✅
+    - PyTorch 2.6+cu124 (Host): Bug cuFFT, usa CPU ❌
     
-    VANTAGEM SUBPROCESSO: Não afeta treinamento, memória limpa após geração.
-    CPU é mais lento (~12s vs ~1s) mas é a única opção que funciona.
-    
-    FLUXO:
-    1. Busca texto transcrito do metadata.csv
-    2. Chama script auxiliar em subprocesso (CPU)
-    3. Subprocesso carrega XTTS, gera, salva e termina
-    4. Processo principal continua treinamento na GPU
+    Tenta GPU primeiro. Se falhar com cuFFT, fallback para CPU subprocess.
     """
     import csv
     import subprocess
     import shutil
+    import os
+    
+    # Detectar se está no Docker (PyTorch 2.4.0)
+    import torch as torch_check
+    pytorch_version = torch_check.__version__
+    is_docker = "2.4.0" in pytorch_version and "cu118" in pytorch_version
     
     try:
         # Criar diretório
@@ -485,13 +484,65 @@ def generate_sample_audio(
                 logger.warning(f"   ⚠️  Não conseguiu ler metadata.csv: {e}")
                 logger.warning(f"   Usando texto padrão")
         
-        logger.info(f"🎤 Gerando sample de áudio (subprocesso CPU)...")
-        logger.info(f"   Época: {epoch}")
-        logger.info(f"   Referência: {reference_filename}")
-        logger.info(f"   ⚠️  Usando CPU - bug cuFFT impede uso da GPU")
-        
-        # Paths para subprocesso
         output_wav_path = output_dir / f"epoch_{epoch}_output.wav"
+        
+        # ESTRATÉGIA 1: Tentar GPU se está no Docker (PyTorch 2.4.0+cu118)
+        if is_docker and device.type == 'cuda':
+            logger.info(f"🎤 Gerando sample de áudio na GPU (Docker PyTorch 2.4.0)...")
+            logger.info(f"   Época: {epoch}")
+            logger.info(f"   Referência: {reference_filename}")
+            logger.info(f"   🐳 Ambiente Docker - GPU deve funcionar!")
+            
+            try:
+                # Tentar geração direta na GPU
+                from TTS.api import TTS
+                
+                logger.info(f"   📦 Carregando TTS na GPU...")
+                tts_synth = TTS(
+                    model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+                    gpu=True,
+                    progress_bar=False
+                )
+                
+                logger.info(f"   ⚡ Sintetizando na GPU...")
+                wav = tts_synth.tts(
+                    text=test_text,
+                    speaker_wav=str(reference_wav_path),
+                    language="pt"
+                )
+                
+                # Salvar
+                import soundfile as sf
+                sf.write(str(output_wav_path), wav, 22050)
+                
+                logger.info(f"   ✅ Sample gerado NA GPU: {output_wav_path.name}")
+                
+                # Copiar referência
+                reference_output = output_dir / f"epoch_{epoch}_reference.wav"
+                shutil.copy2(reference_wav_path, reference_output)
+                logger.info(f"   ✅ Referência copiada: {reference_output.name}")
+                
+                # Limpar memória
+                del tts_synth
+                torch.cuda.empty_cache()
+                
+                return output_wav_path
+                
+            except RuntimeError as e:
+                if "cuFFT" in str(e):
+                    logger.warning(f"   ⚠️  GPU falhou com cuFFT bug, usando CPU...")
+                else:
+                    raise
+        
+        # ESTRATÉGIA 2: CPU subprocess (fallback ou ambiente host)
+        if not is_docker:
+            logger.info(f"🎤 Gerando sample de áudio (subprocesso CPU)...")
+            logger.info(f"   Época: {epoch}")
+            logger.info(f"   Referência: {reference_filename}")
+            logger.info(f"   ⚠️  Host PyTorch 2.6 - usando CPU por causa do bug cuFFT")
+        else:
+            logger.info(f"   ⚠️  Fallback para CPU...")
+        
         subprocess_script = Path(__file__).parent / "generate_sample_subprocess.py"
         
         # Executar em subprocesso isolado (CPU)
@@ -503,9 +554,7 @@ def generate_sample_audio(
             "--output", str(output_wav_path),
         ]
         
-        # Não adicionar --gpu (CPU sempre, por causa do bug)
-        
-        logger.info(f"   🚀 Iniciando subprocesso...")
+        logger.info(f"   🚀 Iniciando subprocesso CPU...")
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -514,7 +563,7 @@ def generate_sample_audio(
         )
         
         if result.returncode == 0 and "SUCCESS" in result.stdout:
-            logger.info(f"   ✅ Sample gerado: {output_wav_path.name}")
+            logger.info(f"   ✅ Sample gerado em CPU: {output_wav_path.name}")
             
             # Copiar referência também
             reference_output = output_dir / f"epoch_{epoch}_reference.wav"
