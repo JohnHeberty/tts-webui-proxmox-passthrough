@@ -2587,6 +2587,9 @@ const app = {
                 }).join('');
             
             console.log(`✅ Loaded ${data.datasets.length} datasets`);
+            
+            // Sprint 4 Task 4.4: Informative toast
+            this.showToast(`ℹ️ ${data.datasets.length} dataset(s) disponível(is)`, 'info');
         } catch (error) {
             console.error('❌ Error loading datasets:', error);
             const select = document.getElementById('training-dataset');
@@ -2644,6 +2647,12 @@ const app = {
                 checkpoints.map(cp => `<option value="${cp.path}">${cp.name} (Epoch ${cp.epoch})</option>`).join('');
             
             console.log('✅ Checkpoints loaded successfully');
+            
+            // Sprint 4 Task 4.4: Informative toast
+            this.showToast(`✅ ${checkpoints.length} checkpoint(s) carregado(s)`, 'success');
+            
+            // Sprint 4 Task 4.4: Informative toast
+            this.showToast(`✅ ${checkpoints.length} checkpoint(s) carregado(s)`, 'success');
 
         } catch (error) {
             console.error('❌ Error loading checkpoints:', error);
