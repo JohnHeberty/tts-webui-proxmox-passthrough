@@ -253,6 +253,15 @@ const app = {
         // Form: Create Job
         document.getElementById('form-create-job')?.addEventListener('submit', (e) => {
             e.preventDefault();
+            
+            // Sprint 4 Task 4.5: Form validation
+            const form = e.target;
+            if (!form.checkValidity()) {
+                e.stopPropagation();
+                form.classList.add('was-validated');
+                return;
+            }
+            
             this.createJob();
         });
 
@@ -334,6 +343,15 @@ const app = {
 
         document.getElementById('form-training-config')?.addEventListener('submit', (e) => {
             e.preventDefault();
+            
+            // Sprint 4 Task 4.5: Form validation with inline feedback
+            const form = e.target;
+            if (!form.checkValidity()) {
+                e.stopPropagation();
+                form.classList.add('was-validated');
+                return;
+            }
+            
             this.startTraining();
         });
 
