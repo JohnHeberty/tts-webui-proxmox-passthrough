@@ -11,4 +11,4 @@ chmod 777 /app/temp /app/uploads /app/processed /app/logs 2>/dev/null || true
 chown -R appuser:appuser /app/voice_profiles /app/models 2>/dev/null || true
 
 # Switch to appuser and execute command
-exec su-exec appuser "$@"
+exec gosu appuser "$@"

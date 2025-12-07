@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg libsndfile1 build-essential pkg-config \
     libavformat-dev libavcodec-dev libavdevice-dev \
     libavutil-dev libavfilter-dev libswscale-dev libswresample-dev \
-    git curl su-exec \
+    git curl gosu \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
