@@ -93,7 +93,6 @@ const app = {
         languages: [],
         presets: [],
         voices: [],
-        rvcModels: [],
         qualityProfiles: { xtts_profiles: [] },
         cloningJobs: {}, // Job IDs de clonagens em andamento
         jobsAutoRefreshInterval: null,
@@ -263,12 +262,6 @@ const app = {
             this.cloneVoice();
         });
 
-        // Form: Upload RVC Model
-        document.getElementById('form-upload-rvc')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.uploadRvcModel();
-        });
-
         // Form: Create Quality Profile
         document.getElementById('form-create-quality-profile')?.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -306,19 +299,10 @@ const app = {
             this.updateRefTextVisibility(); // BUG-02 fix
         });
 
-        // Enable RVC toggle
-        document.getElementById('job-enable-rvc')?.addEventListener('change', (e) => {
-            document.getElementById('rvc-params').style.display = e.target.checked ? 'block' : 'none';
-            this.autoSaveCreateJobForm(); // Auto-save
-        });
-
         // Auto-save em outros campos do formulário
         const autoSaveFields = [
             'job-source-language', 'job-target-language', 'job-voice-preset',
-            'job-voice-id', 'job-quality-profile', 'job-ref-text',
-            'job-rvc-model-id', 'job-rvc-pitch', 'job-rvc-index-rate',
-            'job-rvc-filter-radius', 'job-rvc-rms-mix-rate', 'job-rvc-protect',
-            'job-rvc-f0-method'
+            'job-voice-id', 'job-quality-profile', 'job-ref-text'
         ];
         
         autoSaveFields.forEach(fieldId => {
@@ -342,11 +326,6 @@ const app = {
             }
         });
 
-        // RVC sort change
-        document.getElementById('rvc-sort-by')?.addEventListener('change', () => {
-            this.loadRvcModels();
-        });
-
         // Training forms
         document.getElementById('form-download-videos')?.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -365,23 +344,7 @@ const app = {
     },
 
     setupRangeSliders() {
-        const sliders = [
-            { id: 'job-rvc-pitch', display: 'rvc-pitch-val' },
-            { id: 'job-rvc-index-rate', display: 'rvc-index-rate-val' },
-            { id: 'job-rvc-filter-radius', display: 'rvc-filter-radius-val' },
-            { id: 'job-rvc-rms-mix-rate', display: 'rvc-rms-mix-rate-val' },
-            { id: 'job-rvc-protect', display: 'rvc-protect-val' },
-        ];
-
-        sliders.forEach(({ id, display }) => {
-            const slider = document.getElementById(id);
-            const displayEl = document.getElementById(display);
-            if (slider && displayEl) {
-                slider.addEventListener('input', (e) => {
-                    displayEl.textContent = e.target.value;
-                });
-            }
-        });
+        // Reserved for future slider functionality
     },
 
     async loadInitialData() {
@@ -437,7 +400,6 @@ const app = {
             'create-job': 'create-job',
             'jobs': 'jobs',
             'voices': 'voices',
-            'rvc-models': 'rvc-models',
             'quality-profiles': 'quality-profiles',
             'training': 'training',
             'admin': 'admin',
@@ -463,7 +425,6 @@ const app = {
                 break;
             case 'create-job':
                 this.loadVoices();
-                this.loadRvcModels();
                 this.loadQualityProfiles();
                 // QA FIX: Inicializar visibilidade do campo ref_text
                 setTimeout(() => {
@@ -487,10 +448,6 @@ const app = {
                 break;
             case 'voices':
                 this.loadVoices();
-                break;
-            case 'rvc-models':
-                this.loadRvcModels();
-                this.loadRvcStats();
                 break;
             case 'quality-profiles':
                 this.loadQualityProfiles();
@@ -599,7 +556,6 @@ const app = {
         await Promise.allSettled([
             this.loadApiStatus(),
             this.loadAdminStats(),
-            this.loadRvcStats(),
             this.loadRecentJobs(),
             this.loadRecentVoices(),
         ]);
@@ -656,40 +612,6 @@ const app = {
                 <div class="text-center text-danger">
                     <i class="bi bi-exclamation-triangle fs-1"></i>
                     <p class="mt-2">Erro ao carregar</p>
-                </div>
-            `;
-        }
-    },
-
-    async loadRvcStats() {
-        const container = document.getElementById('dashboard-rvc-stats');
-        try {
-            const data = await this.fetchJson(`${API_BASE}/rvc-models/stats`);
-            const stats = [
-                { icon: 'files', label: 'Total', value: data.total_models || 0, color: 'primary' },
-                { icon: 'file-check', label: 'Com Index', value: data.models_with_index || 0, color: 'success' },
-                { icon: 'hdd', label: 'Tamanho', value: `${data.total_size_mb || 0} MB`, color: 'info' }
-            ];
-            
-            container.innerHTML = `
-                <div class="row g-2">
-                    ${stats.map(stat => `
-                        <div class="col-4">
-                            <div class="text-center p-2 border rounded">
-                                <i class="bi bi-${stat.icon} text-${stat.color} fs-4"></i>
-                                <h5 class="mb-0 mt-2 fw-bold">${stat.value}</h5>
-                                <small class="text-muted">${stat.label}</small>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        } catch (error) {
-            console.warn('⚠️ RVC Stats não disponível:', error.message);
-            container.innerHTML = `
-                <div class="text-center text-warning">
-                    <i class="bi bi-info-circle fs-1"></i>
-                    <p class="mt-2">RVC indisponível</p>
                 </div>
             `;
         }
@@ -1385,37 +1307,6 @@ const app = {
             const refText = document.getElementById('job-ref-text').value;
             if (refText) formData.append('ref_text', refText);
             
-            // RVC params
-            const enableRvc = document.getElementById('job-enable-rvc').checked;
-            formData.append('enable_rvc', enableRvc);
-            
-            if (enableRvc) {
-                const rvcModelId = document.getElementById('job-rvc-model-id').value;
-                const rvcModelSelect = document.getElementById('job-rvc-model-id');
-                
-                /**
-                 * INT-03 FIX: Enhanced RVC validation with visual feedback
-                 */
-                if (!rvcModelId) {
-                    // Add visual feedback (red border)
-                    rvcModelSelect.classList.add('is-invalid');
-                    
-                    // Show error message
-                    throw new Error('Selecione um modelo RVC quando RVC estiver ativado');
-                }
-                
-                // Remove invalid state if exists (user fixed it)
-                rvcModelSelect.classList.remove('is-invalid');
-                
-                formData.append('rvc_model_id', rvcModelId);
-                formData.append('rvc_pitch', document.getElementById('job-rvc-pitch').value);
-                formData.append('rvc_index_rate', document.getElementById('job-rvc-index-rate').value);
-                formData.append('rvc_filter_radius', document.getElementById('job-rvc-filter-radius').value);
-                formData.append('rvc_rms_mix_rate', document.getElementById('job-rvc-rms-mix-rate').value);
-                formData.append('rvc_protect', document.getElementById('job-rvc-protect').value);
-                formData.append('rvc_f0_method', document.getElementById('job-rvc-f0-method').value);
-            }
-            
             const job = await this.fetchJson(`${API_BASE}/jobs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1929,167 +1820,6 @@ const app = {
                 console.error('Erro no polling:', error);
             }
         }, 5000);
-    },
-
-    // ==================== RVC MODELS ====================
-    async loadRvcModels() {
-        const container = document.getElementById('rvc-models-list-container');
-        const selectJob = document.getElementById('job-rvc-model-id');
-        const sortBy = document.getElementById('rvc-sort-by')?.value || 'created_at';
-        
-        try {
-            if (container) {
-                container.innerHTML = '<div class="text-center"><div class="spinner-border text-primary"></div><p class="mt-2">Carregando...</p></div>';
-            }
-            
-            const data = await this.fetchJson(`${API_BASE}/rvc-models?sort_by=${sortBy}`);
-            this.state.rvcModels = data.models || [];
-            
-            // Populate select (job form)
-            if (selectJob) {
-                selectJob.innerHTML = '<option value="">Selecione um modelo</option>' +
-                    this.state.rvcModels.map(m => `<option value="${m.id}">${m.name} (${m.file_size_mb.toFixed(1)} MB)</option>`).join('');
-            }
-            
-            // Render list
-            if (container) {
-                if (this.state.rvcModels.length > 0) {
-                    container.innerHTML = `
-                        <p class="text-muted">Total: ${data.total} modelos</p>
-                        <div class="row">
-                            ${this.state.rvcModels.map(model => this.renderRvcModelCard(model)).join('')}
-                        </div>
-                    `;
-                } else {
-                    container.innerHTML = this.renderEmptyState('Nenhum modelo RVC', 'Faça upload de um novo modelo usando o formulário acima');
-                }
-            }
-        } catch (error) {
-            if (container) {
-                container.innerHTML = `<div class="alert alert-danger">Erro: ${error.message}</div>`;
-            }
-        }
-    },
-
-    renderRvcModelCard(model) {
-        return `
-            <div class="col-md-6 col-lg-4 mb-3">
-                <div class="model-card">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <h5>${model.name}</h5>
-                            <p class="text-muted mb-1">${model.description || 'Sem descrição'}</p>
-                        </div>
-                    </div>
-                    <div class="mt-2">
-                        <small class="d-block"><i class="bi bi-hdd"></i> ${model.file_size_mb.toFixed(2)} MB</small>
-                        <small class="d-block"><i class="bi bi-calendar"></i> ${new Date(model.created_at).toLocaleDateString('pt-BR')}</small>
-                        ${model.index_file ? '<small class="d-block"><i class="bi bi-check-circle text-success"></i> Com índice</small>' : ''}
-                    </div>
-                    <div class="mt-3">
-                        <button class="btn btn-sm btn-outline-primary" onclick="app.showRvcModelDetails('${model.id}')">
-                            <i class="bi bi-info-circle"></i> Detalhes
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="app.deleteRvcModel('${model.id}')">
-                            <i class="bi bi-trash"></i> Excluir
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    async showRvcModelDetails(modelId) {
-        const modal = new bootstrap.Modal(document.getElementById('modal-rvc-details'));
-        const body = document.getElementById('modal-rvc-details-body');
-        
-        body.innerHTML = '<div class="text-center"><div class="spinner-border"></div></div>';
-        modal.show();
-        
-        try {
-            const model = await this.fetchJson(`${API_BASE}/rvc-models/${modelId}`);
-            body.innerHTML = `<div class="json-display">${JSON.stringify(model, null, 2)}</div>`;
-        } catch (error) {
-            body.innerHTML = `<div class="alert alert-danger">Erro: ${error.message}</div>`;
-        }
-    },
-
-    async deleteRvcModel(modelId) {
-        if (!confirm('Tem certeza que deseja excluir este modelo?')) return;
-        
-        try {
-            await this.fetchJson(`${API_BASE}/rvc-models/${modelId}`, { method: 'DELETE' });
-            this.showToast('Sucesso', 'Modelo excluído com sucesso', 'success');
-            this.loadRvcModels();
-            this.loadRvcStats();
-        } catch (error) {
-            this.showToast('Erro', `Falha ao excluir modelo: ${error.message}`, 'error');
-        }
-    },
-
-    async uploadRvcModel() {
-        const btn = document.getElementById('btn-upload-rvc');
-        btn.disabled = true;
-        btn.classList.add('btn-loading');
-        
-        try {
-            const formData = new FormData();
-            
-            const name = document.getElementById('rvc-model-name').value;
-            const pthFile = document.getElementById('rvc-pth-file').files[0];
-            
-            if (!name || !pthFile) {
-                throw new Error('Nome e arquivo .pth são obrigatórios');
-            }
-            
-            formData.append('name', name);
-            formData.append('pth_file', pthFile);
-            
-            const description = document.getElementById('rvc-model-description').value;
-            if (description) formData.append('description', description);
-            
-            const indexFile = document.getElementById('rvc-index-file').files[0];
-            if (indexFile) formData.append('index_file', indexFile);
-            
-            const response = await fetch(`${API_BASE}/rvc-models`, {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || `HTTP ${response.status}`);
-            }
-            
-            const model = await response.json();
-            
-            this.showToast('Sucesso', `Modelo "${model.name}" enviado com sucesso!`, 'success');
-            
-            // Reset form
-            document.getElementById('form-upload-rvc').reset();
-            
-            // Reload
-            this.loadRvcModels();
-            this.loadRvcStats();
-            
-        } catch (error) {
-            this.showToast('Erro', `Falha ao enviar modelo: ${error.message}`, 'error');
-        } finally {
-            btn.disabled = false;
-            btn.classList.remove('btn-loading');
-        }
-    },
-
-    async loadRvcStats() {
-        const container = document.getElementById('rvc-stats-container');
-        if (!container) return;
-        
-        try {
-            const stats = await this.fetchJson(`${API_BASE}/rvc-models/stats`);
-            container.innerHTML = this.renderStatsHtml(stats);
-        } catch (error) {
-            container.innerHTML = `<p class="text-danger">Erro: ${error.message}</p>`;
-        }
     },
 
     // ==================== QUALITY PROFILES ====================
