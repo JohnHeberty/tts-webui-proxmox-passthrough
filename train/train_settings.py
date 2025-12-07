@@ -34,6 +34,10 @@ class TrainingSettings(BaseModel):
     sample_rate: int = Field(default=24000, description="Audio sample rate")
     batch_size: int = Field(default=2, description="Training batch size")
     num_workers: int = Field(default=2, description="DataLoader workers")
+    max_train_samples: Optional[int] = Field(
+        default=None, 
+        description="Limit training samples (para teste rápido, use 100)"
+    )
     
     # === Training Hyperparameters ===
     num_epochs: int = Field(default=1000, description="Number of epochs")

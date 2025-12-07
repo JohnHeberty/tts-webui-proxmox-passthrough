@@ -157,7 +157,7 @@ def create_dataset(settings: TrainingSettings):
     import torchaudio
     
     class XTTSDataset(Dataset):
-        def __init__(self, metadata_path, sample_rate=22050):
+        def __init__(self, metadata_path, sample_rate=22050, max_samples=None):
             self.sample_rate = sample_rate
             self.samples = []
             
@@ -175,8 +175,14 @@ def create_dataset(settings: TrainingSettings):
                         
                         if Path(audio_path).exists():
                             self.samples.append({'audio_path': str(audio_path), 'text': text})
+                    
+                    # Limitar amostras se especificado (para teste rápido)
+                    if max_samples and len(self.samples) >= max_samples:
+                        break
             
             logger.info(f"   Loaded {len(self.samples)} samples from {metadata_path}")
+            if max_samples:
+                logger.info(f"   (Limitado a {max_samples} samples para teste rápido)")
         
         def __len__(self):
             return len(self.samples)
@@ -189,10 +195,13 @@ def create_dataset(settings: TrainingSettings):
     dataset_dir = settings.dataset_dir
     train_metadata = dataset_dir / settings.train_metadata
     val_metadata = dataset_dir / settings.val_metadata
+    max_samples = settings.max_train_samples
     
     logger.info(f"   Dataset: {dataset_dir}")
     logger.info(f"   Train: {train_metadata}")
     logger.info(f"   Val: {val_metadata}")
+    if max_samples:
+        logger.info(f"   ⚠️  MODO TESTE: Limitando a {max_samples} amostras por época")
     
     # Verificar se dataset existe
     if not train_metadata.exists() or not val_metadata.exists():
@@ -208,8 +217,16 @@ def create_dataset(settings: TrainingSettings):
         sys.exit(1)
     
     # Dataset real existe
-    train_dataset = XTTSDataset(train_metadata, sample_rate=settings.sample_rate)
-    val_dataset = XTTSDataset(val_metadata, sample_rate=settings.sample_rate)
+    train_dataset = XTTSDataset(
+        train_metadata, 
+        sample_rate=settings.sample_rate,
+        max_samples=max_samples
+    )
+    val_dataset = XTTSDataset(
+        val_metadata, 
+        sample_rate=settings.sample_rate,
+        max_samples=max_samples // 10 if max_samples else None  # 10% para validação
+    )
     
     logger.info(f"✅ Dataset carregado: {len(train_dataset)} train, {len(val_dataset)} val samples")
     
@@ -402,18 +419,29 @@ def validate(model, val_loader, device: torch.device, settings: TrainingSettings
     return avg_loss
 
 
-def generate_sample_audio(model, epoch: int, settings: TrainingSettings, output_dir: Path, device: torch.device):
+def generate_sample_audio(
+    checkpoint_path: Path,
+    epoch: int, 
+    settings: TrainingSettings, 
+    output_dir: Path, 
+    device: torch.device
+):
     """
-    Gera áudio de teste REAL usando o modelo XTTS treinado
+    Gera sample de áudio usando checkpoint salvo.
+    
+    IMPORTANTE: Esta função DESCARREGA o modelo de treinamento da VRAM,
+    carrega checkpoint para inferência, gera áudio, e retorna.
+    O modelo de treinamento deve ser recarregado após esta função.
     
     Args:
-        model: Modelo XTTS treinado
-        epoch: Época atual
-        settings: Configuração de treinamento
+        checkpoint_path: Path do checkpoint para carregar
+        epoch: Número da época atual
+        settings: Training settings
         output_dir: Diretório de saída para samples
         device: Device (cuda/cpu)
     """
     import torchaudio
+    from TTS.api import TTS
     
     try:
         # Criar diretório se não existir
@@ -426,56 +454,63 @@ def generate_sample_audio(model, epoch: int, settings: TrainingSettings, output_
         
         if not reference_wavs:
             logger.warning("⚠️  Nenhum WAV de referência encontrado")
-            return
+            return None
         
-        # Usar arquivo diferente a cada época (cicla quando acaba)
-        wav_index = (epoch - 1) % len(reference_wavs)
-        reference_wav_path = reference_wavs[wav_index]
-        
-        # Carregar áudio de referência
-        reference_wav, sr = torchaudio.load(str(reference_wav_path))
-        if sr != settings.sample_rate:
-            resampler = torchaudio.transforms.Resample(sr, settings.sample_rate)
-            reference_wav = resampler(reference_wav)
-        
-        # FIX: Garantir que áudio tenha tamanho mínimo (>= 1 segundo)
-        # cuFFT precisa de pelo menos 22050 samples para 22050Hz
-        min_samples = settings.sample_rate  # 1 segundo
-        if reference_wav.shape[-1] < min_samples:
-            # Repetir áudio até atingir tamanho mínimo
-            repeats = (min_samples // reference_wav.shape[-1]) + 1
-            reference_wav = reference_wav.repeat(1, repeats)[:, :min_samples]
-        
-        # FIX: Garantir mono (XTTS espera mono)
-        if reference_wav.shape[0] > 1:
-            reference_wav = reference_wav.mean(dim=0, keepdim=True)
-        
-        # Salvar referência
-        reference_output = output_dir / f"epoch_{epoch}_reference.wav"
-        torchaudio.save(reference_output, reference_wav, settings.sample_rate)
-        logger.info(f"📝 Referência salva: {reference_output.name}")
+        # Usar apenas PRIMEIRO arquivo (reduzir tempo)
+        reference_wav_path = reference_wavs[0]
         
         # Texto de teste
         test_text = "Olá, este é um teste de síntese de voz usando XTTS treinado."
         
-        # Modo de avaliação para síntese
-        model.eval()
+        logger.info(f"🎤 Gerando sample de áudio...")
+        logger.info(f"   Checkpoint: {checkpoint_path.name}")
+        logger.info(f"   Referência: {reference_wav_path.name}")
         
+        # PASSO 1: Carregar modelo fresco para inferência (não o de treinamento)
+        # Monkey patch para PyTorch 2.6+
+        original_load = torch.load
+        def patched_load(*args, **kwargs):
+            kwargs['weights_only'] = False
+            return original_load(*args, **kwargs)
+        torch.load = patched_load
+        
+        # Carregar TTS API (cria modelo fresco)
+        tts = TTS(
+            model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+            gpu=(device.type == 'cuda')
+        )
+        inference_model = tts.synthesizer.tts_model
+        
+        # PASSO 2: Carregar pesos do checkpoint
+        logger.info(f"   Carregando pesos do checkpoint...")
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        
+        # Carregar state_dict
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+        else:
+            state_dict = checkpoint
+        
+        # Carregar pesos (pode ter chaves extras do LoRA)
+        inference_model.load_state_dict(state_dict, strict=False)
+        inference_model = inference_model.to(device)
+        inference_model.eval()
+        
+        logger.info(f"   ✅ Modelo de inferência carregado")
+        
+        # PASSO 3: Gerar áudio usando TTS API
         with torch.no_grad():
-            # Síntese REAL usando XTTS
-            # NOTA: API pode variar por versão do TTS
             try:
-                # Preparar conditioning latents do speaker
-                # FIX: Passar tensor em vez de path (evita re-load)
-                gpt_cond_latent, speaker_embedding = model.get_conditioning_latents(
-                    audio=reference_wav.squeeze(0),  # Remove channel dim
-                    sr=settings.sample_rate,
-                    gpt_cond_len=6,  # Fixo: 6 segundos
-                    max_ref_length=10,  # Fixo: 10 segundos max
+                # Usar get_conditioning_latents com audio_path
+                gpt_cond_latent, speaker_embedding = inference_model.get_conditioning_latents(
+                    audio_path=str(reference_wav_path),
+                    max_ref_length=30,
+                    gpt_cond_len=6,
+                    load_sr=settings.sample_rate
                 )
                 
                 # Sintetizar áudio
-                out = model.inference(
+                out = inference_model.inference(
                     text=test_text,
                     language="pt",
                     gpt_cond_latent=gpt_cond_latent,
@@ -493,30 +528,68 @@ def generate_sample_audio(model, epoch: int, settings: TrainingSettings, output_
                     audio_output = out
                 
                 # Garantir formato correto [channels, samples]
-                if audio_output.dim() == 1:
-                    audio_output = audio_output.unsqueeze(0)
+                if isinstance(audio_output, torch.Tensor):
+                    if audio_output.dim() == 1:
+                        audio_output = audio_output.unsqueeze(0)
+                    torchaudio.save(
+                        output_wav_path,
+                        audio_output.cpu(),
+                        settings.sample_rate
+                    )
+                else:
+                    # Se não é tensor, assumir numpy array
+                    import numpy as np
+                    audio_np = np.array(audio_output)
+                    if audio_np.ndim == 1:
+                        audio_np = audio_np[np.newaxis, :]
+                    audio_tensor = torch.from_numpy(audio_np).float()
+                    torchaudio.save(
+                        output_wav_path,
+                        audio_tensor,
+                        settings.sample_rate
+                    )
                 
-                torchaudio.save(
-                    output_wav_path,
-                    audio_output.cpu(),
-                    settings.sample_rate
-                )
+                logger.info(f"   ✅ Sample gerado: {output_wav_path.name}")
                 
-                logger.info(f"✅ Sample gerado: {output_wav_path.name}")
-                logger.info(f"   Referência: {reference_wav_path.name} ({wav_index+1}/{len(reference_wavs)})")
+                # Copiar referência também
+                reference_output = output_dir / f"epoch_{epoch}_reference.wav"
+                import shutil
+                shutil.copy2(reference_wav_path, reference_output)
+                logger.info(f"   ✅ Referência copiada: {reference_output.name}")
                 
             except Exception as e:
-                logger.error(f"❌ Erro na síntese: {e}")
-                logger.error("   Modelo pode não suportar inference() ainda")
+                logger.error(f"   ❌ Erro ao gerar áudio: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 raise
         
-        # Voltar para modo de treinamento
-        model.train()
+        # PASSO 4: Limpar VRAM - descarregar modelo de inferência
+        del inference_model
+        del tts
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+        logger.info(f"   🧹 Modelo de inferência descarregado da VRAM")
+        
+        # Restaurar torch.load
+        torch.load = original_load
+        
+        return output_wav_path
         
     except Exception as e:
         logger.warning(f"⚠️  Erro ao gerar sample: {e}")
         import traceback
         logger.warning(traceback.format_exc())
+        
+        # Limpar VRAM em caso de erro
+        try:
+            del inference_model
+            del tts
+        except:
+            pass
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+        
+        return None
 
 
 def save_checkpoint(model, optimizer, scheduler, step: int, settings: TrainingSettings, best: bool = False):
@@ -754,8 +827,25 @@ def main(resume):
             }, checkpoint_path)
             logger.info(f"💾 Checkpoint salvo: {checkpoint_path}")
             
-            # Gerar sample de áudio
-            generate_sample_audio(model, epoch, settings, samples_dir, device)
+            # IMPORTANTE: Gerar sample DEPOIS de salvar checkpoint
+            # Isso descarrega o modelo de treinamento e carrega para inferência
+            logger.info(f"🔄 Preparando geração de sample (modelo será temporariamente descarregado)...")
+            
+            # Descarregar modelo de treinamento da VRAM
+            model = model.cpu()
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
+            
+            # Gerar sample usando checkpoint (carrega modelo fresco para inferência)
+            generate_sample_audio(checkpoint_path, epoch, settings, samples_dir, device)
+            
+            # RECARREGAR modelo de treinamento do checkpoint
+            logger.info(f"🔄 Recarregando modelo de treinamento...")
+            checkpoint_data = torch.load(checkpoint_path, map_location=device, weights_only=False)
+            model.load_state_dict(checkpoint_data['model_state_dict'])
+            model = model.to(device)
+            model.train()  # Voltar para modo treinamento
+            logger.info(f"✅ Modelo de treinamento recarregado na VRAM")
             
             # Best model
             if val_loss < best_val_loss:
@@ -769,9 +859,20 @@ def main(resume):
                 }, best_model_path)
                 logger.info(f"🏆 Novo melhor modelo! Epoch {epoch} | Val Loss: {val_loss:.4f}\n")
                 
-                # Sample do melhor modelo
+                # Sample do melhor modelo (mesmo processo)
+                logger.info(f"🔄 Gerando sample do MELHOR modelo...")
+                model = model.cpu()
+                if device.type == 'cuda':
+                    torch.cuda.empty_cache()
+                
                 best_samples_dir = samples_dir / "best"
-                generate_sample_audio(model, epoch, settings, best_samples_dir, device)
+                generate_sample_audio(best_model_path, epoch, settings, best_samples_dir, device)
+                
+                # Recarregar novamente
+                model.load_state_dict(checkpoint_data['model_state_dict'])
+                model = model.to(device)
+                model.train()
+                logger.info(f"✅ Modelo de treinamento recarregado (após best sample)")
     
     # Cleanup
     if writer is not None:
