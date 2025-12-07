@@ -129,7 +129,7 @@ def convert_audio_format(input_path: Path, output_format: str) -> Path:
         return input_path
     
     # Cria arquivo temporário
-    temp_dir = Path(settings['temp_dir'])
+    temp_dir = settings.temp_dir
     temp_dir.mkdir(exist_ok=True, parents=True)
     
     extension = SUPPORTED_AUDIO_FORMATS[output_format]['extension']
@@ -767,14 +767,14 @@ async def clone_voice(
         
         # Lê arquivo
         content = await file.read()
-        if len(content) > settings['max_file_size_mb'] * 1024 * 1024:
+        if len(content) > settings.max_file_size_mb * 1024 * 1024:
             raise FileTooLargeException(
                 len(content) / (1024 * 1024),
-                settings['max_file_size_mb']
+                settings.max_file_size_mb
             )
         
         # Salva arquivo
-        upload_dir = Path(settings['upload_dir'])
+        upload_dir = settings.uploads_dir
         upload_dir.mkdir(exist_ok=True, parents=True)
         
         file_extension = Path(file.filename).suffix if file.filename else '.wav'
@@ -902,8 +902,8 @@ async def cleanup(deep: bool = False):
             job_store.redis.flushdb()
             
             # Remove arquivos
-            for dir_path in [Path(settings['upload_dir']), Path(settings['processed_dir']), 
-                            Path(settings['temp_dir']), Path(settings['voice_profiles_dir'])]:
+            for dir_path in [settings.uploads_dir, settings.processed_dir, 
+                            settings.temp_dir, settings.voice_profiles_dir]:
                 if dir_path.exists():
                     for file in dir_path.iterdir():
                         if file.is_file():
@@ -923,7 +923,7 @@ async def get_stats():
     stats = job_store.get_stats()
     
     # Adiciona info de cache
-    processed_path = Path(settings['processed_dir'])
+    processed_path = settings.processed_dir
     if processed_path.exists():
         files = list(processed_path.iterdir())
         total_size = sum(f.stat().st_size for f in files if f.is_file())
@@ -960,7 +960,7 @@ async def health_check():
     
     # Disco
     try:
-        stat = shutil.disk_usage(settings['processed_dir'])
+        stat = shutil.disk_usage(settings.processed_dir)
         free_gb = stat.free / (1024**3)
         percent_free = (stat.free / stat.total) * 100
         
