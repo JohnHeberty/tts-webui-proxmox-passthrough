@@ -436,9 +436,22 @@ def generate_sample_audio(model, epoch: int, settings: TrainingSettings, output_
             resampler = torchaudio.transforms.Resample(sr, settings.sample_rate)
             reference_wav = resampler(reference_wav)
         
+        # FIX: Garantir que áudio tenha tamanho mínimo (>= 1 segundo)
+        # cuFFT precisa de pelo menos 22050 samples para 22050Hz
+        min_samples = settings.sample_rate  # 1 segundo
+        if reference_wav.shape[-1] < min_samples:
+            # Repetir áudio até atingir tamanho mínimo
+            repeats = (min_samples // reference_wav.shape[-1]) + 1
+            reference_wav = reference_wav.repeat(1, repeats)[:, :min_samples]
+        
+        # FIX: Garantir mono (XTTS espera mono)
+        if reference_wav.shape[0] > 1:
+            reference_wav = reference_wav.mean(dim=0, keepdim=True)
+        
         # Salvar referência
         reference_output = output_dir / f"epoch_{epoch}_reference.wav"
         torchaudio.save(reference_output, reference_wav, settings.sample_rate)
+        logger.info(f"📝 Referência salva: {reference_output.name}")
         
         # Texto de teste
         test_text = "Olá, este é um teste de síntese de voz usando XTTS treinado."
@@ -451,10 +464,12 @@ def generate_sample_audio(model, epoch: int, settings: TrainingSettings, output_
             # NOTA: API pode variar por versão do TTS
             try:
                 # Preparar conditioning latents do speaker
+                # FIX: Passar tensor em vez de path (evita re-load)
                 gpt_cond_latent, speaker_embedding = model.get_conditioning_latents(
-                    audio_path=str(reference_wav_path),
-                    gpt_cond_len=model.config.gpt_cond_len,
-                    max_ref_length=model.config.max_ref_len,
+                    audio=reference_wav.squeeze(0),  # Remove channel dim
+                    sr=settings.sample_rate,
+                    gpt_cond_len=6,  # Fixo: 6 segundos
+                    max_ref_length=10,  # Fixo: 10 segundos max
                 )
                 
                 # Sintetizar áudio
@@ -592,7 +607,8 @@ def main(resume):
     logger.info("\n🚀 Iniciando treinamento REAL com XTTS-v2...")
     logger.info(f"   Epochs: {num_epochs}")
     logger.info(f"   Batch size: {settings.batch_size}")
-    logger.info(f"   Learning rate: {settings.learning_rate}\n")
+    logger.info(f"   Learning rate: {settings.learning_rate}")
+    logger.info(f"   Log a cada: {log_every_n_steps} steps (ajustável via LOG_EVERY_N_STEPS=1)\n")
     
     global_step = 0
     best_val_loss = float('inf')
