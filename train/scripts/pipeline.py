@@ -1,34 +1,31 @@
 """
 Pipeline completo de preparação de dataset XTTS-v2
 
-⚠️  DEPRECADO: Use pipeline_v2.py ao invés deste script
-    - pipeline_v2.py tem salvamento incremental (proteção contra crash)
-    - Resume automático (continua de onde parou)
-    - Imports diretos (melhor performance)
-    - Cleanup automático de temporários
-
 Este script orquestra todo o processo de preparação de dados:
   1. Download de áudios do YouTube (download_youtube.py)
   2. Segmentação com VAD (segment_audio.py)
   3. Transcrição com Whisper (transcribe_audio.py)
   4. Construção do dataset LJSpeech (build_ljs_dataset.py)
 
-Uso (RECOMENDADO - use v2):
+Uso:
+    # Pipeline completo
     python -m train.scripts.pipeline_v2
     
-Uso (legado - será removido):
-    # Pipeline completo
-    python -m train.scripts.pipeline
-    
     # Pular etapas (se já executou antes)
-    python -m train.scripts.pipeline --skip-download
-    python -m train.scripts.pipeline --skip-download --skip-segment
+    python -m train.scripts.pipeline_v2 --skip-download
+    python -m train.scripts.pipeline_v2 --skip-download --skip-segment
     
     # Executar apenas uma etapa
-    python -m train.scripts.pipeline --only-step download
-    python -m train.scripts.pipeline --only-step segment
-    python -m train.scripts.pipeline --only-step transcribe
-    python -m train.scripts.pipeline --only-step build
+    python -m train.scripts.pipeline_v2 --only-step download
+    python -m train.scripts.pipeline_v2 --only-step segment
+    python -m train.scripts.pipeline_v2 --only-step transcribe
+    python -m train.scripts.pipeline_v2 --only-step build
+
+Diferenças da v1:
+    - Usa imports diretos ao invés de subprocess (melhor prática Python)
+    - Melhor tratamento de erros e stack traces
+    - Reduz overhead de spawn de processos
+    - Type hints para melhor IDE support
 
 Dependências:
     - yt-dlp: pip install yt-dlp
@@ -41,7 +38,7 @@ Dependências:
 import logging
 from pathlib import Path
 import sys
-import subprocess
+from typing import Callable, List, Tuple
 
 import click
 import yaml
@@ -56,7 +53,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(project_root / "train" / "logs" / "pipeline.log"),
+        logging.FileHandler(project_root / "train" / "logs" / "pipeline_v2.log"),
         logging.StreamHandler(),
     ],
 )
@@ -69,13 +66,13 @@ def load_config(config_path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def run_step(step_name: str, script_path: str) -> bool:
+def run_step(step_name: str, step_function: Callable[[], None]) -> bool:
     """
-    Executa um step do pipeline
+    Executa um step do pipeline usando import direto (boa prática Python)
     
     Args:
-        step_name: Nome do step (para logging)
-        script_path: Path relativo ao script Python (ex: "train.scripts.download_youtube")
+        step_name: Nome descritivo do step
+        step_function: Função main() do script a executar
     
     Returns:
         True se sucesso, False se falhou
@@ -85,22 +82,22 @@ def run_step(step_name: str, script_path: str) -> bool:
     logger.info("=" * 80)
     
     try:
-        # Executar script como módulo Python
-        result = subprocess.run(
-            [sys.executable, "-m", script_path],
-            cwd=project_root,
-            check=True,
-            capture_output=False,  # Mostrar output em tempo real
-        )
-        
+        # Executar função diretamente (evita subprocess overhead)
+        step_function()
         logger.info(f"✅ {step_name} completado com sucesso!\n")
         return True
         
-    except subprocess.CalledProcessError as e:
-        logger.error(f"❌ {step_name} falhou com código de saída {e.returncode}")
-        return False
+    except SystemExit as e:
+        # Click usa sys.exit() para erros (código 0 = sucesso, >0 = erro)
+        if e.code != 0:
+            logger.error(f"❌ {step_name} falhou com código {e.code}")
+            return False
+        logger.info(f"✅ {step_name} completado com sucesso!\n")
+        return True
+        
     except Exception as e:
         logger.error(f"❌ Erro ao executar {step_name}: {e}")
+        logger.exception(e)  # Log stack trace completo para debug
         return False
 
 
@@ -132,63 +129,53 @@ def run_pipeline(config, skip_download, skip_segment, skip_transcribe, skip_buil
     """
     logger.info("\n")
     logger.info("╔" + "═" * 78 + "╗")
-    logger.info("║" + " " * 20 + "XTTS-v2 DATASET PIPELINE" + " " * 34 + "║")
+    logger.info("║" + " " * 20 + "XTTS-v2 DATASET PIPELINE V2" + " " * 31 + "║")
     logger.info("╚" + "═" * 78 + "╝")
     logger.info("\n")
     
     # Carregar config
     config_path = project_root / config
     cfg = load_config(config_path)
-    logger.info(f"📝 Config carregada: {config_path}")
-    logger.info(f"   Sample rate: {cfg['audio']['target_sample_rate']}Hz")
-    logger.info(f"   Duração: {cfg['segmentation']['min_duration']}-{cfg['segmentation']['max_duration']}s")
-    logger.info(f"   Whisper: {cfg['transcription']['whisper_model']}\n")
+    logger.info(f"📝 Config carregada: {cfg['audio']['target_sample_rate']}Hz, "
+                f"Duração: {cfg['segmentation']['min_duration']}-{cfg['segmentation']['max_duration']}s, "
+                f"Whisper: {cfg['transcription']['whisper_model']}\n")
     
-    # Definir steps a executar
-    steps = []
+    # Import lazy (só quando necessário, evita carregar módulos pesados)
+    steps: List[Tuple[str, Callable[[], None]]] = []
     
     if only_step:
         # Executar apenas um step
         if only_step == "download":
-            steps = [("Download YouTube", "train.scripts.download_youtube")]
+            from train.scripts.download_youtube import main as download_main
+            steps = [("Download YouTube", download_main)]
         elif only_step == "segment":
-            steps = [("Segmentação VAD", "train.scripts.segment_audio")]
+            from train.scripts.segment_audio import main as segment_main
+            steps = [("Segmentação VAD", segment_main)]
         elif only_step == "transcribe":
-            steps = [("Transcrição Whisper", "train.scripts.transcribe_audio")]
+            from train.scripts.transcribe_audio import main as transcribe_main
+            steps = [("Transcrição Whisper", transcribe_main)]
         elif only_step == "build":
-            steps = [("Build LJSpeech Dataset", "train.scripts.build_ljs_dataset")]
+            from train.scripts.build_ljs_dataset import main as build_main
+            steps = [("Build LJSpeech Dataset", build_main)]
     else:
         # Pipeline completo (com skips)
         if not skip_download:
-            steps.append(("Download YouTube", "train.scripts.download_youtube"))
+            from train.scripts.download_youtube import main as download_main
+            steps.append(("Download YouTube", download_main))
         if not skip_segment:
-            steps.append(("Segmentação VAD", "train.scripts.segment_audio"))
+            from train.scripts.segment_audio import main as segment_main
+            steps.append(("Segmentação VAD", segment_main))
         if not skip_transcribe:
-            steps.append(("Transcrição Whisper", "train.scripts.transcribe_audio"))
+            from train.scripts.transcribe_audio import main as transcribe_main
+            steps.append(("Transcrição Whisper", transcribe_main))
         if not skip_build:
-            steps.append(("Build LJSpeech Dataset", "train.scripts.build_ljs_dataset"))
+            from train.scripts.build_ljs_dataset import main as build_main
+            steps.append(("Build LJSpeech Dataset", build_main))
     
     if not steps:
         logger.warning("⚠️  Nenhum step selecionado para executar!")
         logger.info("   Use --help para ver opções disponíveis")
         return
-    
-    # DEPRECATION WARNING
-    logger.warning("\n" + "⚠️ " * 40)
-    logger.warning("⚠️  AVISO: Este script está DEPRECADO!")
-    logger.warning("⚠️  Use 'pipeline_v2.py' ao invés deste script")
-    logger.warning("⚠️  ")
-    logger.warning("⚠️  Benefícios do pipeline_v2:")
-    logger.warning("⚠️  - Salvamento incremental (proteção contra crash)")
-    logger.warning("⚠️  - Resume automático (continua de onde parou)")
-    logger.warning("⚠️  - Melhor performance (imports diretos)")
-    logger.warning("⚠️  ")
-    logger.warning("⚠️  Execute: python -m train.scripts.pipeline_v2")
-    logger.warning("⚠️ " * 40 + "\n")
-    
-    import time
-    logger.info("⏳ Aguardando 5 segundos para ler o aviso...")
-    time.sleep(5)
     
     logger.info(f"📋 Steps a executar: {len(steps)}")
     for i, (name, _) in enumerate(steps, 1):
@@ -199,10 +186,10 @@ def run_pipeline(config, skip_download, skip_segment, skip_transcribe, skip_buil
     success_count = 0
     failed_count = 0
     
-    for i, (step_name, script_path) in enumerate(steps, 1):
+    for i, (step_name, step_func) in enumerate(steps, 1):
         logger.info(f"\n[{i}/{len(steps)}] Iniciando: {step_name}...\n")
         
-        success = run_step(step_name, script_path)
+        success = run_step(step_name, step_func)
         
         if success:
             success_count += 1
