@@ -427,7 +427,6 @@
                                 </label>
                                 <select class="form-select" id="clone-tts-engine" required>
                                     <option value="xtts">XTTS</option>
-                                    <option value="rvc">RVC</option>
                                 </select>
                             </div>
 
@@ -479,99 +478,6 @@
                     <div class="text-center">
                         <div class="spinner-border text-primary" role="status"></div>
                         <p class="mt-2">Carregando vozes...</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ==================== MODELOS RVC ==================== -->
-        <section id="section-rvc-models" class="content-section" style="display: none;">
-            <h1 class="mb-4"><i class="bi bi-cpu"></i> Modelos RVC</h1>
-            
-            <!-- Upload de Modelo -->
-            <div class="card mb-4">
-                <div class="card-header bg-info text-white">
-                    <i class="bi bi-upload"></i> Upload de Modelo RVC
-                </div>
-                <div class="card-body">
-                    <form id="form-upload-rvc">
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-tag"></i> Nome do Modelo *
-                                </label>
-                                <input type="text" class="form-control" id="rvc-model-name" 
-                                    required maxlength="100" placeholder="Ex: voz_masculina_modelo">
-                            </div>
-
-                            <div class="col-md-4 mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-file-earmark-binary"></i> Arquivo .pth *
-                                </label>
-                                <input type="file" class="form-control" id="rvc-pth-file" 
-                                    accept=".pth" required>
-                            </div>
-
-                            <div class="col-md-4 mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-file-earmark-code"></i> Arquivo .index
-                                    <small class="text-muted">(opcional)</small>
-                                </label>
-                                <input type="file" class="form-control" id="rvc-index-file" 
-                                    accept=".index">
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">
-                                <i class="bi bi-chat-left-text"></i> Descrição
-                                <small class="text-muted">(opcional, máx 500 chars)</small>
-                            </label>
-                            <textarea class="form-control" id="rvc-model-description" 
-                                rows="2" maxlength="500"></textarea>
-                        </div>
-
-                        <div class="d-grid">
-                            <button type="submit" class="btn btn-info btn-lg" id="btn-upload-rvc">
-                                <i class="bi bi-cloud-upload"></i> Fazer Upload
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Estatísticas RVC -->
-            <div class="card mb-4">
-                <div class="card-header bg-secondary text-white">
-                    <i class="bi bi-bar-chart"></i> Estatísticas dos Modelos
-                </div>
-                <div class="card-body" id="rvc-stats-container">
-                    <div class="text-center">
-                        <div class="spinner-border text-secondary" role="status"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Lista de Modelos -->
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <i class="bi bi-grid-3x3"></i> Modelos Cadastrados
-                    <div class="float-end">
-                        <select class="form-select form-select-sm d-inline-block" 
-                            id="rvc-sort-by" style="width: auto;">
-                            <option value="created_at">Ordenar por: Data</option>
-                            <option value="name">Ordenar por: Nome</option>
-                            <option value="file_size_mb">Ordenar por: Tamanho</option>
-                        </select>
-                        <button class="btn btn-sm btn-light" onclick="app.loadRvcModels()">
-                            <i class="bi bi-arrow-clockwise"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body" id="rvc-models-list-container">
-                    <div class="text-center">
-                        <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-2">Carregando modelos...</p>
                     </div>
                 </div>
             </div>
@@ -1098,25 +1004,6 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" id="modal-voice-details-body">
-                    <div class="text-center">
-                        <div class="spinner-border" role="status"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: RVC Model Details -->
-    <div class="modal fade" id="modal-rvc-details" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-cpu"></i> Detalhes do Modelo RVC
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" id="modal-rvc-details-body">
                     <div class="text-center">
                         <div class="spinner-border" role="status"></div>
                     </div>
