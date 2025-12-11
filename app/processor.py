@@ -1,12 +1,12 @@
 """
 Processor para jobs de dublagem e clonagem de voz
-Sprint 4: Multi-Engine Support (XTTS + F5-TTS)
+XTTS-only TTS Engine Support
 """
 import logging
 from pathlib import Path
 from typing import Optional
 
-from .models import Job, VoiceProfile, JobMode, JobStatus, RvcModel, RvcParameters
+from .models import Job, VoiceProfile, JobMode, JobStatus
 from .config import get_settings
 from .exceptions import DubbingException, VoiceCloneException
 from .resilience import CircuitBreaker
@@ -43,9 +43,6 @@ class VoiceProcessor:
             self._load_engine(default_engine)
         
         self.job_store = None  # Será injetado no main.py
-        
-        # Sprint 6: RVC Model Manager
-        self.rvc_model_manager = None  # Será injetado no main.py ou inicializado lazy
     
     def _load_engine(self, engine_type: str):
         """
@@ -112,45 +109,14 @@ class VoiceProcessor:
             if self.job_store:
                 self.job_store.update_job(job)
             
-            # === SPRINT 4: Preparar parâmetros RVC ===
-            rvc_model = None
-            rvc_params = None
-            
-            if job.enable_rvc:
-                # Busca modelo RVC se habilitado
-                if job.rvc_model_id and self.rvc_model_manager:
-                    try:
-                        rvc_model = self.rvc_model_manager.get_model(job.rvc_model_id)
-                        logger.info("Loaded RVC model: %s", rvc_model.name)
-                    except Exception as e:
-                        logger.warning("Failed to load RVC model %s: %s", job.rvc_model_id, e)
-                        # Continua sem RVC
-                
-                # Constrói parâmetros RVC a partir do job
-                if rvc_model:
-                    rvc_params = RvcParameters(
-                        pitch=job.rvc_pitch or 0,
-                        index_rate=job.rvc_index_rate or 0.75,
-                        protect=job.rvc_protect or 0.33,
-                        rms_mix_rate=job.rvc_rms_mix_rate or 0.25,
-                        filter_radius=job.rvc_filter_radius or 3,
-                        f0_method=job.rvc_f0_method or 'rmvpe',
-                        hop_length=job.rvc_hop_length or 128
-                    )
-                    logger.info("RVC parameters: pitch=%d, f0_method=%s", rvc_params.pitch, rvc_params.f0_method)
-            
-            # Gera áudio dublado com perfil de qualidade usando engine selecionado (+ RVC se habilitado)
+            # Gera áudio dublado com perfil de qualidade usando engine selecionado
             # Retry automático já aplicado via decorator em TTSEngine.generate_dubbing
             audio_bytes, duration = await engine.generate_dubbing(
                 text=job.text,
                 language=job.source_language or job.target_language or 'en',
                 voice_profile=voice_profile,
                 quality_profile=job.quality_profile,
-                speed=1.0,
-                # Parâmetros RVC (Sprint 4)
-                enable_rvc=job.enable_rvc or False,
-                rvc_model=rvc_model,
-                rvc_params=rvc_params
+                speed=1.0
             )
             
             job.progress = 80.0
