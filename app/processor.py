@@ -49,7 +49,7 @@ class VoiceProcessor:
         Carrega engine TTS usando factory pattern (lazy initialization)
         
         Args:
-            engine_type: 'xtts' ou 'f5tts'
+            engine_type: 'xtts' (only option)
         """
         if engine_type in self.engines:
             return  # Já carregado
@@ -73,7 +73,7 @@ class VoiceProcessor:
         Obtém engine TTS (lazy load se necessário)
         
         Args:
-            engine_type: 'xtts' ou 'f5tts'
+            engine_type: 'xtts' (only option)
         
         Returns:
             TTSEngine instance
