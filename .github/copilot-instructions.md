@@ -2,20 +2,19 @@
 
 ## Architecture Overview
 
-This is a **production-ready TTS & Voice Cloning microservice** with multi-engine support (XTTS v2, F5-TTS) and async job processing via Celery.
+This is a **production-ready TTS & Voice Cloning microservice** with XTTS v2 engine and Gradio WebUI. Simplified architecture focused on XTTS-only for better maintainability.
 
 ### Core Components
-- **FastAPI API** ([app/main.py](app/main.py)): 42 REST endpoints, serves Gradio WebUI, handles file uploads
-- **Celery Worker** ([app/celery_tasks.py](app/celery_tasks.py)): Async TTS/cloning tasks, heavy model operations
+- **Gradio WebUI** ([app_gradio.py](app_gradio.py)): Pure Gradio application with TTS generation, voice cloning, and training UI
 - **VoiceProcessor** ([app/processor.py](app/processor.py)): Orchestrates TTS generation pipeline
-- **TTS Engines** ([app/engines/](app/engines/)): Factory pattern with lazy loading (XTTS, F5-TTS)
-- **Redis Store** ([app/redis_store.py](app/redis_store.py)): Jobs, voice profiles, quality profiles
-- **Gradio WebUI**: Interactive UI for testing TTS engines, voice cloning, and job management (being migrated from Bootstrap 5)
+- **XTTS Engine** ([app/engines/xtts_engine.py](app/engines/xtts_engine.py)): Factory pattern with lazy loading for XTTS v2 only
+- **Redis Store** ([app/redis_store.py](app/redis_store.py)): Jobs, voice profiles, quality profiles (optional - can work without)
+- **Standalone Mode** ([app_standalone.py](app_standalone.py)): Simplified version without Redis/Celery dependencies
 
 ### Critical Data Flows
-1. **Job Creation**: API → Redis → Celery queue → Worker processes → Updates Redis → API returns status
-2. **TTS Pipeline**: Text → VoiceProcessor → Engine Factory → TTSEngine (XTTS/F5-TTS) → Audio file
-3. **Voice Cloning**: Upload → Validation → Celery task → Engine.clone_voice() → Stored in Redis + disk
+1. **Job Creation**: Gradio UI → Direct processing (no queue) → Updates storage → Returns audio
+2. **TTS Pipeline**: Text → VoiceProcessor → XTTS Engine → Audio file
+3. **Voice Cloning**: Upload → Validation → Engine.clone_voice() → Stored in disk/Redis
 
 ## Key Patterns & Conventions
 
@@ -44,9 +43,9 @@ engine = create_engine('xtts', settings)  # Returns cached
 
 ### Quality Profiles System
 [app/quality_profiles.py](app/quality_profiles.py) + [app/quality_profile_manager.py](app/quality_profile_manager.py) manage TTS generation parameters:
-- 8 built-in profiles (3 XTTS + 5 F5-TTS)
-- Stored in Redis with 30-day TTL
-- Include engine type, temperature, speed, NFE steps (F5-TTS), etc.
+- 3 built-in XTTS profiles (balanced, expressive, stable)
+- Can be stored in Redis with 30-day TTL (optional)
+- Include temperature, speed, repetition penalty, etc.
 
 When adding features, check if parameters belong in Quality Profiles vs Job/Request models.
 
@@ -124,17 +123,17 @@ make shell-celery    # Debug inside worker container
 
 **Important**: Changes to `.env` require `make rebuild`, NOT `make restart` (containers cache env vars).
 
-### Adding New TTS Engines
-1. Create engine class in [app/engines/](app/engines/) inheriting `TTSEngine`
-2. Implement `generate_dubbing()` and `clone_voice()` async methods
-3. Register in [app/engines/factory.py](app/engines/factory.py) `_ENGINE_REGISTRY`
-4. Add config section in [app/config.py](app/config.py) under `tts_engines`
-5. Update [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) with engine capabilities
+### XTTS-Only Architecture
+This project now uses **XTTS v2 exclusively** for simplified maintenance and better reliability:
+- Single engine to maintain and optimize
+- No RVC (voice conversion) - direct XTTS output only
+- No F5-TTS - removed for simplification
+- Focus on training and fine-tuning XTTS models
 
-See [app/engines/f5tts_engine.py](app/engines/f5tts_engine.py) as reference implementation.
+See [app/engines/xtts_engine.py](app/engines/xtts_engine.py) for the implementation.
 
-### Gradio WebUI Migration
-The project is migrating from Bootstrap 5 SPA to **Gradio** (https://www.gradio.app/docs) for a more Python-native UI:
+### Gradio WebUI
+The project uses **Gradio** (https://www.gradio.app/docs) for a Python-native UI:
 
 ```python
 import gradio as gr
@@ -143,31 +142,30 @@ import gradio as gr
 with gr.Blocks() as demo:
     with gr.Tab("TTS Generation"):
         text_input = gr.Textbox(label="Text to speak")
-        engine_selector = gr.Dropdown(["xtts", "f5tts"], label="Engine")
         audio_output = gr.Audio(label="Generated Audio")
         generate_btn = gr.Button("Generate")
         
         generate_btn.click(
-            fn=async_tts_wrapper,
-            inputs=[text_input, engine_selector],
+            fn=tts_wrapper,
+            inputs=[text_input],
             outputs=audio_output
         )
 ```
 
-**Key patterns for Gradio integration**:
-- Wrap FastAPI async functions for Gradio callbacks (they expect sync)
-- Use `gr.Blocks()` for multi-tab layouts matching old Bootstrap structure
+**Key patterns for Gradio**:
+- Use async wrappers for async functions (Gradio expects sync)
+- Use `gr.Blocks()` for multi-tab layouts
 - Leverage `gr.Audio()` for playback and upload
-- Use `gr.State()` for job tracking across interactions
-- Mount Gradio app in FastAPI: `app = gr.mount_gradio_app(app, demo, path="/gradio")`
+- Use `gr.State()` for tracking state across interactions
+- Can run standalone or mounted in FastAPI: `gr.mount_gradio_app(app, demo, path="/gradio")`
 
 ## Configuration & Environment
 
 ### Critical ENV Vars
 - `LOW_VRAM=true/false`: Enables model unloading (see [docs/LOW_VRAM.md](docs/LOW_VRAM.md))
-- `TTS_ENGINE_DEFAULT=xtts|f5tts`: Default engine for new jobs
-- `XTTS_DEVICE`/`F5TTS_DEVICE`: `cuda`, `cpu`, or `None` (auto-detect)
-- `REDIS_URL`: Job/profile storage (default: `redis://localhost:6379/4`)
+- `TTS_ENGINE_DEFAULT=xtts`: Default engine (only XTTS available)
+- `XTTS_DEVICE`: `cuda`, `cpu`, or `None` (auto-detect)
+- `REDIS_URL`: Job/profile storage (default: `redis://localhost:6379/4`) - optional
 
 Full reference: [app/config.py](app/config.py) `get_settings()`
 
@@ -181,11 +179,11 @@ Common issues involve `nvidia-smi` access and device persistence in containers.
 
 ## Common Pitfalls
 
-1. **Model caching**: Engines are singletons. Use `force_recreate=True` in tests or after config changes.
-2. **CUDA OOM**: Check `LOW_VRAM` mode. F5-TTS with NFE_STEP=64 uses ~4GB VRAM.
-3. **Celery tasks**: Use `run_async_task()` wrapper to run async code. Never use `asyncio.run()` - it conflicts with Celery's event loop (see [app/celery_tasks.py](app/celery_tasks.py)).
-4. **File cleanup**: Always clean temp files in try/finally blocks. See `convert_audio_format()` in [app/main.py](app/main.py).
-5. **Voice profiles TTL**: Default 30 days. Old profiles auto-expire from Redis.
+1. **Model caching**: XTTS engine is singleton. Use `force_recreate=True` in tests or after config changes.
+2. **CUDA OOM**: Check `LOW_VRAM` mode. XTTS uses ~2-4GB VRAM.
+3. **Async/Sync bridge**: Gradio expects sync functions. Use sync wrappers with `asyncio.new_event_loop()` pattern.
+4. **File cleanup**: Always clean temp files in try/finally blocks.
+5. **Voice profiles TTL**: Default 30 days in Redis. Can also store in filesystem only (standalone mode).
 
 ## Documentation
 

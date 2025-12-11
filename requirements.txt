@@ -1,13 +1,15 @@
-# === CORE WEB FRAMEWORK ===
+# === CORE WEB FRAMEWORK (Optional - if using FastAPI) ===
+# Note: This project can run standalone with Gradio (app_gradio.py or app_standalone.py)
+# or with FastAPI integration. FastAPI dependencies are optional.
 fastapi==0.120.0
 uvicorn[standard]==0.38.0
-
-# Pydantic compatível com FastAPI, pydantic-settings e F5-TTS
-pydantic>=2.7.0,<2.11.0
-pydantic-settings==2.11.0
 python-multipart==0.0.20
 
-# === REDIS & CELERY ===
+# === CORE DEPENDENCIES ===
+pydantic>=2.7.0,<2.11.0
+pydantic-settings==2.11.0
+
+# === REDIS & CELERY (Optional - for job queue) ===
 celery==5.3.4
 redis==5.0.1
 
@@ -15,20 +17,10 @@ redis==5.0.1
 # torch e torchaudio são instalados no Dockerfile com versão específica cu118
 numpy>=1.26.0,<1.27.0
 soundfile==0.12.1
+pydub>=0.25.1
 
-# === XTTS (Coqui TTS - PRIMARY TTS ENGINE) ===
+# === XTTS (Coqui TTS - ONLY TTS ENGINE) ===
 coqui-tts>=0.27.0
-
-# === F5-TTS / E2-TTS (EMOTION MODEL) ===
-# Versão nova, já com pyproject declarando pydantic<=2.10.6 
-f5-tts==1.1.9
-cached-path>=1.6.2
-faster-whisper>=1.0.0  # pra transcrição de ref_text
-
-# === RVC HELPERS (sem tts-with-rvc aqui!) ===
-faiss-cpu>=1.7.4
-praat-parselmouth==0.4.3
-resampy>=0.4.2
 
 # === UTILITIES ===
 httpx==0.27.0
