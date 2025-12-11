@@ -1,6 +1,9 @@
 # Deployment Guide - Audio Voice Service
 
-Guia completo para deploy em produção do sistema multi-engine TTS.
+Guia completo para deploy em produção do sistema TTS.
+
+**Versão:** v2.0.1  
+**Data:** 10 de Dezembro de 2025
 
 ---
 

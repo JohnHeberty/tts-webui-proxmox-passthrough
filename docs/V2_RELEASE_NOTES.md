@@ -1,6 +1,7 @@
-# TTS WebUI v2.0 Release Notes
+# TTS WebUI v2.0.1 Release Notes
 
-**Release Date**: December 7, 2025  
+**Release Date**: December 10, 2025  
+**Previous Release**: v2.0.0 (December 7, 2025)  
 **Status**: Production Ready ✅
 
 ## 🎯 Overview

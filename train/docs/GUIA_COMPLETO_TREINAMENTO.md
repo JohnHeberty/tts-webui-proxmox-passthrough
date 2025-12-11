@@ -1,5 +1,8 @@
 # 🎓 Guia Completo de Treinamento XTTS-v2
 
+**Versão:** v2.0.1  
+**Data:** 10 de Dezembro de 2025
+
 ## 📋 Índice
 
 1. [Introdução](#introdução)

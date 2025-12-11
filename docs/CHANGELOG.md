@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.1] - 2025-12-10
+
+### 🔧 Maintenance
+
+- **Git LFS:** Fixed Git LFS pointers for audio test files
+  - `train/test/audio/reference_test.wav`
+  - `train/test/results/cloned_output.wav`
+- **Documentation:** Updated all documentation dates to December 10, 2025
+- **Repository Sync:** Merged 139 commits from remote main branch
+
+### 📚 Documentation Updates
+
+- Updated CHANGELOG with latest maintenance activities
+- Refreshed README with current project status
+- Updated docs/README.md index with current date
+
+---
+
 ## [2.0.0] - 2025-12-07
 
 ### 🚀 Major Refactoring - TTS WebUI v2.0

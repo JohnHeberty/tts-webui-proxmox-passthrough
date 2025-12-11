@@ -2,6 +2,9 @@
 
 Guia rápido para configurar e executar o Audio Voice Service localmente.
 
+**Versão:** v2.0.1  
+**Data:** 10 de Dezembro de 2025
+
 ---
 
 ## 📋 Pré-requisitos

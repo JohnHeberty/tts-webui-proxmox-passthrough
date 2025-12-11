@@ -1,8 +1,8 @@
 # 📚 API Reference - TTS WebUI Training System
 
-**Version**: 1.0.0  
+**Version**: 2.0.1  
 **Base URL**: `http://localhost:8000`  
-**Last Updated**: 2025-12-06
+**Last Updated**: 2025-12-10
 
 ---
 

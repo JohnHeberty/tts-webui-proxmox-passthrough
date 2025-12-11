@@ -2,7 +2,7 @@
 
 **Serviço:** Audio Voice Service  
 **Versão:** 2.0.1  
-**Data:** Dezembro 2025  
+**Data:** 10 de Dezembro de 2025  
 **Stack:** FastAPI + Celery + Redis + XTTS v2 (v2.0: F5-TTS and RVC removed)
 
 ---

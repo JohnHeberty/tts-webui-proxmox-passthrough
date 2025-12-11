@@ -1,8 +1,10 @@
-# 🎙️ Audio Voice Service v2.0
+# 🎙️ Audio Voice Service v2.0.1
 
 > **Microserviço profissional de Text-to-Speech (TTS) e Voice Cloning com XTTS-v2**
 
 Sistema completo de geração de voz sintética usando **XTTS v2** (Coqui TTS) com voice cloning zero-shot e quality profiles.
+
+**Última atualização:** 10 de Dezembro de 2025
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.120.0-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)

@@ -1,6 +1,8 @@
 # 📚 Documentação - Índice Geral
 
-Documentação completa do **Audio Voice Service** atualizada em **Dezembro 2025**.
+Documentação completa do **Audio Voice Service** atualizada em **10 de Dezembro de 2025**.
+
+**Versão:** v2.0.1
 
 ---
 

@@ -2,6 +2,8 @@
 
 Pipeline completo de fine-tuning XTTS-v2 com LoRA e configuração type-safe via Pydantic.
 
+**Última Atualização:** 10 de Dezembro de 2025
+
 ## 📚 Documentação
 
 - **[🎯 Guia Completo de Treinamento](docs/GUIA_COMPLETO_TREINAMENTO.md)** - Para iniciantes (passo-a-passo detalhado)
@@ -9,7 +11,7 @@ Pipeline completo de fine-tuning XTTS-v2 com LoRA e configuração type-safe via
 
 ## 📊 Status
 
-**Versão**: v2.0 (Pydantic Settings)  
+**Versão**: v2.0.1  
 **Status**: ✅ Production-ready
 
 - ✅ Sprint 0: Segurança (100%)

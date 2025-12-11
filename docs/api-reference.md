@@ -1,7 +1,9 @@
 # API Reference - Audio Voice Service
 
-Documentação completa dos 42 endpoints REST do Audio Voice Service.
+Documentação completa dos endpoints REST do Audio Voice Service.
 
+**Versão:** v2.0.1  
+**Data:** 10 de Dezembro de 2025  
 **Base URL:** `http://localhost:8005`  
 **OpenAPI/Swagger:** http://localhost:8005/docs  
 **ReDoc:** http://localhost:8005/redoc
