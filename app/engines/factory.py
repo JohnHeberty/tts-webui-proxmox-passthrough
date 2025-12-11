@@ -34,8 +34,6 @@ _ENGINE_CACHE: Dict[str, TTSEngine] = {}
 # Engine registry for lazy loading (populated on first use)
 _ENGINE_REGISTRY: Dict[str, Optional[Type[TTSEngine]]] = {
     'xtts': None,        # Loaded lazily: XttsEngine
-    'f5tts': None,       # Loaded lazily: F5TtsEngine
-    'f5tts-ptbr': None   # Loaded lazily: F5TtsPtBrEngine (TESTE)
 }
 
 
@@ -48,7 +46,7 @@ def create_engine(
     Factory method to create TTS engines with caching.
     
     Args:
-        engine_type: Engine identifier ('xtts', 'f5tts')
+        engine_type: Engine identifier ('xtts')
         settings: Application settings dict
         force_recreate: If True, recreate even if cached
     
@@ -79,30 +77,6 @@ def create_engine(
                 device=xtts_config.get('device'),
                 fallback_to_cpu=xtts_config.get('fallback_to_cpu', True),
                 model_name=xtts_config.get('model_name', 'tts_models/multilingual/multi-dataset/xtts_v2')
-            )
-        elif engine_type == 'f5tts':
-            if _ENGINE_REGISTRY['f5tts'] is None:
-                from .f5tts_engine import F5TtsEngine
-                _ENGINE_REGISTRY['f5tts'] = F5TtsEngine
-            
-            engine_class = _ENGINE_REGISTRY['f5tts']
-            f5tts_config = settings.get('tts_engines', {}).get('f5tts', {})
-            engine = engine_class(
-                device=f5tts_config.get('device'),
-                fallback_to_cpu=f5tts_config.get('fallback_to_cpu', True),
-                model_name=f5tts_config.get('model_name')
-            )
-        elif engine_type == 'f5tts-ptbr':
-            if _ENGINE_REGISTRY['f5tts-ptbr'] is None:
-                from .f5tts_ptbr_engine import F5TtsPtBrEngine
-                _ENGINE_REGISTRY['f5tts-ptbr'] = F5TtsPtBrEngine
-            
-            engine_class = _ENGINE_REGISTRY['f5tts-ptbr']
-            f5tts_config = settings.get('tts_engines', {}).get('f5tts', {})  # Usar mesmas configs do f5tts
-            engine = engine_class(
-                device=f5tts_config.get('device'),
-                fallback_to_cpu=f5tts_config.get('fallback_to_cpu', True),
-                whisper_model=f5tts_config.get('whisper_model', 'base')
             )
         else:
             raise ValueError(

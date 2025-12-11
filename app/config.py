@@ -50,7 +50,7 @@ def get_settings():
         # Quando ativo, carrega/descarrega modelos automaticamente para economizar VRAM
         'low_vram_mode': os.getenv('LOW_VRAM', 'false').lower() == 'true',
         
-        # ===== TTS ENGINES (SPRINT 4: Multi-Engine Support) =====
+        # ===== TTS ENGINES (XTTS Only) =====
         'tts_engine_default': os.getenv('TTS_ENGINE_DEFAULT', 'xtts'),  # Default engine
         'tts_engines': {
             # XTTS Configuration (default/stable)
@@ -59,44 +59,6 @@ def get_settings():
                 'device': os.getenv('XTTS_DEVICE', None),  # None = auto-detect
                 'fallback_to_cpu': os.getenv('XTTS_FALLBACK_CPU', 'true').lower() == 'true',
                 'model_name': os.getenv('XTTS_MODEL', 'tts_models/multilingual/multi-dataset/xtts_v2'),
-            },
-            # F5-TTS / E2-TTS Configuration (experimental/high-quality)
-            'f5tts': {
-                'enabled': os.getenv('F5TTS_ENABLED', 'true').lower() == 'true',
-                'device': os.getenv('F5TTS_DEVICE', 'cuda'),  # cuda ou cpu
-                'fallback_to_cpu': os.getenv('F5TTS_FALLBACK_CPU', 'true').lower() == 'true',
-                'model_name': os.getenv('F5TTS_MODEL', 'firstpixel/F5-TTS-pt-br'),  # PT-BR otimizado por padrão
-                
-                # Whisper (auto-transcription)
-                'whisper_model': os.getenv('F5TTS_WHISPER_MODEL', 'base'),
-                'whisper_device': os.getenv('F5TTS_WHISPER_DEVICE', 'cpu'),
-                
-                # Quality Profiles (NFE Steps)
-                'nfe_step_fast': int(os.getenv('F5TTS_NFE_STEP_FAST', '24')),
-                'nfe_step_balanced': int(os.getenv('F5TTS_NFE_STEP_BALANCED', '40')),
-                'nfe_step_ultra': int(os.getenv('F5TTS_NFE_STEP_ULTRA', '64')),
-                
-                # Synthesis Parameters
-                'cfg_strength': float(os.getenv('F5TTS_CFG_STRENGTH', '2.2')),
-                'sway_sampling_coef': float(os.getenv('F5TTS_SWAY_SAMPLING_COEF', '0.3')),
-                'speed': float(os.getenv('F5TTS_SPEED', '0.80')),
-                
-                # Text Processing - Chunking inteligente
-                'chunk_by_punctuation': os.getenv('F5TTS_CHUNK_BY_PUNCTUATION', 'true').lower() == 'true',
-                'max_chunk_chars': int(os.getenv('F5TTS_MAX_CHUNK_CHARS', '200')),
-                'cross_fade_duration': float(os.getenv('F5TTS_CROSS_FADE_DURATION', '0.05')),
-                
-                # DSP Post-Processing
-                'denoise_strength': float(os.getenv('F5TTS_DENOISE_STRENGTH', '0.85')),
-                'deessing_freq': int(os.getenv('F5TTS_DEESSING_FREQ', '7000')),
-                'highpass_freq': int(os.getenv('F5TTS_HIGHPASS_FREQ', '50')),
-                'lowpass_freq': int(os.getenv('F5TTS_LOWPASS_FREQ', '12000')),
-                
-                # Audio Constraints
-                'sample_rate': int(os.getenv('F5TTS_SAMPLE_RATE', '24000')),
-                'min_ref_duration': int(os.getenv('F5TTS_MIN_REF_DURATION', '3')),
-                'max_ref_duration': int(os.getenv('F5TTS_MAX_REF_DURATION', '30')),
-                'max_text_length': int(os.getenv('F5TTS_MAX_TEXT_LENGTH', '10000')),
             }
         },
         
@@ -131,24 +93,6 @@ def get_settings():
             'max_ref_duration': int(os.getenv('XTTS_MAX_REF_DURATION', '30')),  # segundos
         },
         
-        # ===== RVC (Voice Conversion) =====
-        'rvc': {
-            # Device (auto, cuda, cpu)
-            'device': os.getenv('RVC_DEVICE', 'cpu'),  # Default CPU (economiza VRAM)
-            
-            # Fallback para CPU se CUDA não disponível
-            'fallback_to_cpu': os.getenv('RVC_FALLBACK_TO_CPU', 'true').lower() == 'true',
-            
-            # Diretório dos modelos RVC
-            'models_dir': os.getenv('RVC_MODELS_DIR', './models/rvc'),
-            
-            # Parâmetros padrão de conversão
-            'pitch': int(os.getenv('RVC_PITCH', '0')),  # -12 a +12 semitons
-            'filter_radius': int(os.getenv('RVC_FILTER_RADIUS', '3')),
-            'index_rate': float(os.getenv('RVC_INDEX_RATE', '0.75')),
-            'rms_mix_rate': float(os.getenv('RVC_RMS_MIX_RATE', '0.25')),
-            'protect': float(os.getenv('RVC_PROTECT', '0.33')),
-        },
         
         # ===== RESILIÊNCIA =====
         'resilience': {
